@@ -1,0 +1,11 @@
+bin/
+obj/
+.vs/
+*.user
+*.suo
+
+.env
+.env.*
+appsettings.*.local.json
+
+messages.csv
