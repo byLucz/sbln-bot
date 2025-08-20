@@ -237,10 +237,10 @@ namespace sblngavnav5X.Core
             if (!_lavaNode.IsConnected)
             {
                 await _services.UseLavaNodeAsync();
-                if (_lavaNode.IsConnected)
-                {
-                    await LoggingService.LogInformationAsync("VI-KA", $"есть контакт");
-                }
+            }
+            if (_lavaNode.IsConnected)
+            {
+                await LoggingService.LogInformationAsync("VI-KA", $"есть контакт");
             }
             else
             {
