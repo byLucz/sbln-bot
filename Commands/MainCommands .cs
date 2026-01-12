@@ -375,8 +375,8 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         .WithName("TwitchLib")
         .WithValue("***3.1.1*** ");
         var r4 = new EmbedFieldBuilder()
-        .WithName("Lavalink + YTPlugin")
-        .WithValue("***4.0.8*** // ***1.13.4*** ");
+        .WithName("Lavalink + yt-plugin + yt-cipher")
+        .WithValue("***4.1.2*** // ***1.16.0*** // ***16c454f***");
         var r5 = new EmbedFieldBuilder()
         .WithName("GovorNGN (beta)")
         .WithValue("***1.5*** ");

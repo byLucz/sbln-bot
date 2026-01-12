@@ -80,9 +80,8 @@ public class HelpCommands
             var m8 = new EmbedFieldBuilder().WithName("продолжи|прод").WithValue("продолжить");
             var m9 = new EmbedFieldBuilder().WithName("басс|бс").WithValue("басс буст");
             var m10 = new EmbedFieldBuilder().WithName("громоксть|гр").WithValue("управление громкостю (0-500)");
-            var m11 = new EmbedFieldBuilder().WithName("~~скорость|спид~~").WithValue("*пока недоступно*");
-            var m12 = new EmbedFieldBuilder().WithName("~~перейти|пр~~").WithValue("*пока недоступно*");
-            var m13 = new EmbedFieldBuilder().WithName("~~залупа|луп~~").WithValue("*пока недоступно*");
+            var m11 = new EmbedFieldBuilder().WithName("перейти|пр").WithValue("перейти по таймингу");
+            var m12 = new EmbedFieldBuilder().WithName("залупа|луп").WithValue("вкл/выкл повтор");
 
             var embed = new EmbedBuilder()
                 .WithAuthor(botzname)
@@ -98,8 +97,7 @@ public class HelpCommands
                 .AddField(m9)
                 .AddField(m10)
                 .AddField(m11)
-                .AddField(m12)
-                .AddField(m13);
+                .AddField(m12);
 
         return embed.Build();
         }

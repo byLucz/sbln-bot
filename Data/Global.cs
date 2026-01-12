@@ -10,7 +10,7 @@ namespace sblngavnav5X.Data
 
     public static class Utils
     {
-        public const string sblnver = "5.5.0";
+        public const string sblnver = "5.5.1";
 
         public const string token = "INSERT_HERE";
 

@@ -17,12 +17,15 @@ namespace sblngavnav5X.Audio
         {
             var voiceState = Context.User as IVoiceState;
             if (!await UserInVoice())
-            {
                 return;
-            }
-            await lavaNode.JoinAsync(voiceState?.VoiceChannel);
-            audioService.TextChannels.TryAdd(voiceState.VoiceChannel.GuildId, Context.Channel as ITextChannel);
-            audioService.VoiceChannels.TryAdd(voiceState.VoiceChannel.GuildId, voiceState?.VoiceChannel);
+
+            await lavaNode.JoinAsync(voiceState!.VoiceChannel);
+
+            audioService.SetGuildChannels(
+                voiceState.VoiceChannel.GuildId,
+                voiceState.VoiceChannel.Id,
+                (Context.Channel as ITextChannel)!.Id
+            );
         }
 
         [Command("выйди")]
@@ -137,12 +140,11 @@ namespace sblngavnav5X.Audio
             {
                 var embedErr = await EmbedHandler.CreateErrorEmbed(
                     "ненене👿",
-                    $"хуйня какая то\n*{e.Message}*"
+                    $"ошибка сервиса поиска, ты че написал..."
                 );
                 await ReplyAsync(embed: embedErr);
             }
         }
-
 
         [Command("скип")]
         [Alias("ск")]
@@ -428,6 +430,63 @@ namespace sblngavnav5X.Audio
             await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, басы", $"**БАСС БУСТ АКТИВИРОВАН НА УРОВЕНЬ {outLevel}!**", Color.DarkMagenta));
         }
 
+        [Command("залупа")]
+        [Alias("луп")]
+        public async Task LoopAsync()
+        {
+            if (!await BotInVoice())
+                return;
+
+            var enabled = audioService.ToggleRepeat(Context.Guild.Id);
+
+            var text = enabled ? "🔁 **ЛУП ВКЛ**" : "⛔ **ЛУП ВЫКЛ**";
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, залупа", text, Color.DarkMagenta));
+        }
+
+        [Command("перейти")]
+        [Alias("пр")]
+        public async Task SeekAsync([Remainder] string timecode)
+        {
+            if (!await BotInVoice())
+                return;
+
+            var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
+            if (player?.Track is null)
+            {
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, перейти", "так ничего не играет"));
+                return;
+            }
+
+            if (!TryParseTimecode(timecode, out var ts))
+            {
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, перейти", "э, формат: `мм:сс` или `чч:мм:сс`"));
+                return;
+            }
+
+            if (ts < TimeSpan.Zero) ts = TimeSpan.Zero;
+            if (ts > player.Track.Duration) ts = player.Track.Duration;
+
+            await player.SeekAsync(lavaNode, ts);
+
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
+                "sbln muzik🎸🎧, перейти",
+                $"⏩ Перемотал на **{ts:hh\\:mm\\:ss}**",
+                Color.Blue));
+        }
+
+        [Command("лавастат")]
+        public async Task LavaStat()
+        {
+            var embed = audioService.GetStatsEmbed();
+
+            if (embed is null)
+            {
+                await ReplyAsync("Статы пока нет, йоу...");
+                return;
+            }
+
+            await ReplyAsync(embed: embed);
+        }
 
         private async Task PlayNow(SearchResponse searchResponse, LavaPlayer<LavaTrack> player, int index)
             {
@@ -535,5 +594,34 @@ namespace sblngavnav5X.Audio
             return bar.ToString();
         }
 
+        private static bool TryParseTimecode(string input, out TimeSpan result)
+        {
+            result = default;
+            if (string.IsNullOrWhiteSpace(input)) return false;
+
+            var parts = input.Trim().Split(':', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2 || parts.Length > 3) return false;
+
+            int h = 0, m = 0, s = 0;
+
+            if (parts.Length == 2)
+            {
+                if (!int.TryParse(parts[0], out m)) return false;
+                if (!int.TryParse(parts[1], out s)) return false;
+            }
+            else
+            {
+                if (!int.TryParse(parts[0], out h)) return false;
+                if (!int.TryParse(parts[1], out m)) return false;
+                if (!int.TryParse(parts[2], out s)) return false;
+            }
+
+            if (h < 0) return false;
+            if (m < 0 || m > 59) return false;
+            if (s < 0 || s > 59) return false;
+
+            result = new TimeSpan(h, m, s);
+            return true;
+        }
     }
 }

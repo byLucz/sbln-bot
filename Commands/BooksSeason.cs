@@ -14,7 +14,7 @@ namespace sblngavnav5X.Commands
     {
         private static ulong _msgId;
         private static List<Embed> _pages;
-        private static int _currentPage = 0;
+        private static int _currentPage = 1;
         private static bool _active = false;
         private static readonly Dictionary<ulong, DateTime> _lastClick = new();
 
