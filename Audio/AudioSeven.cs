@@ -69,48 +69,47 @@ namespace sblngavnav5X.Audio
                 player = await lavaNode.GetPlayerAsync(guildId);
             }
 
+            int index = 0;
+
+            var m = Regex.Match(searchQuery, @"(https?://\S+)", RegexOptions.IgnoreCase);
+
+            if (m.Success)
+                searchQuery = m.Groups[1].Value.Trim().TrimEnd(')', ']', '}', '>', '.', ',', ';');
+            else
+                searchQuery = Regex.Replace(searchQuery,@"^\s*(?:(?:х|и|играй)\s+)+","",RegexOptions.IgnoreCase).Trim();
+
             if (searchQuery.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
                 searchQuery = searchQuery.Replace("youtu.be/", "youtube.com/watch?v=");
 
-            int index = 0;
-
-            if (searchQuery.IndexOf("youtube.com/watch?v=", StringComparison.OrdinalIgnoreCase) >= 0
-             && searchQuery.IndexOf("&list=", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (Uri.TryCreate(searchQuery, UriKind.Absolute, out var uri) &&
+                (uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||
+                 uri.Host.Contains("youtu.be", StringComparison.OrdinalIgnoreCase) ||
+                 uri.Host.Contains("music.youtube.com", StringComparison.OrdinalIgnoreCase)))
             {
-                var uri = new Uri(searchQuery);
-                var query = uri.Query
-                                .TrimStart('?')
-                                .Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries);
+                var q = ParseQuery(uri.Query);
 
-                foreach (var param in query)
+                if (q.TryGetValue("list", out var listId) && !string.IsNullOrWhiteSpace(listId))
                 {
-                    var parts = param.Split('=', 2);
-                    if (parts.Length == 2 &&
-                        parts[0].Equals("index", StringComparison.OrdinalIgnoreCase) &&
-                        int.TryParse(parts[1], out var parsed) && parsed > 0)
-                    {
+                    if (q.TryGetValue("index", out var idxStr) && int.TryParse(idxStr, out var parsed) && parsed > 0)
                         index = parsed - 1;
-                        break;
-                    }
-                }
 
-                searchQuery = Regex.Replace(
-                    searchQuery,
-                    @"watch\?v=.*?&list=",
-                    "playlist?list=",
-                    RegexOptions.IgnoreCase
-                );
+                    searchQuery = $"https://www.youtube.com/playlist?list={listId}";
+                }
             }
+
             else if (searchQuery.Contains("склауд", StringComparison.OrdinalIgnoreCase))
             {
-                searchQuery = "scsearch:" +
-                              Regex.Replace(searchQuery, "склауд", "", RegexOptions.IgnoreCase)
-                                   .Trim();
+                searchQuery = "scsearch:" + Regex.Replace(searchQuery, "склауд", "", RegexOptions.IgnoreCase).Trim();
             }
-            else if (!searchQuery.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
+
+            else if (!Uri.TryCreate(searchQuery, UriKind.Absolute, out _) &&
+                     !searchQuery.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) &&
+                     !searchQuery.Contains("youtu.be", StringComparison.OrdinalIgnoreCase) &&
+                     !searchQuery.Contains("music.youtube.com", StringComparison.OrdinalIgnoreCase))
             {
                 searchQuery = "ytsearch:" + searchQuery;
             }
+
 
             try
             {
@@ -159,21 +158,40 @@ namespace sblngavnav5X.Audio
 
             if (index.HasValue)
             {
-                int idx = index.Value - 1;
+                int n = index.Value;
 
-                if (idx < 0 || idx >= player.GetQueue().Count)
+                if (n < 1)
                 {
                     var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"🚫 В очереди нет песни с номером {index}");
                     await ReplyAsync(embed: err);
                     return;
                 }
 
-                var nextTrack = player.GetQueue().ElementAt(idx);
-                player.GetQueue().RemoveAt(idx);
+                if (player.GetQueue().Count < n)
+                {
+                    var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"🚫 В очереди нет песни с номером {index}");
+                    await ReplyAsync(embed: err);
+                    return;
+                }
 
-                await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"Пропустили говно: [{player.Track.Title}]({player.Track.Url}), теперь играет: {nextTrack.Title}");
+                for (int i = 1; i < n; i++)
+                    player.GetQueue().TryDequeue(out _);
 
-                var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип", $"👀 Пропустили говно: [{player.Track.Title}]({player.Track.Url})\n🦻 Вместо этого запихали: {nextTrack.Title}", Color.Green);
+                player.GetQueue().TryDequeue(out var nextTrack);
+
+                if (nextTrack is null)
+                {
+                    var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"🚫 В очереди нет песни с номером {index}");
+                    await ReplyAsync(embed: err);
+                    return;
+                }
+
+                await LoggingService.LogInformationAsync("sbln muzik🎸🎧",
+                    $"Пропустили говно: [{player.Track.Title}]({player.Track.Url}), теперь играет: {nextTrack.Title}");
+
+                var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
+                    $"👀 Пропустили говно: [{player.Track.Title}]({player.Track.Url})\n🦻 Вместо этого запихали: {nextTrack.Title}",
+                    Color.Green);
                 await ReplyAsync(embed: embed);
 
                 await player.PlayAsync(lavaNode, nextTrack, false);
@@ -345,9 +363,10 @@ namespace sblngavnav5X.Audio
                 return;
             }
 
-            if (volume >= 500 || volume < 1)
+            if (volume > 500 || volume < 1)
             {
                 await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, громкость", "только значения от 1-500"));
+                return;
             }
             try
             {
@@ -373,6 +392,7 @@ namespace sblngavnav5X.Audio
             if (!Int32.TryParse(level, out int outLevel))
             {
                 await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, басы", "только значения от 1-4"));
+                return;
             }
 
             EqualizerBand[][] bands = new EqualizerBand[][]
@@ -418,6 +438,7 @@ namespace sblngavnav5X.Audio
             if (outLevel < 1 || outLevel > bands.Length)
             {
                 await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, басы", "только значения от 1-4"));
+                return;
             }
 
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
@@ -474,6 +495,34 @@ namespace sblngavnav5X.Audio
                 Color.Blue));
         }
 
+        [Command("сброс")]
+        [Alias("сб")]
+        public async Task ResetAudioAsync()
+        {
+            if (!await BotInVoice())
+                return;
+
+            var guildId = Context.Guild.Id;
+            var player = await lavaNode.GetPlayerAsync(guildId);
+
+            audioService.SetRepeat(guildId, false);
+
+            await player.SetVolumeAsync(lavaNode, 100);
+
+            var flat = new EqualizerBand[]
+            {
+                new EqualizerBand(0, 0d),
+                new EqualizerBand(1, 0d),
+                new EqualizerBand(2, 0d),
+                new EqualizerBand(3, 0d),
+                new EqualizerBand(4, 0d),
+                new EqualizerBand(5, 0d),
+            };
+            await player.EqualizeAsync(lavaNode, flat);
+
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, сброс", "сбросил настройки плеера 🤙", Color.Green));
+        }
+
         [Command("лавастат")]
         public async Task LavaStat()
         {
@@ -500,8 +549,8 @@ namespace sblngavnav5X.Audio
                     {
                         await player.PlayAsync(lavaNode, track);
                         await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"👺 Ща Играет - [{track.Title}]({track.Url})");
-                        var playlistEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"👺 **Ща Играет: **[{track.Title}]({track.Url})\n**👤 Автор: **{track.Author}\n**⏳ Длительность: **{FormatTime(track.Duration)}\n", Color.Purple);
-                        await Context.Channel.SendMessageAsync(embed: playlistEmbed);
+                        //var playlistEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"👺 **Ща Играет: **[{track.Title}]({track.Url})\n**👤 Автор: **{track.Author}\n**⏳ Длительность: **{FormatTime(track.Duration)}\n", Color.Purple);
+                        //await Context.Channel.SendMessageAsync(embed: playlistEmbed);
                     }
                     else
                     {
@@ -516,9 +565,9 @@ namespace sblngavnav5X.Audio
             else
             {
                 await player.PlayAsync(lavaNode, track);
-                var QEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"👺 **Ща Играет: **[{track.Title}]({track.Url})\n**👤 Автор: **{track.Author}\n**⏳ Длительность: **{FormatTime(track.Duration)}\n", Color.Purple);
+                //var QEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"👺 **Ща Играет: **[{track.Title}]({track.Url})\n**👤 Автор: **{track.Author}\n**⏳ Длительность: **{FormatTime(track.Duration)}\n", Color.Purple);
                 await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"👺 Ща Играет - [{track.Title}]({track.Url})\n");
-                await Context.Channel.SendMessageAsync(embed: QEmbed);
+                //await Context.Channel.SendMessageAsync(embed: QEmbed);
             }
         }
 
@@ -622,6 +671,22 @@ namespace sblngavnav5X.Audio
 
             result = new TimeSpan(h, m, s);
             return true;
+        }
+
+        private static Dictionary<string, string> ParseQuery(string query)
+        {
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(query)) return dict;
+
+            foreach (var part in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var kv = part.Split('=', 2);
+                var key = Uri.UnescapeDataString(kv[0]);
+                var val = kv.Length > 1 ? Uri.UnescapeDataString(kv[1]) : "";
+                dict[key] = val;
+            }
+
+            return dict;
         }
     }
 }

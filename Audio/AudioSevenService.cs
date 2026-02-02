@@ -14,15 +14,15 @@ namespace sblngavnav5X.Audio
     {
         private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
         private readonly DiscordSocketClient _client;
-
         private readonly ConcurrentDictionary<ulong, ulong> _voiceChannelIds = new();
         private readonly ConcurrentDictionary<ulong, ulong> _textChannelIds = new();
         private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _guildLocks = new();
         private readonly ConcurrentDictionary<ulong, bool> _repeatEnabled = new();
         private readonly ConcurrentDictionary<ulong, (string key, DateTimeOffset at)> _ddCheck = new();
-
-
+        private readonly ConcurrentDictionary<ulong, ulong> _lastNowPlayingId = new();
+        private readonly ConcurrentDictionary<ulong, DateTime> _lastClickTime = new();
         private readonly object _statsLock = new();
+
         private StatsEventArg? _lastStats;
         private DateTimeOffset _lastStatsAtUtc;
 
@@ -39,6 +39,7 @@ namespace sblngavnav5X.Audio
             _lavaNode.OnStats += OnStatsAsync;
             _lavaNode.OnTrackEnd += OnTrackEndAsync;
             _lavaNode.OnTrackStart += OnTrackStartAsync;
+            _client.ReactionAdded += OnNowPlayingReactionAdded;
         }
 
         public void SetGuildChannels(ulong guildId, ulong voiceChannelId, ulong textChannelId)
@@ -57,6 +58,8 @@ namespace sblngavnav5X.Audio
 
         private Task OnTrackStartAsync(TrackStartEventArg arg)
         {
+            _ = SendNowPlayingAsync(arg.GuildId, arg.Track);
+
             return LoggingService.LogInformationAsync(
                 "VI-KA", 
                 $"UPD Начат трек: {arg.Track.Title}");
@@ -161,7 +164,14 @@ namespace sblngavnav5X.Audio
 
         private async Task SendNowPlayingAsync(ulong guildId, LavaTrack track)
         {
+            if (!_textChannelIds.TryGetValue(guildId, out var tcId))
+                return;
+
+            if (_client.GetChannel(tcId) is not ITextChannel textChannel)
+                return;
+
             var key = !string.IsNullOrWhiteSpace(track.Id) ? track.Id : (track.Url ?? track.Title ?? "track");
+
             var now = DateTimeOffset.UtcNow;
 
             if (_ddCheck.TryGetValue(guildId, out var last))
@@ -172,20 +182,87 @@ namespace sblngavnav5X.Audio
 
             _ddCheck[guildId] = (key, now);
 
-            if (!_textChannelIds.TryGetValue(guildId, out var tcId))
-                return;
+            var loopLine = IsRepeatEnabled(guildId) ? "\n🔁 **Луп включен**" : "";
 
-            if (_client.GetChannel(tcId) is not ITextChannel textChannel)
-                return;
-
-            await textChannel.SendMessageAsync(embed: await EmbedHandler.CreateMusicEmbed(
+            var embed = await EmbedHandler.CreateMusicEmbed(
                 "sbln muzik🎸🎧",
                 $"👺 **Ща Играет:** [{track.Title}]({track.Url})\n" +
                 $"**👤 Автор:** {track.Author}\n" +
-                $"**⏳ Длительность:** {FormatTime(track.Duration)}\n",
-                Color.Purple));
+                $"**⏳ Длительность:** {FormatTime(track.Duration)}\n" +
+                $"{loopLine}",
+                Color.Purple);
+
+            var msg = await textChannel.SendMessageAsync(embed: embed);
+
+            _lastNowPlayingId[guildId] = msg.Id;
+
+            await msg.AddReactionAsync(new Emoji("▶"));
+            await msg.AddReactionAsync(new Emoji("🔁"));
         }
 
+        private async Task OnNowPlayingReactionAdded(Cacheable<IUserMessage, ulong> message, Cacheable<IMessageChannel, ulong> channel,
+                                                    SocketReaction reaction)
+        {
+            if (reaction.UserId == _client.CurrentUser.Id)
+                return;
+
+            var now = DateTime.UtcNow;
+            if (_lastClickTime.TryGetValue(reaction.UserId, out var prevTime))
+            {
+                if ((now - prevTime).TotalSeconds < 1)
+                    return;
+            }
+            _lastClickTime[reaction.UserId] = now;
+
+            var ch = await channel.GetOrDownloadAsync();
+            if (ch is not SocketGuildChannel guildChannel)
+                return;
+
+            var guildId = guildChannel.Guild.Id;
+
+            if (!_lastNowPlayingId.TryGetValue(guildId, out var lastNpId))
+                return;
+
+            if (reaction.MessageId != lastNpId)
+                return;
+
+            var msg = await message.GetOrDownloadAsync();
+
+            var user = await msg.Channel.GetUserAsync(reaction.UserId);
+            await msg.RemoveReactionAsync(reaction.Emote, user);
+
+            if (reaction.Emote.Name == "▶")
+            {
+                var player = await _lavaNode.TryGetPlayerAsync(guildId);
+                if (player is null) return;
+
+                if (player.GetQueue().TryDequeue(out var next) && next != null)
+                    await player.PlayAsync(_lavaNode, next, false);
+
+                return;
+            }
+
+            if (reaction.Emote.Name == "🔁")
+            {
+                ToggleRepeat(guildId);
+
+                var player = await _lavaNode.TryGetPlayerAsync(guildId);
+                if (player?.Track is null) return;
+
+                var loopLine = IsRepeatEnabled(guildId) ? "\n🔁 **Луп включен**" : "";
+
+                var embed = await EmbedHandler.CreateMusicEmbed(
+                    "sbln muzik🎸🎧",
+                    $"👺 **Ща Играет:** [{player.Track.Title}]({player.Track.Url})\n" +
+                    $"**👤 Автор:** {player.Track.Author}\n" +
+                    $"**⏳ Длительность:** {FormatTime(player.Track.Duration)}\n" +
+                    $"{loopLine}",
+                    Color.Purple);
+
+                await msg.ModifyAsync(m => m.Embed = embed);
+                return;
+            }
+        }
 
         private Task OnStatsAsync(StatsEventArg arg)
         {
@@ -211,6 +288,7 @@ namespace sblngavnav5X.Audio
             _lavaNode.OnStats -= OnStatsAsync;
             _lavaNode.OnTrackEnd -= OnTrackEndAsync;
             _lavaNode.OnTrackStart -= OnTrackStartAsync;
+            _client.ReactionAdded -= OnNowPlayingReactionAdded;
         }
 
         public bool ToggleRepeat(ulong guildId)
@@ -219,6 +297,11 @@ namespace sblngavnav5X.Audio
             var next = !enabled;
             _repeatEnabled[guildId] = next;
             return next;
+        }
+
+        public bool IsRepeatEnabled(ulong guildId)
+        {
+            return _repeatEnabled.TryGetValue(guildId, out var enabled) && enabled;
         }
 
         public string? GetLastStatsJson(int maxChars = 1800)

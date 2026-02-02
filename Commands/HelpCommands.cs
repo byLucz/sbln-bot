@@ -82,6 +82,7 @@ public class HelpCommands
             var m10 = new EmbedFieldBuilder().WithName("громоксть|гр").WithValue("управление громкостю (0-500)");
             var m11 = new EmbedFieldBuilder().WithName("перейти|пр").WithValue("перейти по таймингу");
             var m12 = new EmbedFieldBuilder().WithName("залупа|луп").WithValue("вкл/выкл повтор");
+            var m13 = new EmbedFieldBuilder().WithName("сброс|сб").WithValue("сбросить настройки плеера");
 
             var embed = new EmbedBuilder()
                 .WithAuthor(botzname)
@@ -97,7 +98,8 @@ public class HelpCommands
                 .AddField(m9)
                 .AddField(m10)
                 .AddField(m11)
-                .AddField(m12);
+                .AddField(m12)
+                .AddField(m13);
 
         return embed.Build();
         }
