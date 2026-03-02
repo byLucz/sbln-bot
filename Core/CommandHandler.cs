@@ -52,7 +52,9 @@ namespace sblngavnav5X.Core
 
         private async Task HandleMessageAsync(SocketMessage socketMessage)
         {
-            var message = socketMessage as SocketUserMessage;
+            if (socketMessage is not SocketUserMessage message)
+                return;
+
             var context = new SocketCommandContext(_client, message);
 
             if (message.Author.IsBot)
@@ -64,7 +66,7 @@ namespace sblngavnav5X.Core
                 var result = await _commands.ExecuteAsync(context, caracterPos, _services);
                 if (!result.IsSuccess)
                     Console.WriteLine(result.ErrorReason);
-                if (result.Error.Equals(CommandError.UnmetPrecondition))
+                if (result.Error == CommandError.UnmetPrecondition)
                     await message.Channel.SendMessageAsync(result.ErrorReason);
             }
             else
@@ -110,6 +112,12 @@ namespace sblngavnav5X.Core
         }
         private async Task MarkovTalk(SocketCommandContext ctx, int step, int wordCount)
         {
+            if (!File.Exists("messages.csv"))
+            {
+                await LoggingService.LogInformationAsync("GVR", "Файл messages.csv не найден, генерация ответа пропущена");
+                return;
+            }
+
             var message = File.ReadLines("messages.csv");
             var messages = message.Select(x => x.ToString()).ToList();
             if (!message.Any()) return;
@@ -128,7 +136,7 @@ namespace sblngavnav5X.Core
         private List<string> FilterMessages(SocketCommandContext ctx, List<string> messages)
         {
 
-            var control = @"[x!?.,:;()[]//]+";
+            var control = @"[x!?.,:;()\[\]/]+";
             var filter = @"";
             var filtered = new List<string>();
 
@@ -249,43 +257,31 @@ namespace sblngavnav5X.Core
 
         }
 
-        private async void OnTimedEvent(Object sender, ElapsedEventArgs e)
+        private void OnTimedEvent(Object sender, ElapsedEventArgs e)
         {
-            ulong id = 500683173298962432;
-            var channel = _client.GetChannel(id) as IMessageChannel;
-            if (channel == null)
-            {
-                await LoggingService.LogInformationAsync("GVR", $"Не удалось получить канал с ID {id}. Канал равен null");
-                return;
-            }
+            _ = ProcessTimedEventAsync();
+        }
 
-            var messages = channel.GetMessagesAsync((int)govorilka.Collection).Flatten();
-            if (messages == null)
-            {
-                await LoggingService.LogInformationAsync("GVR", $"Не удалось получить сообщения. Коллекция сообщений пуста");
-                return;
-            }
-
+        private async Task ProcessTimedEventAsync()
+        {
             try
             {
+                ulong id = 500683173298962432;
+                var channel = _client.GetChannel(id) as IMessageChannel;
+                if (channel == null)
+                {
+                    await LoggingService.LogInformationAsync("GVR", $"Не удалось получить канал с ID {id}. Канал равен null");
+                    return;
+                }
+
+                var messages = channel.GetMessagesAsync((int)govorilka.Collection).Flatten();
+
                 using (StreamWriter sw = new StreamWriter("messages.csv", append: true))
                 {
                     await foreach (IMessage message in messages)
                     {
-                        if (message == null)
-                        {
+                        if (message == null || string.IsNullOrEmpty(message.Content) || message.Attachments.Any() || message.Embeds.Any())
                             continue;
-                        }
-
-                        if (string.IsNullOrEmpty(message.Content))
-                        {
-                            continue;
-                        }
-
-                        if (message.Attachments.Any() || message.Embeds.Any())
-                        {
-                            continue;
-                        }
 
                         try
                         {
@@ -297,19 +293,11 @@ namespace sblngavnav5X.Core
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                await LoggingService.LogCriticalAsync("GVR", $"Произошла ошибка при записи сообщений: {ex.Message}");
-            }
-
-            try
-            {
                 await RemoveDuplicates();
             }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("GVR", $"Произошла ошибка при удалении дубликатов: {ex.Message}");
+                await LoggingService.LogCriticalAsync("GVR", $"Произошла ошибка в обработке таймера: {ex.Message}");
             }
         }
 
