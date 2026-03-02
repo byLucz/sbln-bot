@@ -2,14 +2,12 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
-using Newtonsoft.Json.Linq;
 using sblngavnav5X.Audio;
 using sblngavnav5X.Commands;
 using sblngavnav5X.Data;
 using sblngavnav5X.GVR;
 using sblngavnav5X.Services;
 using sblngavnav5X.TwitchService;
-using TwitchLib.Communication.Interfaces;
 using Victoria;
 using CommandService = Discord.Commands.CommandService;
 
@@ -24,8 +22,6 @@ namespace sblngavnav5X.Core
         private readonly ServiceProvider _services;
         private readonly AudioSevenService _audioService;
         private readonly StreamMonoService _streams;
-
-
 
         public DiscordService()
         {
@@ -101,13 +97,7 @@ namespace sblngavnav5X.Core
                 .AddSingleton<GuildConfig>(x => new GuildConfig())
                 .AddSingleton<GovorConfig>(x => new GovorConfig())
                 .AddTransient<HttpClient>()
-
                 .BuildServiceProvider();
-        }
-
-        internal Task SetGameAsync(string args)
-        {
-            throw new NotImplementedException();
         }
     }
 }
