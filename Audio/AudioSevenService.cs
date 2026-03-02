@@ -3,9 +3,11 @@ using Discord.WebSocket;
 using sblngavnav5X.Core;
 using sblngavnav5X.Services;
 using System.Collections.Concurrent;
+using System.Text;
 using System.Text.Json;
 using Victoria;
 using Victoria.Enums;
+using Victoria.Rest.Search;
 using Victoria.WebSocket.EventArgs;
 
 namespace sblngavnav5X.Audio
@@ -14,19 +16,21 @@ namespace sblngavnav5X.Audio
     {
         private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
         private readonly DiscordSocketClient _client;
+
         private readonly ConcurrentDictionary<ulong, ulong> _voiceChannelIds = new();
         private readonly ConcurrentDictionary<ulong, ulong> _textChannelIds = new();
         private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _guildLocks = new();
         private readonly ConcurrentDictionary<ulong, bool> _repeatEnabled = new();
-        private readonly ConcurrentDictionary<ulong, (string key, DateTimeOffset at)> _ddCheck = new();
         private readonly ConcurrentDictionary<ulong, ulong> _lastNowPlayingId = new();
+        private readonly ConcurrentDictionary<ulong, (string trackKey, DateTimeOffset at)> _lastNowPlayingTrack = new();
         private readonly ConcurrentDictionary<ulong, DateTime> _lastClickTime = new();
-        private readonly object _statsLock = new();
+        private readonly ConcurrentDictionary<ulong, PaginatorState> _paginatorsByMessageId = new();
+        private readonly ConcurrentDictionary<ulong, QueueInsertState> _queueInsertByMessageId = new();
+        private readonly ConcurrentDictionary<ulong, SearchPickState> _searchPicksByMessageId = new();
 
+        private readonly object _statsLock = new();
         private StatsEventArg? _lastStats;
         private DateTimeOffset _lastStatsAtUtc;
-
-        private string FormatTime(TimeSpan time) => time.ToString(@"hh\:mm\:ss");
 
         public AudioSevenService(
             LavaNode<LavaPlayer<LavaTrack>, LavaTrack> lavaNode,
@@ -39,7 +43,9 @@ namespace sblngavnav5X.Audio
             _lavaNode.OnStats += OnStatsAsync;
             _lavaNode.OnTrackEnd += OnTrackEndAsync;
             _lavaNode.OnTrackStart += OnTrackStartAsync;
-            _client.ReactionAdded += OnNowPlayingReactionAdded;
+
+            _client.ReactionAdded += OnReactionAddedAsync;
+            _client.UserVoiceStateUpdated += OnUserVoiceStateUpdatedAsync;
         }
 
         public void SetGuildChannels(ulong guildId, ulong voiceChannelId, ulong textChannelId)
@@ -47,6 +53,9 @@ namespace sblngavnav5X.Audio
             _voiceChannelIds[guildId] = voiceChannelId;
             _textChannelIds[guildId] = textChannelId;
         }
+
+        public bool TryGetTrackedVoiceChannelId(ulong guildId, out ulong voiceChannelId) =>
+            _voiceChannelIds.TryGetValue(guildId, out voiceChannelId);
 
         public void ClearGuildChannels(ulong guildId)
         {
@@ -56,71 +65,117 @@ namespace sblngavnav5X.Audio
 
         public void SetRepeat(ulong guildId, bool enabled) => _repeatEnabled[guildId] = enabled;
 
+        public bool ToggleRepeat(ulong guildId)
+        {
+            var enabled = _repeatEnabled.TryGetValue(guildId, out var cur) && cur;
+            var next = !enabled;
+            _repeatEnabled[guildId] = next;
+            return next;
+        }
+
+        public bool IsRepeatEnabled(ulong guildId) =>
+            _repeatEnabled.TryGetValue(guildId, out var enabled) && enabled;
+
+        public async Task RunInGuildLockAsync(ulong guildId, Func<Task> action)
+        {
+            var sem = _guildLocks.GetOrAdd(guildId, _ => new SemaphoreSlim(1, 1));
+            await sem.WaitAsync();
+            try { await action(); }
+            finally { sem.Release(); }
+        }
+
+        public async Task AttachQueueInsertControlAsync(ulong guildId, IUserMessage message, ulong requestedByUserId, LavaTrack track)
+        {
+            try { await message.AddReactionAsync(new Emoji("🔼")); } catch { }
+
+            _queueInsertByMessageId[message.Id] = new QueueInsertState(
+                GuildId: guildId,
+                MessageId: message.Id,
+                ChannelId: message.Channel.Id,
+                RequestedByUserId: requestedByUserId,
+                TrackKey: BuildTrackKey(track),
+                CreatedAtUtc: DateTimeOffset.UtcNow
+            );
+        }
+
         private Task OnTrackStartAsync(TrackStartEventArg arg)
         {
-            _ = SendNowPlayingAsync(arg.GuildId, arg.Track);
+            FireAndForget(async () =>
+            {
+                await SendNowPlayingAsync(arg.GuildId, arg.Track);
+            }, $"NowPlaying g={arg.GuildId}");
 
-            return LoggingService.LogInformationAsync(
-                "VI-KA", 
-                $"UPD Начат трек: {arg.Track.Title}");
+            return Task.CompletedTask;
         }
 
         private async Task OnTrackEndAsync(TrackEndEventArg args)
         {
-            var sem = _guildLocks.GetOrAdd(args.GuildId, _ => new SemaphoreSlim(1, 1));
-            await sem.WaitAsync();
+            await RunInGuildLockAsync(args.GuildId, async () =>
+            {
+                try
+                {
+                    var player = await _lavaNode.TryGetPlayerAsync(args.GuildId);
+                    if (player is null || !player.State.IsConnected)
+                        return;
 
+                    if (!HasNonBotUsersInVoice(args.GuildId))
+                    {
+                        await LeaveAndCleanupAsync(args.GuildId);
+                        return;
+                    }
+
+                    if (args.Reason == TrackEndReason.Load_Failed)
+                    {
+                        if (player.GetQueue().TryDequeue(out var nextAfterFail) && nextAfterFail != null)
+                            await player.PlayAsync(_lavaNode, nextAfterFail, false);
+                        return;
+                    }
+
+                    if (args.Reason != TrackEndReason.Finished)
+                        return;
+
+                    if (IsRepeatEnabled(args.GuildId))
+                    {
+                        await player.PlayAsync(_lavaNode, args.Track, false);
+                        return;
+                    }
+
+                    if (!player.GetQueue().TryDequeue(out var next) || next is null)
+                        return;
+
+                    await player.PlayAsync(_lavaNode, next, false);
+                }
+                catch (Exception ex)
+                {
+                    await LoggingService.LogInformationAsync("VI-KA", $"ERR OnTrackEndAsync g={args.GuildId}: {ex}");
+                }
+            });
+        }
+
+        private async Task OnUserVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
+        {
             try
             {
-                await LoggingService.LogInformationAsync(
-                    "VI-KA",
-                    $"UPD Завершён трек: {args.Track.Title} | Причина: {args.Reason}");
-
-                var player = await _lavaNode.TryGetPlayerAsync(args.GuildId);
-                if (player is null || !player.State.IsConnected)
+                if (before.VoiceChannel?.Guild is null && after.VoiceChannel?.Guild is null)
                     return;
 
-                if (args.Reason == TrackEndReason.Load_Failed)
-                {
-                    if (player.GetQueue().TryDequeue(out var nextAfterFail) && nextAfterFail != null)
-                    {
-                        await player.PlayAsync(_lavaNode, nextAfterFail, false);
-                        await SendNowPlayingAsync(args.GuildId, nextAfterFail);
-                    }
-                    return;
-                }
+                var guild = before.VoiceChannel?.Guild ?? after.VoiceChannel?.Guild;
+                if (guild is null) return;
 
-                if (args.Reason != TrackEndReason.Finished)
+                var guildId = guild.Id;
+
+                if (!_voiceChannelIds.TryGetValue(guildId, out var trackedVcId))
                     return;
 
-                if (!HasNonBotUsersInVoice(args.GuildId))
-                {
-                    await LeaveAndCleanupAsync(args.GuildId);
-                    return;
-                }
+                var vc = guild.GetVoiceChannel(trackedVcId);
+                if (vc is null) return;
 
-                if (_repeatEnabled.TryGetValue(args.GuildId, out var rep) && rep)
-                {
-                    await player.PlayAsync(_lavaNode, args.Track, false);
-                    await SendNowPlayingAsync(args.GuildId, args.Track);
-                    return;
-                }
-
-                if (!player.GetQueue().TryDequeue(out var queueable) || queueable is null)
-                    return;
-
-                await player.PlayAsync(_lavaNode, queueable, false);
-                await SendNowPlayingAsync(args.GuildId, queueable);
+                if (!vc.ConnectedUsers.Any(u => !u.IsBot))
+                    await ForceLeaveAsync(guildId);
             }
             catch (Exception ex)
             {
-                await LoggingService.LogInformationAsync(
-                    "VI-KA",
-                    $"ERR OnTrackEndAsync g={args.GuildId}: {ex}");
-            }
-            finally
-            {
-                sem.Release();
+                await LoggingService.LogInformationAsync("VI-KA", $"WRN VoiceStateUpdated: {ex}");
             }
         }
 
@@ -138,10 +193,32 @@ namespace sblngavnav5X.Audio
             return vc.ConnectedUsers.Any(u => !u.IsBot);
         }
 
+        public async Task ForceLeaveAsync(ulong guildId)
+        {
+            await RunInGuildLockAsync(guildId, async () =>
+            {
+                await LeaveAndCleanupAsync(guildId);
+            });
+        }
+
         private async Task LeaveAndCleanupAsync(ulong guildId)
         {
             try
             {
+                foreach (var kv in _paginatorsByMessageId.ToArray())
+                {
+                    if (kv.Value.GuildId == guildId)
+                        _paginatorsByMessageId.TryRemove(kv.Key, out _);
+                }
+
+                foreach (var kv in _queueInsertByMessageId.ToArray())
+                {
+                    if (kv.Value.GuildId == guildId)
+                        _queueInsertByMessageId.TryRemove(kv.Key, out _);
+                }
+
+                _repeatEnabled[guildId] = false;
+
                 if (_voiceChannelIds.TryGetValue(guildId, out var vcId))
                 {
                     var guild = _client.GetGuild(guildId);
@@ -152,13 +229,13 @@ namespace sblngavnav5X.Audio
             }
             catch (Exception ex)
             {
-                await LoggingService.LogInformationAsync(
-                    "VI-KA",
-                    $"WRN LF g={guildId}: {ex.Message}");
+                await LoggingService.LogInformationAsync("VI-KA", $"WRN LF g={guildId}: {ex.Message}");
             }
             finally
             {
                 ClearGuildChannels(guildId);
+                _lastNowPlayingId.TryRemove(guildId, out _);
+                _lastNowPlayingTrack.TryRemove(guildId, out _);
             }
         }
 
@@ -170,38 +247,85 @@ namespace sblngavnav5X.Audio
             if (_client.GetChannel(tcId) is not ITextChannel textChannel)
                 return;
 
-            var key = !string.IsNullOrWhiteSpace(track.Id) ? track.Id : (track.Url ?? track.Title ?? "track");
-
-            var now = DateTimeOffset.UtcNow;
-
-            if (_ddCheck.TryGetValue(guildId, out var last))
+            var key = BuildTrackKey(track);
+            if (_lastNowPlayingTrack.TryGetValue(guildId, out var prev) &&
+                prev.trackKey == key &&
+                (DateTimeOffset.UtcNow - prev.at) < TimeSpan.FromSeconds(1.2))
             {
-                if (last.key == key && (now - last.at) < TimeSpan.FromSeconds(2))
-                    return;
+                return;
             }
 
-            _ddCheck[guildId] = (key, now);
+            _lastNowPlayingTrack[guildId] = (key, DateTimeOffset.UtcNow);
 
             var loopLine = IsRepeatEnabled(guildId) ? "\n🔁 **Луп включен**" : "";
 
-            var embed = await EmbedHandler.CreateMusicEmbed(
+            var embed = await EmbedHandler.CreateCustomMusicEmbed(
                 "sbln muzik🎸🎧",
-                $"👺 **Ща Играет:** [{track.Title}]({track.Url})\n" +
+                $"**👺 Трек:** [{track.Title}]({track.Url})\n" +
                 $"**👤 Автор:** {track.Author}\n" +
                 $"**⏳ Длительность:** {FormatTime(track.Duration)}\n" +
-                $"{loopLine}",
+                $"{loopLine}", "▶/🔁 - скип/луп трека",
                 Color.Purple);
 
             var msg = await textChannel.SendMessageAsync(embed: embed);
 
             _lastNowPlayingId[guildId] = msg.Id;
 
-            await msg.AddReactionAsync(new Emoji("▶"));
-            await msg.AddReactionAsync(new Emoji("🔁"));
+            try
+            {
+                await msg.AddReactionAsync(new Emoji("▶"));
+                await msg.AddReactionAsync(new Emoji("🔁"));
+            }
+            catch { }
         }
 
-        private async Task OnNowPlayingReactionAdded(Cacheable<IUserMessage, ulong> message, Cacheable<IMessageChannel, ulong> channel,
-                                                    SocketReaction reaction)
+        public async Task SendQueuePagedAsync(ulong guildId, ITextChannel channel, ulong requestedByUserId)
+        {
+            await RunInGuildLockAsync(guildId, async () =>
+            {
+                var player = await _lavaNode.TryGetPlayerAsync(guildId);
+                if (player is null || !player.State.IsConnected || player.Track is null)
+                {
+                    var empty = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, лист", "очередь пуста");
+                    await channel.SendMessageAsync(embed: empty);
+                    return;
+                }
+
+                var queueList = player.GetQueue().ToList();
+                var queueCount = queueList.Count;
+                var queueDuration = TimeSpan.FromMilliseconds(queueList.Sum(t => t.Duration.TotalMilliseconds));
+
+                var pages = BuildQueuePages(player, queueList, queueCount, queueDuration);
+
+                var msg = await channel.SendMessageAsync(embed: BuildPagedEmbed(
+                    title: "sbln muzik🎸🎧, лист",
+                    pageLines: pages[0],
+                    pageIndex: 0,
+                    pageCount: pages.Count,
+                    footer: pages.Count > 1 ? "⬅️/➡️ переключение страниц" : ""));
+
+                if (pages.Count <= 1) return;
+
+                var state = new PaginatorState(
+                    GuildId: guildId,
+                    ChannelId: channel.Id,
+                    MessageId: msg.Id,
+                    RequestedByUserId: requestedByUserId,
+                    Pages: pages,
+                    PageIndex: 0,
+                    CreatedAtUtc: DateTimeOffset.UtcNow);
+
+                _paginatorsByMessageId[msg.Id] = state;
+
+                await msg.AddReactionAsync(new Emoji("⬅️"));
+                await msg.AddReactionAsync(new Emoji("➡️"));
+            });
+        }
+
+        private async Task OnReactionAddedAsync(
+            Cacheable<IUserMessage, ulong> message,
+            Cacheable<IMessageChannel, ulong> channel,
+            SocketReaction reaction)
         {
             if (reaction.UserId == _client.CurrentUser.Id)
                 return;
@@ -209,7 +333,7 @@ namespace sblngavnav5X.Audio
             var now = DateTime.UtcNow;
             if (_lastClickTime.TryGetValue(reaction.UserId, out var prevTime))
             {
-                if ((now - prevTime).TotalSeconds < 1)
+                if ((now - prevTime).TotalMilliseconds < 700)
                     return;
             }
             _lastClickTime[reaction.UserId] = now;
@@ -220,24 +344,117 @@ namespace sblngavnav5X.Audio
 
             var guildId = guildChannel.Guild.Id;
 
-            if (!_lastNowPlayingId.TryGetValue(guildId, out var lastNpId))
+            if (_queueInsertByMessageId.TryGetValue(reaction.MessageId, out var ins))
+            {
+                await HandleQueueInsertReactionAsync(guildId, guildChannel, message, reaction, ins);
+                return;
+            }
+
+            if (_searchPicksByMessageId.TryGetValue(reaction.MessageId, out var pickState))
+            {
+                await HandleSearchPickReactionAsync(guildChannel, message, reaction, pickState);
+                return;
+            }
+
+            if (_lastNowPlayingId.TryGetValue(guildId, out var lastNpId) && reaction.MessageId == lastNpId)
+            {
+                await HandleNowPlayingReactionAsync(guildChannel, message, reaction);
+                return;
+            }
+
+            if (_paginatorsByMessageId.TryGetValue(reaction.MessageId, out var state))
+            {
+                await HandlePaginatorReactionAsync(guildChannel, message, reaction, state);
+                return;
+            }
+        }
+
+        private async Task HandleQueueInsertReactionAsync(
+            ulong guildId,
+            SocketGuildChannel guildChannel,
+            Cacheable<IUserMessage, ulong> message,
+            SocketReaction reaction,
+            QueueInsertState state)
+        {
+            if (reaction.Emote.Name != "🔼")
                 return;
 
-            if (reaction.MessageId != lastNpId)
+            if ((DateTimeOffset.UtcNow - state.CreatedAtUtc) > TimeSpan.FromMinutes(2))
+            {
+                _queueInsertByMessageId.TryRemove(state.MessageId, out _);
+                return;
+            }
+
+            if (reaction.UserId != state.RequestedByUserId)
                 return;
 
             var msg = await message.GetOrDownloadAsync();
+            var user = guildChannel.Guild.GetUser(reaction.UserId);
+            if (user is not null)
+            {
+                try { await msg.RemoveReactionAsync(reaction.Emote, user); } catch { }
+            }
 
-            var user = await msg.Channel.GetUserAsync(reaction.UserId);
-            await msg.RemoveReactionAsync(reaction.Emote, user);
+            await RunInGuildLockAsync(guildId, async () =>
+            {
+                var player = await _lavaNode.TryGetPlayerAsync(guildId);
+                if (player is null || !player.State.IsConnected)
+                    return;
+
+                var queue = player.GetQueue();
+                var list = queue.ToList();
+
+                var idx = list.FindIndex(t => BuildTrackKey(t) == state.TrackKey);
+                if (idx < 0)
+                    return;
+
+                var picked = list[idx];
+                list.RemoveAt(idx);
+
+                queue.Clear();
+                queue.Enqueue(picked);
+                foreach (var t in list)
+                    queue.Enqueue(t);
+
+                try
+                {
+                    var ok = await EmbedHandler.CreateMusicEmbed(
+                        "sbln muzik🎸🎧, скип+",
+                        $"💎 Трек [{picked.Title}]({picked.Url}) добавлен в начало листа",
+                        Color.Green);
+                    await msg.ModifyAsync(m => m.Embed = ok);
+
+                    try { await msg.RemoveAllReactionsAsync(); } catch {}
+                }
+                catch { }
+            });
+
+            _queueInsertByMessageId.TryRemove(state.MessageId, out _);
+        }
+
+        private async Task HandleNowPlayingReactionAsync(SocketGuildChannel guildChannel, Cacheable<IUserMessage, ulong> message, SocketReaction reaction)
+        {
+            var guildId = guildChannel.Guild.Id;
+
+            var msg = await message.GetOrDownloadAsync();
+            var user = guildChannel.Guild.GetUser(reaction.UserId);
+
+            if (user is not null)
+            {
+                try { await msg.RemoveReactionAsync(reaction.Emote, user); } catch { }
+            }
 
             if (reaction.Emote.Name == "▶")
             {
-                var player = await _lavaNode.TryGetPlayerAsync(guildId);
-                if (player is null) return;
+                await RunInGuildLockAsync(guildId, async () =>
+                {
+                    var player = await _lavaNode.TryGetPlayerAsync(guildId);
+                    if (player is null || !player.State.IsConnected)
+                        return;
 
-                if (player.GetQueue().TryDequeue(out var next) && next != null)
-                    await player.PlayAsync(_lavaNode, next, false);
+                    if (player.GetQueue().TryDequeue(out var next) && next != null)
+                        await player.PlayAsync(_lavaNode, next, false);
+                });
 
                 return;
             }
@@ -253,7 +470,7 @@ namespace sblngavnav5X.Audio
 
                 var embed = await EmbedHandler.CreateMusicEmbed(
                     "sbln muzik🎸🎧",
-                    $"👺 **Ща Играет:** [{player.Track.Title}]({player.Track.Url})\n" +
+                    $"**👺 Трек:** [{player.Track.Title}]({player.Track.Url})\n" +
                     $"**👤 Автор:** {player.Track.Author}\n" +
                     $"**⏳ Длительность:** {FormatTime(player.Track.Duration)}\n" +
                     $"{loopLine}",
@@ -262,6 +479,207 @@ namespace sblngavnav5X.Audio
                 await msg.ModifyAsync(m => m.Embed = embed);
                 return;
             }
+        }
+
+        private async Task HandleSearchPickReactionAsync(
+            SocketGuildChannel guildChannel,
+            Cacheable<IUserMessage, ulong> message,
+            SocketReaction reaction,
+            SearchPickState state)
+        {
+            if ((DateTimeOffset.UtcNow - state.CreatedAtUtc) > TimeSpan.FromMinutes(2))
+            {
+                _searchPicksByMessageId.TryRemove(state.MessageId, out _);
+                return;
+            }
+
+            if (reaction.UserId != state.RequestedByUserId)
+                return;
+
+            int idx =
+                reaction.Emote.Name == "1️⃣" ? 0 :
+                reaction.Emote.Name == "2️⃣" ? 1 :
+                reaction.Emote.Name == "3️⃣" ? 2 : -1;
+
+            if (idx < 0 || idx >= state.Picks.Count)
+                return;
+
+            var msg = await message.GetOrDownloadAsync();
+            var user = guildChannel.Guild.GetUser(reaction.UserId);
+
+            if (user is not null)
+            {
+                try { await msg.RemoveReactionAsync(reaction.Emote, user); } catch { }
+            }
+
+            var picked = state.Picks[idx];
+
+            await RunInGuildLockAsync(state.GuildId, async () =>
+            {
+                var player = await _lavaNode.TryGetPlayerAsync(state.GuildId);
+                if (player is null || !player.State.IsConnected)
+                    return;
+
+                var q = player.GetQueue();
+
+                if (player.Track is null && !q.Any())
+                {
+                    await player.PlayAsync(_lavaNode, picked, false);
+                }
+                else
+                {
+                    q.Enqueue(picked);
+                }
+            });
+
+            try
+            {
+                var ok = await EmbedHandler.CreateCustomMusicEmbed(
+                    "sbln muzik🎸🎧",
+                    $"выбрано: [{picked.Title}]({picked.Url})",
+                    "",
+                    Color.Green);
+
+                await msg.ModifyAsync(m => m.Embed = ok);
+                try { await msg.RemoveAllReactionsAsync(); } catch { }
+            }
+            catch { }
+
+            _searchPicksByMessageId.TryRemove(state.MessageId, out _);
+        }
+
+        private async Task HandlePaginatorReactionAsync(
+            SocketGuildChannel guildChannel,
+            Cacheable<IUserMessage, ulong> message,
+            SocketReaction reaction,
+            PaginatorState state)
+        {
+            if ((DateTimeOffset.UtcNow - state.CreatedAtUtc) > TimeSpan.FromMinutes(3))
+            {
+                _paginatorsByMessageId.TryRemove(state.MessageId, out _);
+                return;
+            }
+
+            if (reaction.UserId != state.RequestedByUserId)
+                return;
+
+            var msg = await message.GetOrDownloadAsync();
+            var user = guildChannel.Guild.GetUser(reaction.UserId);
+
+            if (user is not null)
+            {
+                try { await msg.RemoveReactionAsync(reaction.Emote, user); } catch { }
+            }
+
+            var pageIndex = state.PageIndex;
+
+            if (reaction.Emote.Name == "⬅️")
+                pageIndex = Math.Max(0, pageIndex - 1);
+            else if (reaction.Emote.Name == "➡️")
+                pageIndex = Math.Min(state.Pages.Count - 1, pageIndex + 1);
+            else
+                return;
+
+            if (pageIndex == state.PageIndex)
+                return;
+
+            state = state with { PageIndex = pageIndex };
+            _paginatorsByMessageId[state.MessageId] = state;
+
+            var embed = BuildPagedEmbed(
+                title: "sbln muzik🎸🎧, лист",
+                pageLines: state.Pages[pageIndex],
+                pageIndex: pageIndex,
+                pageCount: state.Pages.Count,
+                footer: "⬅️/➡️ переключение страниц");
+
+            await msg.ModifyAsync(m => m.Embed = embed);
+        }
+
+        public async Task<bool> TrySendSmartSearchPicksAsync(
+            ulong guildId,
+            ITextChannel channel,
+            ulong requestedByUserId,
+            string normalizedQuery)
+        {
+            if (!normalizedQuery.StartsWith("ytsearch:", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            var baseText = normalizedQuery["ytsearch:".Length..].Trim();
+            if (string.IsNullOrWhiteSpace(baseText))
+                return false;
+
+            var variants = BuildSmartVariants(baseText);
+
+            var picks = new List<LavaTrack>(capacity: 3);
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var v in variants)
+            {
+                if (picks.Count >= 3) break;
+
+                var q = "ytsearch:" + v;
+
+                SearchResponse resp;
+                try
+                {
+                    resp = await _lavaNode.LoadTrackAsync(q);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (resp.Tracks.Count == 0)
+                    continue;
+
+                var t = resp.Tracks.First();
+
+                var key = BuildTrackKey(t);
+                if (seen.Add(key))
+                    picks.Add(t);
+            }
+
+            if (picks.Count == 0)
+                return false;
+
+            var lines = new List<string>();
+            for (int i = 0; i < picks.Count; i++)
+            {
+                var num = i == 0 ? "1️⃣" : i == 1 ? "2️⃣" : "3️⃣";
+                var t = picks[i];
+                lines.Add($"{num} [{Truncate(t.Title ?? "track", 80)}]({t.Url}) - {Truncate(t.Author ?? "unknown", 40)} - {FormatTime(t.Duration)}");
+            }
+
+            var desc =
+                "ты помоему перепутал, может это?\n\n" +
+                string.Join("\n", lines);
+
+            var embed = await EmbedHandler.CreateCustomMusicEmbed(
+                "sbln muzik🎸🎧, играй+",
+                desc,
+                "1️⃣/2️⃣/3️⃣ - выбрать",
+                Color.Purple);
+
+            var msg = await channel.SendMessageAsync(embed: embed);
+
+            try
+            {
+                if (picks.Count >= 1) await msg.AddReactionAsync(new Emoji("1️⃣"));
+                if (picks.Count >= 2) await msg.AddReactionAsync(new Emoji("2️⃣"));
+                if (picks.Count >= 3) await msg.AddReactionAsync(new Emoji("3️⃣"));
+            }
+            catch {}
+
+            _searchPicksByMessageId[msg.Id] = new SearchPickState(
+                GuildId: guildId,
+                ChannelId: channel.Id,
+                MessageId: msg.Id,
+                RequestedByUserId: requestedByUserId,
+                Picks: picks,
+                CreatedAtUtc: DateTimeOffset.UtcNow);
+
+            return true;
         }
 
         private Task OnStatsAsync(StatsEventArg arg)
@@ -276,54 +694,7 @@ namespace sblngavnav5X.Audio
 
         private Task OnWebSocketClosedAsync(WebSocketClosedEventArg arg)
         {
-            Task task = LoggingService.LogInformationAsync(
-                "VI-KA",
-                $"WS CLOSED: {JsonSerializer.Serialize(arg)}");
-            return task;
-        }
-
-        public void Dispose()
-        {
-            _lavaNode.OnWebSocketClosed -= OnWebSocketClosedAsync;
-            _lavaNode.OnStats -= OnStatsAsync;
-            _lavaNode.OnTrackEnd -= OnTrackEndAsync;
-            _lavaNode.OnTrackStart -= OnTrackStartAsync;
-            _client.ReactionAdded -= OnNowPlayingReactionAdded;
-        }
-
-        public bool ToggleRepeat(ulong guildId)
-        {
-            var enabled = _repeatEnabled.TryGetValue(guildId, out var cur) && cur;
-            var next = !enabled;
-            _repeatEnabled[guildId] = next;
-            return next;
-        }
-
-        public bool IsRepeatEnabled(ulong guildId)
-        {
-            return _repeatEnabled.TryGetValue(guildId, out var enabled) && enabled;
-        }
-
-        public string? GetLastStatsJson(int maxChars = 1800)
-        {
-            StatsEventArg? statsCopy;
-            DateTimeOffset at;
-
-            lock (_statsLock)
-            {
-                statsCopy = _lastStats;
-                at = _lastStatsAtUtc;
-            }
-
-            if (statsCopy is null) return null;
-
-            var json = JsonSerializer.Serialize(statsCopy, new JsonSerializerOptions { WriteIndented = true });
-
-            if (json.Length > maxChars)
-                json = json.Substring(0, maxChars) + "\n...YO...";
-
-            var age = DateTimeOffset.UtcNow - at;
-            return $"Zpoint: {age.TotalSeconds:0}s\n{json}";
+            return LoggingService.LogInformationAsync("VI-KA", $"WS CLOSED: {JsonSerializer.Serialize(arg)}");
         }
 
         public Embed? GetStatsEmbed()
@@ -342,10 +713,9 @@ namespace sblngavnav5X.Audio
 
             var s = statsCopy.Value;
             var age = DateTimeOffset.UtcNow - at;
-
             var uptime = TimeSpan.FromMilliseconds(s.Uptime);
 
-            var embed = new EmbedBuilder()
+            return new EmbedBuilder()
                 .WithTitle("🎛️ LavaStats")
                 .WithColor(Color.Purple)
                 .WithDescription($"Последнее обновление: {age.TotalSeconds:0}s назад")
@@ -364,9 +734,7 @@ namespace sblngavnav5X.Audio
                     $"Total: `{s.Players}`\n" +
                     $"Playing: `{s.PlayingPlayers}`",
                     true)
-                .AddField("🕓 Аптайм",
-                    $"{uptime:hh\\:mm\\:ss}",
-                    true)
+                .AddField("🕓 Аптайм", $"{uptime:hh\\:mm\\:ss}", true)
                 .AddField("📦 Фреймы",
                     $"Sent: `{s.Frames.Sent}`\n" +
                     $"Nulled: `{s.Frames.Nulled}`\n" +
@@ -375,8 +743,260 @@ namespace sblngavnav5X.Audio
                 .WithFooter("sbln muzik🎸🎧 & sbln статистикс🔭")
                 .WithCurrentTimestamp()
                 .Build();
-
-            return embed;
         }
+
+        public void Dispose()
+        {
+            _lavaNode.OnWebSocketClosed -= OnWebSocketClosedAsync;
+            _lavaNode.OnStats -= OnStatsAsync;
+            _lavaNode.OnTrackEnd -= OnTrackEndAsync;
+            _lavaNode.OnTrackStart -= OnTrackStartAsync;
+
+            _client.ReactionAdded -= OnReactionAddedAsync;
+            _client.UserVoiceStateUpdated -= OnUserVoiceStateUpdatedAsync;
+
+            foreach (var kv in _guildLocks)
+            {
+                try { kv.Value.Dispose(); } catch { }
+            }
+        }
+
+        private static string BuildTrackKey(LavaTrack t)
+        {
+            if (!string.IsNullOrWhiteSpace(t.Url))
+                return "u:" + t.Url;
+            if (!string.IsNullOrWhiteSpace(t.Id))
+                return "i:" + t.Id;
+            return "t:" + (t.Title ?? "") + "|" + (t.Author ?? "");
+        }
+
+        private static string FormatTime(TimeSpan time)
+        {
+            if (time.TotalDays >= 1)
+                return $"{(int)time.TotalDays}d {time:hh\\:mm\\:ss}";
+            return time.ToString(@"hh\:mm\:ss");
+        }
+
+        private List<string> BuildQueuePages(LavaPlayer<LavaTrack> player, List<LavaTrack> queueList, int queueCount, TimeSpan queueDuration)
+        {
+            const int pageSize = 10;
+
+            var current = player.Track?.Position ?? TimeSpan.Zero;
+            var total = player.Track?.Duration ?? TimeSpan.Zero;
+            var remaining = total > current ? (total - current) : TimeSpan.Zero;
+
+            var header = new StringBuilder();
+            header.AppendLine($"👺 **Трек:** [{player.Track!.Title}]({player.Track.Url})");
+            header.AppendLine($"👤 **Автор:** {player.Track.Author}");
+            header.AppendLine($"📦 **В очереди:** {queueCount}");
+            header.AppendLine($"🕓 **Длина очереди:** {FormatTime(queueDuration)}");
+            header.AppendLine($"⏳ **До конца трека осталось:** {FormatTime(remaining)}");
+            header.AppendLine($"🕰️ **{BuildProgressBar(current, total)}**");
+            header.AppendLine();
+
+            if (queueList.Count == 0)
+                return new List<string> { header + "*больше в очереди ничего нет*" };
+
+            var lines = new List<string> { "📜 **Дальше будет:**" };
+            for (int i = 0; i < queueList.Count; i++)
+            {
+                var t = queueList[i];
+                var title = Truncate(t.Title ?? "track", 70);
+                lines.Add($"{i + 1}. [{title}]({t.Url}) - {FormatTime(t.Duration)}");
+            }
+
+            var pages = new List<string>();
+            for (int i = 0; i < lines.Count; i += pageSize)
+            {
+                var chunk = lines.Skip(i).Take(pageSize);
+                pages.Add(header + string.Join("\n", chunk));
+            }
+
+            return pages;
+        }
+
+        private static string BuildProgressBar(TimeSpan current, TimeSpan total, int size = 15)
+        {
+            if (total.TotalSeconds <= 0)
+                return "йоу?";
+
+            double progress = current.TotalSeconds / total.TotalSeconds;
+            progress = Math.Clamp(progress, 0, 1);
+
+            int position = (int)(progress * size);
+            if (position >= size) position = size - 1;
+
+            var bar = new StringBuilder("[");
+            for (int i = 0; i < size; i++)
+                bar.Append(i == position ? "🔴" : "▬");
+            bar.Append("]");
+
+            return bar.ToString();
+        }
+
+        private static Embed BuildPagedEmbed(string title, string pageLines, int pageIndex, int pageCount, string footer)
+        {
+            var fullTitle = $"{title} ({pageIndex + 1}/{pageCount})";
+
+            var b = new EmbedBuilder()
+                .WithTitle(fullTitle)
+                .WithColor(Color.Purple)
+                .WithDescription(pageLines.Length > 3900 ? pageLines.Substring(0, 3900) + "\n…" : pageLines)
+                .WithCurrentTimestamp();
+
+            if (!string.IsNullOrWhiteSpace(footer))
+                b.WithFooter(footer);
+            else
+                b.WithFooter("powered by AudioSeven");
+
+            return b.Build();
+        }
+
+        private static void FireAndForget(Func<Task> taskFactory, string tag)
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await taskFactory(); }
+                catch (Exception ex)
+                {
+                    await LoggingService.LogInformationAsync("VI-KA", $"WRN FireAndForget {tag}: {ex.Message}");
+                }
+            });
+        }
+
+        private static List<string> BuildSmartVariants(string input)
+        {
+            var s = CollapseSpaces(input.Trim());
+
+            var vars = new List<string> { s };
+
+            var noParens = RemoveBracketContent(s);
+            AddIfNew(vars, noParens);
+
+            var noFeat = CutFeat(noParens);
+            AddIfNew(vars, noFeat);
+
+            var swapped = SwapDashParts(noFeat);
+            AddIfNew(vars, swapped);
+
+            var cleaned = CleanupPunctuation(noFeat);
+            AddIfNew(vars, cleaned);
+
+            AddIfNew(vars, CleanupPunctuation(swapped));
+
+            return vars
+                .Select(CollapseSpaces)
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(10)
+                .ToList();
+        }
+
+        private static void AddIfNew(List<string> list, string value)
+        {
+            value = CollapseSpaces(value);
+            if (string.IsNullOrWhiteSpace(value)) return;
+            if (!list.Contains(value, StringComparer.OrdinalIgnoreCase))
+                list.Add(value);
+        }
+
+        private static string CollapseSpaces(string s)
+        {
+            while (s.Contains("  ", StringComparison.Ordinal))
+                s = s.Replace("  ", " ");
+            return s.Trim();
+        }
+
+        private static string RemoveBracketContent(string s)
+        {
+            var sb = new StringBuilder(s.Length);
+            int depthRound = 0, depthSquare = 0;
+
+            foreach (var ch in s)
+            {
+                if (ch == '(') { depthRound++; continue; }
+                if (ch == ')') { if (depthRound > 0) depthRound--; continue; }
+                if (ch == '[') { depthSquare++; continue; }
+                if (ch == ']') { if (depthSquare > 0) depthSquare--; continue; }
+
+                if (depthRound == 0 && depthSquare == 0)
+                    sb.Append(ch);
+            }
+
+            return sb.ToString();
+        }
+
+        private static string CutFeat(string s)
+        {
+            var lowered = s.ToLowerInvariant();
+            var keys = new[] { " feat.", " feat ", " ft.", " ft ", " featuring " };
+            int cut = -1;
+
+            foreach (var k in keys)
+            {
+                var i = lowered.IndexOf(k, StringComparison.Ordinal);
+                if (i >= 0)
+                {
+                    cut = (cut < 0) ? i : Math.Min(cut, i);
+                }
+            }
+
+            return cut >= 0 ? s.Substring(0, cut) : s;
+        }
+
+        private static string SwapDashParts(string s)
+        {
+            var i = s.IndexOf(" - ", StringComparison.Ordinal);
+            if (i < 0) return s;
+
+            var left = s.Substring(0, i).Trim();
+            var right = s.Substring(i + 3).Trim();
+            if (left.Length == 0 || right.Length == 0) return s;
+
+            return $"{right} {left}";
+        }
+
+        private static string CleanupPunctuation(string s)
+        {
+            var sb = new StringBuilder(s.Length);
+            foreach (var ch in s)
+            {
+                if (char.IsLetterOrDigit(ch) || char.IsWhiteSpace(ch) || ch == '-')
+                    sb.Append(ch);
+            }
+            return sb.ToString();
+        }
+
+        private static string Truncate(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s)) return s;
+            if (s.Length <= max) return s;
+            return s.Substring(0, Math.Max(0, max - 1)) + "…";
+        }
+
+        private sealed record PaginatorState(
+            ulong GuildId,
+            ulong ChannelId,
+            ulong MessageId,
+            ulong RequestedByUserId,
+            List<string> Pages,
+            int PageIndex,
+            DateTimeOffset CreatedAtUtc);
+
+        private sealed record QueueInsertState(
+            ulong GuildId,
+            ulong MessageId,
+            ulong ChannelId,
+            ulong RequestedByUserId,
+            string TrackKey,
+            DateTimeOffset CreatedAtUtc);
+
+        private sealed record SearchPickState(
+            ulong GuildId,
+            ulong ChannelId,
+            ulong MessageId,
+            ulong RequestedByUserId,
+            List<LavaTrack> Picks,
+            DateTimeOffset CreatedAtUtc);
     }
 }
