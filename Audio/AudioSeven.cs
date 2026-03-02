@@ -65,9 +65,17 @@ namespace sblngavnav5X.Audio
 
             try
             {
-                var searchResponse = await lavaNode.LoadTrackAsync(normalized);
+                SearchResponse? searchResponse = null;
 
-                if (searchResponse.Tracks.Count == 0)
+                try
+                {
+                    searchResponse = await lavaNode.LoadTrackAsync(normalized);
+                }
+                catch{}
+
+                var trackCount = searchResponse?.Tracks?.Count ?? 0;
+
+                if (trackCount == 0)
                 {
                     if (Context.Channel is ITextChannel tc)
                     {

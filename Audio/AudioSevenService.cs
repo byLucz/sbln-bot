@@ -534,10 +534,9 @@ namespace sblngavnav5X.Audio
 
             try
             {
-                var ok = await EmbedHandler.CreateCustomMusicEmbed(
-                    "sbln muzik🎸🎧",
-                    $"выбрано: [{picked.Title}]({picked.Url})",
-                    "",
+                var ok = await EmbedHandler.CreateMusicEmbed(
+                    "sbln muzik🎸🎧, играй+",
+                    $"💎 Выбран трек: [{picked.Title}]({picked.Url})",
                     Color.Green);
 
                 await msg.ModifyAsync(m => m.Embed = ok);
@@ -630,10 +629,9 @@ namespace sblngavnav5X.Audio
                     continue;
                 }
 
-                if (resp.Tracks.Count == 0)
+                var t = await SafeFirstTrackAsync("ytsearch:" + v);
+                if (t is null)
                     continue;
-
-                var t = resp.Tracks.First();
 
                 var key = BuildTrackKey(t);
                 if (seen.Add(key))
@@ -864,32 +862,45 @@ namespace sblngavnav5X.Audio
             });
         }
 
+        private async Task<LavaTrack?> SafeFirstTrackAsync(string query)
+        {
+            try
+            {
+                var resp = await _lavaNode.LoadTrackAsync(query);
+                return resp?.Tracks?.FirstOrDefault();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static List<string> BuildSmartVariants(string input)
         {
             var s = CollapseSpaces(input.Trim());
+            var vars = new List<string>();
+            AddIfNew(vars, SwapKeyboardRuEn(s));
+            AddIfNew(vars, SwapKeyboardEnRu(s));
+            AddIfNew(vars, TranslitRuToLat(s));
 
-            var vars = new List<string> { s };
-
-            var noParens = RemoveBracketContent(s);
-            AddIfNew(vars, noParens);
-
-            var noFeat = CutFeat(noParens);
-            AddIfNew(vars, noFeat);
-
-            var swapped = SwapDashParts(noFeat);
-            AddIfNew(vars, swapped);
-
-            var cleaned = CleanupPunctuation(noFeat);
-            AddIfNew(vars, cleaned);
-
-            AddIfNew(vars, CleanupPunctuation(swapped));
+            foreach (var p in PrefixCuts(s, minLen: 4, maxLen: 10))
+                AddIfNew(vars, p);
 
             return vars
                 .Select(CollapseSpaces)
                 .Where(x => !string.IsNullOrWhiteSpace(x))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .Take(10)
+                .Take(15)
                 .ToList();
+        }
+
+        private static IEnumerable<string> PrefixCuts(string s, int minLen, int maxLen)
+        {
+            s = s.Trim();
+            var len = s.Length;
+            var start = Math.Min(maxLen, len);
+            for (int k = start; k >= minLen; k--)
+                yield return s.Substring(0, k);
         }
 
         private static void AddIfNew(List<string> list, string value)
@@ -907,62 +918,107 @@ namespace sblngavnav5X.Audio
             return s.Trim();
         }
 
-        private static string RemoveBracketContent(string s)
+        private static readonly Dictionary<char, char> RuToEn = new()
+        {
+            ['й'] = 'q',
+            ['ц'] = 'w',
+            ['у'] = 'e',
+            ['к'] = 'r',
+            ['е'] = 't',
+            ['н'] = 'y',
+            ['г'] = 'u',
+            ['ш'] = 'i',
+            ['щ'] = 'o',
+            ['з'] = 'p',
+            ['х'] = '[',
+            ['ъ'] = ']',
+            ['ф'] = 'a',
+            ['ы'] = 's',
+            ['в'] = 'd',
+            ['а'] = 'f',
+            ['п'] = 'g',
+            ['р'] = 'h',
+            ['о'] = 'j',
+            ['л'] = 'k',
+            ['д'] = 'l',
+            ['ж'] = ';',
+            ['э'] = '\'',
+            ['я'] = 'z',
+            ['ч'] = 'x',
+            ['с'] = 'c',
+            ['м'] = 'v',
+            ['и'] = 'b',
+            ['т'] = 'n',
+            ['ь'] = 'm',
+            ['б'] = ',',
+            ['ю'] = '.'
+        };
+
+        private static readonly Dictionary<char, char> EnToRu = RuToEn.ToDictionary(kv => kv.Value, kv => kv.Key);
+
+        private static string SwapKeyboardRuEn(string s) => MapChars(s, RuToEn);
+        private static string SwapKeyboardEnRu(string s) => MapChars(s, EnToRu);
+
+        private static string MapChars(string s, Dictionary<char, char> map)
         {
             var sb = new StringBuilder(s.Length);
-            int depthRound = 0, depthSquare = 0;
-
             foreach (var ch in s)
             {
-                if (ch == '(') { depthRound++; continue; }
-                if (ch == ')') { if (depthRound > 0) depthRound--; continue; }
-                if (ch == '[') { depthSquare++; continue; }
-                if (ch == ']') { if (depthSquare > 0) depthSquare--; continue; }
-
-                if (depthRound == 0 && depthSquare == 0)
+                var low = char.ToLowerInvariant(ch);
+                if (map.TryGetValue(low, out var repl))
+                {
+                    sb.Append(char.IsUpper(ch) ? char.ToUpperInvariant(repl) : repl);
+                }
+                else
+                {
                     sb.Append(ch);
+                }
             }
-
             return sb.ToString();
         }
 
-        private static string CutFeat(string s)
+        private static string TranslitRuToLat(string s)
         {
-            var lowered = s.ToLowerInvariant();
-            var keys = new[] { " feat.", " feat ", " ft.", " ft ", " featuring " };
-            int cut = -1;
-
-            foreach (var k in keys)
-            {
-                var i = lowered.IndexOf(k, StringComparison.Ordinal);
-                if (i >= 0)
-                {
-                    cut = (cut < 0) ? i : Math.Min(cut, i);
-                }
-            }
-
-            return cut >= 0 ? s.Substring(0, cut) : s;
-        }
-
-        private static string SwapDashParts(string s)
-        {
-            var i = s.IndexOf(" - ", StringComparison.Ordinal);
-            if (i < 0) return s;
-
-            var left = s.Substring(0, i).Trim();
-            var right = s.Substring(i + 3).Trim();
-            if (left.Length == 0 || right.Length == 0) return s;
-
-            return $"{right} {left}";
-        }
-
-        private static string CleanupPunctuation(string s)
-        {
-            var sb = new StringBuilder(s.Length);
+            var sb = new StringBuilder(s.Length * 2);
             foreach (var ch in s)
             {
-                if (char.IsLetterOrDigit(ch) || char.IsWhiteSpace(ch) || ch == '-')
-                    sb.Append(ch);
+                var c = char.ToLowerInvariant(ch);
+                sb.Append(c switch
+                {
+                    'а' => "a",
+                    'б' => "b",
+                    'в' => "v",
+                    'г' => "g",
+                    'д' => "d",
+                    'е' => "e",
+                    'ж' => "zh",
+                    'з' => "z",
+                    'и' => "i",
+                    'й' => "y",
+                    'к' => "k",
+                    'л' => "l",
+                    'м' => "m",
+                    'н' => "n",
+                    'о' => "o",
+                    'п' => "p",
+                    'р' => "r",
+                    'с' => "s",
+                    'т' => "t",
+                    'у' => "u",
+                    'ф' => "f",
+                    'х' => "h",
+                    'ц' => "ts",
+                    'ч' => "ch",
+                    'ш' => "sh",
+                    'щ' => "sch",
+                    'ы' => "y",
+                    'э' => "e",
+                    'ю' => "yu",
+                    'я' => "ya",
+                    'ь' => "",
+                    'ъ' => "",
+                    _ => ch.ToString()
+                });
             }
             return sb.ToString();
         }
