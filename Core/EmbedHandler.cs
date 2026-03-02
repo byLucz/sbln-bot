@@ -11,8 +11,17 @@ namespace sblngavnav5X.Core
                 .WithTitle(title)
                 .WithDescription(description)
                 .WithColor(color)
-                .WithFooter("L4 + V7 open beta")
-                .WithCurrentTimestamp().Build()));
+                .WithCurrentTimestamp()
+                .WithFooter("powered by AudioSeven").Build()));
+            return embed;
+        }
+        public static async Task<Embed> CreateCustomMusicEmbed(string title, string description, string footer, Color color)
+        {
+            var embed = await Task.Run(() => (new EmbedBuilder()
+                .WithTitle(title)
+                .WithDescription(description)
+                .WithColor(color)
+                .WithFooter(footer + " • powered by AudioSeven").Build()));
             return embed;
         }
 

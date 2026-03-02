@@ -1,30 +1,31 @@
-﻿using Discord.Commands;
-using Discord;
-using System.Text;
-using Victoria.Rest.Search;
-using Victoria;
+﻿using Discord;
+using Discord.Commands;
 using sblngavnav5X.Core;
-using sblngavnav5X.Services;
-using System.Text.RegularExpressions;
 using System.Runtime.InteropServices;
-using Victoria.Rest.Filters;
+using Victoria;
+using Victoria.Rest.Search;
 
 namespace sblngavnav5X.Audio
 {
-    public sealed class AudioSeven(LavaNode<LavaPlayer<LavaTrack>, LavaTrack> lavaNode, AudioSevenService audioService) : ModuleBase<SocketCommandContext>
+    public sealed class AudioSeven(
+        LavaNode<LavaPlayer<LavaTrack>, LavaTrack> lavaNode,
+        AudioSevenService audioService) : ModuleBase<SocketCommandContext>
     {
         public async Task JoinAsync()
         {
-            var voiceState = Context.User as IVoiceState;
-            if (!await UserInVoice())
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: false))
                 return;
 
-            await lavaNode.JoinAsync(voiceState!.VoiceChannel);
+            var voiceState = (IVoiceState)Context.User;
+            await lavaNode.JoinAsync(voiceState.VoiceChannel);
+
+            if (Context.Channel is not ITextChannel tc)
+                return;
 
             audioService.SetGuildChannels(
                 voiceState.VoiceChannel.GuildId,
                 voiceState.VoiceChannel.Id,
-                (Context.Channel as ITextChannel)!.Id
+                tc.Id
             );
         }
 
@@ -32,116 +33,80 @@ namespace sblngavnav5X.Audio
         [Alias("л")]
         public async Task LeaveAsync()
         {
-            if (!await UserInVoice() || !await BotInVoice())
-            {
+            if (!await BotInVoice())
                 return;
-            }
 
-            await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
-            if (await lavaNode.TryGetPlayerAsync(Context.Guild.Id) is not null)
-            {
-                var player = await lavaNode.GetPlayerAsync(Context.Guild.Id);
-                await lavaNode.LeaveAsync(GetVoiceChannel());
-            }
+            await audioService.ForceLeaveAsync(Context.Guild.Id);
         }
 
         [Command("играй")]
         [Alias("и")]
         public async Task PlayAsync([Remainder] string searchQuery)
         {
-            if (!await UserInVoice())
-            {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: false))
                 return;
-            }
 
             if (string.IsNullOrWhiteSpace(searchQuery))
             {
-                await ReplyAsync("нормально название пиши ебланчик");
+                await ReplyAsync("напиши нормально запрос бро");
                 return;
             }
 
             var guildId = Context.Guild.Id;
-            var player = await lavaNode.TryGetPlayerAsync(guildId);
 
+            var player = await lavaNode.TryGetPlayerAsync(guildId);
             if (player == null || !player.State.IsConnected)
             {
                 await JoinAsync();
                 player = await lavaNode.GetPlayerAsync(guildId);
             }
 
-            if (searchQuery.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
-                searchQuery = searchQuery.Replace("youtu.be/", "youtube.com/watch?v=");
-
-            int index = 0;
-
-            if (searchQuery.IndexOf("youtube.com/watch?v=", StringComparison.OrdinalIgnoreCase) >= 0
-             && searchQuery.IndexOf("&list=", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                var uri = new Uri(searchQuery);
-                var query = uri.Query
-                                .TrimStart('?')
-                                .Split(new[] { '&' }, StringSplitOptions.RemoveEmptyEntries);
-
-                foreach (var param in query)
-                {
-                    var parts = param.Split('=', 2);
-                    if (parts.Length == 2 &&
-                        parts[0].Equals("index", StringComparison.OrdinalIgnoreCase) &&
-                        int.TryParse(parts[1], out var parsed) && parsed > 0)
-                    {
-                        index = parsed - 1;
-                        break;
-                    }
-                }
-
-                searchQuery = Regex.Replace(
-                    searchQuery,
-                    @"watch\?v=.*?&list=",
-                    "playlist?list=",
-                    RegexOptions.IgnoreCase
-                );
-            }
-            else if (searchQuery.Contains("склауд", StringComparison.OrdinalIgnoreCase))
-            {
-                searchQuery = "scsearch:" +
-                              Regex.Replace(searchQuery, "склауд", "", RegexOptions.IgnoreCase)
-                                   .Trim();
-            }
-            else if (!searchQuery.Contains("youtube.com", StringComparison.OrdinalIgnoreCase))
-            {
-                searchQuery = "ytsearch:" + searchQuery;
-            }
+            var normalized = AudioQueryNormalizer.Normalize(searchQuery, out var index);
 
             try
             {
-                var searchResponse = await lavaNode.LoadTrackAsync(searchQuery);
+                var searchResponse = await lavaNode.LoadTrackAsync(normalized);
 
                 if (searchResponse.Tracks.Count == 0)
                 {
+                    if (Context.Channel is ITextChannel tc)
+                    {
+                        var handled = await audioService.TrySendSmartSearchPicksAsync(
+                            guildId: guildId,
+                            channel: tc,
+                            requestedByUserId: Context.User.Id,
+                            normalizedQuery: normalized);
+
+                        if (handled)
+                            return;
+                    }
+
                     var embedErr = await EmbedHandler.CreateErrorEmbed(
                         "sbln muzik🎸🎧, играй",
-                        "нихуя не нашлось по запросу..."
-                    );
+                        "ничего не нашлось по запросу...");
                     await ReplyAsync(embed: embedErr);
                     return;
                 }
 
-                var maxIdx = searchResponse.Tracks.Count - 1;
-                if (index < 0) index = 0;
-                if (index > maxIdx) index = maxIdx;
+                await audioService.RunInGuildLockAsync(guildId, async () =>
+                {
+                    var queue = player.GetQueue();
 
-                var queue = player.GetQueue();
-                if (!queue.Any() && player.Track == null)
-                    await PlayNow(searchResponse, player, index);
-                else
-                    await QueueNow(searchResponse, player, index);
+                    var maxIdx = searchResponse.Tracks.Count - 1;
+                    if (index < 0) index = 0;
+                    if (index > maxIdx) index = maxIdx;
+
+                    if (!queue.Any() && player.Track == null)
+                        await PlayNow(searchResponse, player, index);
+                    else
+                        await QueueNow(searchResponse, player, index);
+                });
             }
-            catch (Exception e)
+            catch
             {
                 var embedErr = await EmbedHandler.CreateErrorEmbed(
                     "ненене👿",
-                    $"ошибка сервиса поиска, ты че написал..."
-                );
+                    "ошибка сервиса поиска, ты че написал...");
                 await ReplyAsync(embed: embedErr);
             }
         }
@@ -150,284 +115,175 @@ namespace sblngavnav5X.Audio
         [Alias("ск")]
         public async Task SkipAsync([Optional] int? index)
         {
-            if (!await UserInVoice() || !await BotInVoice())
-            {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
                 return;
-            }
 
-            var player = await lavaNode.GetPlayerAsync(Context.Guild.Id);
+            var guildId = Context.Guild.Id;
+            var player = await lavaNode.GetPlayerAsync(guildId);
 
-            if (index.HasValue)
+            await audioService.RunInGuildLockAsync(guildId, async () =>
             {
-                int idx = index.Value - 1;
+                var queue = player.GetQueue();
 
-                if (idx < 0 || idx >= player.GetQueue().Count)
+                if (index.HasValue)
                 {
-                    var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"🚫 В очереди нет песни с номером {index}");
-                    await ReplyAsync(embed: err);
+                    int n = index.Value;
+
+                    if (n < 1 || queue.Count < n)
+                    {
+                        var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"в очереди нет трека с номером {index}");
+                        await ReplyAsync(embed: err);
+                        return;
+                    }
+
+                    for (int i = 1; i < n; i++)
+                        queue.TryDequeue(out _);
+
+                    queue.TryDequeue(out var nextTrack);
+                    if (nextTrack is null)
+                    {
+                        var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"в очереди нет трека с номером {index}");
+                        await ReplyAsync(embed: err);
+                        return;
+                    }
+
+                    var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
+                        $"👀 Пропустили говно: [{player.Track?.Title}]({player.Track?.Url})\n🦻 Вместо это теперь: {nextTrack.Title}",
+                        Color.Green);
+
+                    await ReplyAsync(embed: embed);
+                    await player.PlayAsync(lavaNode, nextTrack, false);
                     return;
                 }
 
-                var nextTrack = player.GetQueue().ElementAt(idx);
-                player.GetQueue().RemoveAt(idx);
+                if (queue.TryDequeue(out var track) && track != null)
+                {
+                    var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
+                        $"👀 Пропустили говно: [{player.Track?.Title}]({player.Track?.Url})\n🦻 Вместо это теперь: [{track.Title}]({track.Url})",
+                        Color.Green);
 
-                await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"Пропустили говно: [{player.Track.Title}]({player.Track.Url}), теперь играет: {nextTrack.Title}");
-
-                var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип", $"👀 Пропустили говно: [{player.Track.Title}]({player.Track.Url})\n🦻 Вместо этого запихали: {nextTrack.Title}", Color.Green);
-                await ReplyAsync(embed: embed);
-
-                await player.PlayAsync(lavaNode, nextTrack, false);
-                return;
-            }
-
-            if (player.GetQueue().TryDequeue(out var track))
-            {
-                await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"Пропустили говно: [{player.Track.Title}]({player.Track.Url})");
-
-                var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип", $"👀 Пропустили говно: [{player.Track.Title}]({player.Track.Url})\n🦻 Вместо этого запихали: [{track.Title}]({track.Url})", Color.Green);
-                await ReplyAsync(embed: embed);
-
-                await player.PlayAsync(lavaNode, track, false);
-            }
-            else
-            {
-                var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"🚫 В очереди больше ничего нет");
-                await ReplyAsync(embed: err);
-            }
+                    await ReplyAsync(embed: embed);
+                    await player.PlayAsync(lavaNode, track, false);
+                }
+                else
+                {
+                    var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", "в очереди больше ничего нет =(");
+                    await ReplyAsync(embed: err);
+                }
+            });
         }
 
         [Command("плейлист")]
         [Alias("лист")]
-        private async Task QueueAsync()
+        public async Task QueueAsync()
         {
-            if (!await UserInVoice() || !await BotInVoice())
-            {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
                 return;
-            }
 
-            var player = await lavaNode.GetPlayerAsync(Context.Guild.Id);
-
-            if (player.Track == null)
-            {
-                var emptyEmbed = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, плейлист", "🚫 Очередь пуста");
-                await Context.Channel.SendMessageAsync(embed: emptyEmbed);
-                return;
-            }
-
-            TimeSpan current = player.Track.Position;
-            TimeSpan total = player.Track.Duration;
-            TimeSpan remaining = total - current;
-
-            if (player.GetQueue().Count < 1)
-            {
-                var embed = await EmbedHandler.CreateMusicEmbed(
-                    $"sbln muzik🎸🎧, лист\n",
-                    $"👺 **Ща Играет:** [{player.Track.Title}]({player.Track.Url})\n" +
-                    $"👤 **Автор:** {player.Track.Author}\n" +
-                    $"⏳ **До конца осталось:** {FormatTime(remaining)}\n" +
-                    $"{BuildProgressBar(current, total)}\n\n" +
-                    "*больше в очереди ничего нет*",
-                    Color.Blue); 
-
-                await Context.Channel.SendMessageAsync(embed: embed);
-                return;
-            }
-
-            var builder = new EmbedBuilder();
-            builder.WithTitle($"sbln muzik🎸🎧, лист - ({player.GetQueue().Count})");
-            builder.WithColor(3447003);
-
-            var descriptionBuilder = new StringBuilder();
-
-            if (player.Track != null)
-            {
-                descriptionBuilder.AppendLine($"👺 **Ща Играет:** [{player.Track.Title}]({player.Track.Url})");
-                descriptionBuilder.AppendLine($"👤 **Автор:** {player.Track.Author}");
-                descriptionBuilder.AppendLine($"⏳ **До конца осталось:** {FormatTime(remaining)}");
-                descriptionBuilder.AppendLine(BuildProgressBar(current, total));
-                descriptionBuilder.AppendLine();
-            }
-
-            if (player.GetQueue().Any())
-            {
-                descriptionBuilder.AppendLine("📜 **Дальше будет:**");
-
-                int trackNum = 1;
-                foreach (LavaTrack track in player.GetQueue())
-                {
-                    descriptionBuilder.AppendLine($"{trackNum}. [{track.Title}]({track.Url}) - {FormatTime(track.Duration)}");
-                    trackNum++;
-                }
-            }
-            builder.WithDescription(descriptionBuilder.ToString());
-            builder.WithFooter("L4 + V7 open beta");
-            builder.WithCurrentTimestamp();
-
-            await ReplyAsync(embed: builder.Build());
+            await audioService.SendQueuePagedAsync(Context.Guild.Id, (ITextChannel)Context.Channel, Context.User.Id);
         }
 
         [Command("пауза")]
         [Alias("пз")]
         public async Task PauseAsync()
         {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
+                return;
+
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
-            if (player.IsPaused && player.Track != null)
+            if (player?.Track is null)
             {
                 await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, пауза", "так ничего не играет"));
                 return;
             }
 
-            try
+            if (player.IsPaused)
             {
-                await player.PauseAsync(lavaNode);
-                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, пауза", $"поставил на паузу - [{player.Track.Title}]({player.Track.Url}) ⏸️", Color.Blue));
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, пауза", "але, я уже на паузе"));
+                return;
             }
-            catch (Exception e)
-            {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, пауза", e.ToString()));
-            }
+
+            await player.PauseAsync(lavaNode);
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, пауза",
+                $"поставил на паузу --- [{player.Track.Title}]({player.Track.Url}) ⏸️",
+                Color.Blue));
         }
 
         [Command("продолжи")]
         [Alias("прод")]
         public async Task ResumeAsync()
         {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
+                return;
+
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
-            if (!player.IsPaused && player.Track != null)
+            if (player?.Track is null)
             {
                 await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, продолжи", "так ничего не играет"));
                 return;
             }
 
-            try
+            if (!player.IsPaused)
             {
-                await player.ResumeAsync(lavaNode, player.Track);
-                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, продолжи", $"продолжаю - [{player.Track.Title}]({player.Track.Url}) ▶️", Color.Blue));
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, продолжи", "я не на паузе!!"));
+                return;
             }
-            catch (Exception e)
-            {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, продолжи", e.ToString()));
-            }
+
+            await player.ResumeAsync(lavaNode, player.Track);
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, продолжи",
+                $"продолжаю --- [{player.Track.Title}]({player.Track.Url}) ▶️",
+                Color.Blue));
         }
 
         [Command("останови")]
         [Alias("стоп")]
         public async Task StopAsync()
         {
-            if (!await BotInVoice())
-            {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
                 return;
-            }
 
-            var player = await lavaNode.GetPlayerAsync(Context.Guild.Id);
+            var guildId = Context.Guild.Id;
+            var player = await lavaNode.GetPlayerAsync(guildId);
 
-            try
+            await audioService.RunInGuildLockAsync(guildId, async () =>
             {
+                audioService.SetRepeat(guildId, false);
                 player.GetQueue().Clear();
 
-                await player.SeekAsync(lavaNode, player.Track.Duration);
+                try { await player.SeekAsync(lavaNode, player.Track?.Duration ?? TimeSpan.Zero); } catch { }
 
-                await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"стопнулся");
-                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, стоп", "стопнулся и очистил плейлист ⛔", Color.Blue));
-            }
-            catch (Exception e)
-            {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, стоп", e.ToString()));
-            }
+                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
+                    "sbln muzik🎸🎧, стоп",
+                    "стопнулся и очистил плейлист ⛔",
+                    Color.Blue));
+            });
         }
 
         [Command("громкость")]
         [Alias("гр")]
         public async Task VolumeAsync(int volume)
         {
-            if (!await BotInVoice())
-            {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
                 return;
-            }
 
-            if (volume >= 500 || volume < 1)
+            if (volume > 500 || volume < 1)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, громкость", "только значения от 1-500"));
-            }
-            try
-            {
-                var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
-                await player.SetVolumeAsync(lavaNode, volume);
-                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, громкость", $"**Громкость выставлена на уровень {volume} 📶**", Color.DarkMagenta));
-            }
-            catch (Exception ex)
-            {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, громкость", ex.Message));
-            }
-        }
-
-        [Command("басс")]
-        [Alias("бс")]
-        public async Task BassBoostCommand(string level)
-        {
-            if (!await BotInVoice())
-            {
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, громкость", "только значения 1-500"));
                 return;
-            }
-
-            if (!Int32.TryParse(level, out int outLevel))
-            {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, басы", "только значения от 1-4"));
-            }
-
-            EqualizerBand[][] bands = new EqualizerBand[][]
-            {
-                    new EqualizerBand[]
-                    {
-                        new EqualizerBand(0, 0d),
-                        new EqualizerBand(1, 0d),
-                        new EqualizerBand(2, 0d),
-                        new EqualizerBand(3, 0d),
-                        new EqualizerBand(4, 0d),
-                        new EqualizerBand(5, 0d),
-                    },
-                    new EqualizerBand[]
-                    {
-                        new EqualizerBand(0, -0.05d),
-                        new EqualizerBand(1, 0.06d),
-                        new EqualizerBand(2, 0.16d),
-                        new EqualizerBand(3, 0.3d),
-                        new EqualizerBand(4, -0.12d),
-                        new EqualizerBand(5, 0.11d),
-                    },
-                    new EqualizerBand[]
-                    {
-                        new EqualizerBand(0, -0.1d),
-                        new EqualizerBand(1, 0.14d),
-                        new EqualizerBand(2, 0.32d),
-                        new EqualizerBand(3, 0.6d),
-                        new EqualizerBand(4, -0.25d),
-                        new EqualizerBand(5, 0.22d),
-                    },
-                    new EqualizerBand[]
-                    {
-                        new EqualizerBand(0, -0.25d),
-                        new EqualizerBand(1, 1d),
-                        new EqualizerBand(2, 1d),
-                        new EqualizerBand(3, 1d),
-                        new EqualizerBand(4, -0.25d),
-                        new EqualizerBand(5, 0.5d),
-                    },
-            };
-
-            if (outLevel < 1 || outLevel > bands.Length)
-            {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, басы", "только значения от 1-4"));
             }
 
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
-            await player.EqualizeAsync(lavaNode, bands[outLevel - 1]);
-            if (outLevel == 1)
+            if (player is null)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, басы", $"**БАСС БУСТ ВЫКЛЮЧЕН!**", Color.DarkMagenta));
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, громкость", "нет плеера.."));
+                return;
             }
-            else
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, басы", $"**БАСС БУСТ АКТИВИРОВАН НА УРОВЕНЬ {outLevel}!**", Color.DarkMagenta));
+
+            await player.SetVolumeAsync(lavaNode, volume);
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
+                "sbln muzik🎸🎧, громкость",
+                $"**Громкость --- {volume} 📶**",
+                Color.DarkMagenta));
         }
 
         [Command("залупа")]
@@ -438,16 +294,15 @@ namespace sblngavnav5X.Audio
                 return;
 
             var enabled = audioService.ToggleRepeat(Context.Guild.Id);
-
-            var text = enabled ? "🔁 **ЛУП ВКЛ**" : "⛔ **ЛУП ВЫКЛ**";
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, залупа", text, Color.DarkMagenta));
+            var text = enabled ? "🔁 **Луп вкл**" : "⛔ **Луп выкл**";
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, луп", text, Color.DarkMagenta));
         }
 
         [Command("перейти")]
         [Alias("пр")]
         public async Task SeekAsync([Remainder] string timecode)
         {
-            if (!await BotInVoice())
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
                 return;
 
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
@@ -459,14 +314,17 @@ namespace sblngavnav5X.Audio
 
             if (!TryParseTimecode(timecode, out var ts))
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, перейти", "э, формат: `мм:сс` или `чч:мм:сс`"));
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, перейти", "формат `мм:сс` или `чч:мм:сс`"));
                 return;
             }
 
             if (ts < TimeSpan.Zero) ts = TimeSpan.Zero;
             if (ts > player.Track.Duration) ts = player.Track.Duration;
 
-            await player.SeekAsync(lavaNode, ts);
+            await audioService.RunInGuildLockAsync(Context.Guild.Id, async () =>
+            {
+                await player.SeekAsync(lavaNode, ts);
+            });
 
             await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
                 "sbln muzik🎸🎧, перейти",
@@ -478,10 +336,9 @@ namespace sblngavnav5X.Audio
         public async Task LavaStat()
         {
             var embed = audioService.GetStatsEmbed();
-
             if (embed is null)
             {
-                await ReplyAsync("Статы пока нет, йоу...");
+                await ReplyAsync("Статы пока нет...");
                 return;
             }
 
@@ -489,109 +346,95 @@ namespace sblngavnav5X.Audio
         }
 
         private async Task PlayNow(SearchResponse searchResponse, LavaPlayer<LavaTrack> player, int index)
-            {
-            var track = searchResponse.Tracks.ElementAt(index);
+        {
+            var tracks = searchResponse.Tracks as IReadOnlyList<LavaTrack> ?? searchResponse.Tracks.ToList();
 
             if (searchResponse.Type == SearchType.Playlist)
             {
-                for (var i = index; i < searchResponse.Tracks.Count; i++)
+                for (var i = index; i < tracks.Count; i++)
                 {
-                    if (i == 0 || i == index)
-                    {
-                        await player.PlayAsync(lavaNode, track);
-                        await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"👺 Ща Играет - [{track.Title}]({track.Url})");
-                        var playlistEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"👺 **Ща Играет: **[{track.Title}]({track.Url})\n**👤 Автор: **{track.Author}\n**⏳ Длительность: **{FormatTime(track.Duration)}\n", Color.Purple);
-                        await Context.Channel.SendMessageAsync(embed: playlistEmbed);
-                    }
+                    var t = tracks[i];
+
+                    if (i == index)
+                        await player.PlayAsync(lavaNode, t, false);
                     else
-                    {
-                        player.GetQueue().Enqueue(searchResponse.Tracks.ElementAt(i));
-                    }
+                        player.GetQueue().Enqueue(t);
                 }
 
-                var playlistQEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"{searchResponse.Playlist.Name} **кучка треков добавлена в плейлист**🤙", Color.Orange);
-                await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"{searchResponse.Playlist.Name} кучка треков добавлена в плейлист🤙");
+                var playlistQEmbed = await EmbedHandler.CreateMusicEmbed(
+                    "sbln muzik🎸🎧",
+                    $"{searchResponse.Playlist.Name} --- добавлено в очередь 🤙",
+                    Color.Orange);
+
                 await Context.Channel.SendMessageAsync(embed: playlistQEmbed);
+                return;
             }
-            else
-            {
-                await player.PlayAsync(lavaNode, track);
-                var QEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"👺 **Ща Играет: **[{track.Title}]({track.Url})\n**👤 Автор: **{track.Author}\n**⏳ Длительность: **{FormatTime(track.Duration)}\n", Color.Purple);
-                await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"👺 Ща Играет - [{track.Title}]({track.Url})\n");
-                await Context.Channel.SendMessageAsync(embed: QEmbed);
-            }
+
+            await player.PlayAsync(lavaNode, tracks[index], false);
         }
 
         private async Task QueueNow(SearchResponse searchResponse, LavaPlayer<LavaTrack> player, int index)
         {
+            var tracks = searchResponse.Tracks as IReadOnlyList<LavaTrack> ?? searchResponse.Tracks.ToList();
+            var queue = player.GetQueue();
+
             if (searchResponse.Type == SearchType.Playlist)
             {
-                for (var i = index; i < searchResponse.Tracks.Count; i++)
-                {
-                    player.GetQueue().Enqueue(searchResponse.Tracks.ElementAt(i));
-                }
+                for (var i = index; i < tracks.Count; i++)
+                    queue.Enqueue(tracks[i]);
 
-                await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"{searchResponse.Playlist.Name} кучка треков добавлена в плейлист🤙");
-                var playlistQEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"{searchResponse.Playlist.Name} **кучка треков добавлена в плейлист**🤙", Color.Orange);
+                var playlistQEmbed = await EmbedHandler.CreateMusicEmbed(
+                    "sbln muzik🎸🎧",
+                    $"{searchResponse.Playlist.Name} --- добавлено в очередь 🤙",
+                    Color.Orange);
+
                 await Context.Channel.SendMessageAsync(embed: playlistQEmbed);
+                return;
             }
-            else
-            {
-                var track = searchResponse.Tracks.ElementAt(0);
-                player.GetQueue().Enqueue(track);
-                await LoggingService.LogInformationAsync("sbln muzik🎸🎧", $"[{track.Title}]({track.Url}) **песня добавлена в плейлист**🤙");
-                var QEmbed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧", $"[{track.Title}]({track.Url}) **песня добавлена в плейлист**🤙", Color.Orange);;
-                await Context.Channel.SendMessageAsync(embed: QEmbed);
-            }
+             
+            var track = tracks[index];
+            queue.Enqueue(track);
+
+            var qEmbed = await EmbedHandler.CreateCustomMusicEmbed(
+                "sbln muzik🎸🎧",
+                $"[{track.Title}]({track.Url}) **добавлено в очередь** 🤙", "🔼 - в начало листа",
+                Color.Orange);
+
+            var msg = await Context.Channel.SendMessageAsync(embed: qEmbed);
+            await audioService.AttachQueueInsertControlAsync(Context.Guild.Id, msg, Context.User.Id, track);
         }
 
-        private async Task<bool> UserInVoice()
+        private async Task<bool> EnsureUserInVoiceAsync(bool requireSameAsBot)
         {
-            if (Context.User is IVoiceState voiceState)
+            if (Context.User is not IVoiceState voiceState || voiceState.VoiceChannel == null)
             {
-                if (voiceState.VoiceChannel != null)
-                    return true;
+                await ReplyAsync("надо быть в войсе 😡");
+                return false;
             }
 
-            await ReplyAsync("надо быть в войсе, дурачок 😡");
-            return false;
+            if (!requireSameAsBot)
+                return true;
+
+            if (!audioService.TryGetTrackedVoiceChannelId(Context.Guild.Id, out var botVcId))
+                return true;
+
+            if (voiceState.VoiceChannel.Id != botVcId)
+            {
+                await ReplyAsync("ты не в том войсе где я 😡");
+                return false;
+            }
+
+            return true;
         }
 
         private async Task<bool> BotInVoice()
         {
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
-
             if (player is not null && player.State.IsConnected)
                 return true;
 
             await ReplyAsync("так я не в войсе");
             return false;
-        }
-
-        private IVoiceChannel GetVoiceChannel()
-        {
-            var voiceState = Context.User as IVoiceState;
-            return voiceState?.VoiceChannel;
-        }
-
-        private string FormatTime(TimeSpan time) => time.ToString(@"hh\:mm\:ss");
-
-        private string BuildProgressBar(TimeSpan current, TimeSpan total, int size = 15)
-        {
-            double progress = current.TotalSeconds / total.TotalSeconds;
-            int position = (int)(progress * size);
-
-            var bar = new StringBuilder("▶ [");
-            for (int i = 0; i < size; i++)
-            {
-                if (i == position)
-                    bar.Append("🔘");
-                else
-                    bar.Append("▬");
-            }
-            bar.Append("]");
-
-            return bar.ToString();
         }
 
         private static bool TryParseTimecode(string input, out TimeSpan result)
