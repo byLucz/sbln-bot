@@ -1,27 +1,42 @@
 ﻿using Discord;
 using Discord.Commands;
-using Discord.Interactions;
 using System.Net;
+using System.Net.Http;
 using System.Net.Http.Json;
-using System.Text;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using static System.Net.WebRequestMethods;
+using static sblngavnav5X.Data.DataRoots;
 
 namespace sblngavnav5X.Commands
 {
     public class MealCommands : ModuleBase<SocketCommandContext>
     {
-        private static readonly HttpClient _http = new HttpClient
+        private readonly HttpClient _http;
+
+        private const string RandomMealUrl = "https://www.themealdb.com/api/json/v1/1/random.php";
+        private const string MyMemoryTranslateUrl = "https://api.mymemory.translated.net/get";
+        private static readonly Regex SentenceSplitRegex = new(@"(?<=[\.\!\?\n])\s+", RegexOptions.Compiled);
+
+        public MealCommands(IHttpClientFactory httpClientFactory)
         {
-            Timeout = TimeSpan.FromSeconds(10)
-        };
+            _http = httpClientFactory.CreateClient();
+            _http.Timeout = TimeSpan.FromSeconds(10);
+        }
 
         [Command("рецепт")]
         public async Task RandomRecipeAsync()
         {
-            var meal = await GetRandomMeal();
+            Meal? meal;
+
+            try
+            {
+                meal = await GetRandomMealAsync();
+            }
+            catch
+            {
+                meal = null;
+            }
+
             if (meal is null)
             {
                 await ReplyAsync("Не удалось получить рецепт 🙈");
@@ -30,7 +45,7 @@ namespace sblngavnav5X.Commands
 
             var msg = await ReplyAsync("🍳 Паркурю кукинг…");
 
-            var ruName = await TranslateAsync(meal.strMeal);
+            var ruName = await TranslateAsync(meal.strMeal ?? string.Empty);
             var ruInstr = await TranslateAsync(meal.strInstructions ?? string.Empty);
             var ruCat = await TranslateAsync(meal.strCategory ?? "—");
             var ruKitchen = await TranslateAsync(meal.strArea ?? "—");
@@ -47,14 +62,14 @@ namespace sblngavnav5X.Commands
                 .WithColor(new Color(139, 92, 246))
                 .WithDescription(Trunc(string.IsNullOrWhiteSpace(ruInstr) ? meal.strInstructions : ruInstr, 2000))
                 .WithFooter("sbln рецепты от шефчика👨‍🍳")
-                .AddField("Категория", ruCat, inline: true)
-                .AddField("Кухня", ruKitchen, inline: true);
+                .AddField("Категория", string.IsNullOrWhiteSpace(ruCat) ? "—" : ruCat, true)
+                .AddField("Кухня", string.IsNullOrWhiteSpace(ruKitchen) ? "—" : ruKitchen, true);
 
             if (!string.IsNullOrWhiteSpace(ingredientsStr))
-                eb.AddField("Ингредиенты", Trunc(ingredientsStr, 1024), inline: false);
+                eb.AddField("Ингредиенты", Trunc(ingredientsStr, 1024), false);
 
             if (!string.IsNullOrWhiteSpace(meal.strYoutube))
-                eb.AddField("YouTube", meal.strYoutube, inline: false);
+                eb.AddField("YouTube", meal.strYoutube, false);
 
             await msg.ModifyAsync(m =>
             {
@@ -63,207 +78,180 @@ namespace sblngavnav5X.Commands
             });
         }
 
-        private async Task<Meal?> GetRandomMeal()
+        private async Task<Meal?> GetRandomMealAsync()
         {
-            var url = "https://www.themealdb.com/api/json/v1/1/random.php";
-            var resp = await _http.GetFromJsonAsync<MealResponse>(url);
+            var resp = await _http.GetFromJsonAsync<MealResponse>(RandomMealUrl);
             return resp?.Meals?.FirstOrDefault();
         }
 
-        private static IEnumerable<string> BuildIngredients(Meal m)
+        private static IEnumerable<string> BuildIngredients(Meal meal)
         {
-            for (int i = 1; i <= 20; i++)
+            var ingredients = new[]
             {
-                var ing = GetProp(m, $"strIngredient{i}");
-                var mea = GetProp(m, $"strMeasure{i}");
-                if (string.IsNullOrWhiteSpace(ing)) continue;
+                meal.strIngredient1, meal.strIngredient2, meal.strIngredient3, meal.strIngredient4, meal.strIngredient5,
+                meal.strIngredient6, meal.strIngredient7, meal.strIngredient8, meal.strIngredient9, meal.strIngredient10,
+                meal.strIngredient11, meal.strIngredient12, meal.strIngredient13, meal.strIngredient14, meal.strIngredient15,
+                meal.strIngredient16, meal.strIngredient17, meal.strIngredient18, meal.strIngredient19, meal.strIngredient20
+            };
 
-                ing = ing.Trim();
-                mea = (mea ?? string.Empty).Trim();
+            var measures = new[]
+            {
+                meal.strMeasure1, meal.strMeasure2, meal.strMeasure3, meal.strMeasure4, meal.strMeasure5,
+                meal.strMeasure6, meal.strMeasure7, meal.strMeasure8, meal.strMeasure9, meal.strMeasure10,
+                meal.strMeasure11, meal.strMeasure12, meal.strMeasure13, meal.strMeasure14, meal.strMeasure15,
+                meal.strMeasure16, meal.strMeasure17, meal.strMeasure18, meal.strMeasure19, meal.strMeasure20
+            };
+
+            for (int i = 0; i < ingredients.Length; i++)
+            {
+                var ing = ingredients[i]?.Trim();
+                var mea = measures[i]?.Trim() ?? string.Empty;
+
+                if (string.IsNullOrWhiteSpace(ing))
+                    continue;
 
                 yield return $"• {(!string.IsNullOrEmpty(mea) ? mea + " " : "")}{ing}";
             }
-
-            static string? GetProp(Meal m, string name)
-                => m.GetType().GetProperty(name)?.GetValue(m) as string;
         }
 
         private async Task<string> TranslateAsync(string text)
         {
-            text = text ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(text)) return text;
-
-            var libreUrl = "https://libretranslate.com";
+            if (string.IsNullOrWhiteSpace(text))
+                return text;
 
             try
             {
                 var chunks = ChunkForMyMemory(text);
+                if (chunks.Count == 0)
+                    return text;
+
                 var translatedChunks = new List<string>(chunks.Count);
 
-                foreach (var c in chunks)
+                foreach (var chunk in chunks)
                 {
-                    var url = $"https://api.mymemory.translated.net/get?q={Uri.EscapeDataString(c)}&langpair=en|ru";
+                    var url =
+                        $"{MyMemoryTranslateUrl}?q={Uri.EscapeDataString(chunk)}&langpair=en|ru";
+
                     using var res = await _http.GetAsync(url);
+
                     if (!res.IsSuccessStatusCode)
                     {
-                        if ((int)res.StatusCode == 429 || (int)res.StatusCode == 503)
+                        if ((int)res.StatusCode is 429 or 503)
                             await Task.Delay(800);
-                        translatedChunks.Add(c);
+
+                        translatedChunks.Add(chunk);
                         continue;
                     }
 
                     var mm = await res.Content.ReadFromJsonAsync<MyMemoryResult>();
-                    var t = WebUtility.HtmlDecode(mm?.responseData?.translatedText ?? "");
-                    translatedChunks.Add(string.IsNullOrWhiteSpace(t) ? c : t);
+                    var translated = WebUtility.HtmlDecode(mm?.responseData?.translatedText ?? "");
+
+                    translatedChunks.Add(string.IsNullOrWhiteSpace(translated) ? chunk : translated);
 
                     await Task.Delay(250);
                 }
 
                 var joined = string.Join("", translatedChunks);
-                if (!string.IsNullOrWhiteSpace(joined)) return joined;
+                return string.IsNullOrWhiteSpace(joined) ? text : joined;
             }
-            catch { }
-            return text;
+            catch
+            {
+                return text;
+            }
         }
+
         private async Task<List<string>> TranslateManyAsync(IEnumerable<string> items)
         {
-            var src = items?.ToList() ?? new();
-            var outList = new List<string>(src.Count);
+            var source = items?.ToList() ?? new List<string>();
+            var result = new List<string>(source.Count);
 
-            foreach (var s in src)
+            foreach (var item in source)
             {
-                var ru = await TranslateAsync(s ?? string.Empty);
-                outList.Add(string.IsNullOrWhiteSpace(ru) ? s ?? string.Empty : ru);
+                var ru = await TranslateAsync(item ?? string.Empty);
+                result.Add(string.IsNullOrWhiteSpace(ru) ? item ?? string.Empty : ru);
                 await Task.Delay(200);
             }
 
-            return outList;
+            return result;
         }
+
         private static List<string> ChunkForMyMemory(string text, int hardLimit = 500, int safety = 80)
         {
-            int limit = Math.Max(120, hardLimit - safety);
+            var limit = Math.Max(120, hardLimit - safety);
 
-            var sentences = Regex.Split(text, @"(?<=[\.\!\?\n])\s+");
+            var sentences = SentenceSplitRegex.Split(text);
             var chunks = new List<string>();
             var current = new List<string>();
 
-            void flushCurrent()
+            void FlushCurrent()
             {
-                if (current.Count == 0) return;
-                var s = string.Join(" ", current);
-                chunks.Add(s);
+                if (current.Count == 0)
+                    return;
+
+                chunks.Add(string.Join(" ", current));
                 current.Clear();
             }
 
-            foreach (var sent in sentences)
+            foreach (var sentence in sentences)
             {
-                var candidate = current.Count == 0 ? sent : string.Join(" ", current) + " " + sent;
+                if (string.IsNullOrWhiteSpace(sentence))
+                    continue;
+
+                var candidate = current.Count == 0
+                    ? sentence
+                    : string.Join(" ", current) + " " + sentence;
+
                 if (Uri.EscapeDataString(candidate).Length <= limit)
                 {
-                    current.Add(sent);
+                    current.Add(sentence);
                     continue;
                 }
 
-                if (Uri.EscapeDataString(sent).Length > limit)
+                if (Uri.EscapeDataString(sentence).Length > limit)
                 {
-                    flushCurrent();
-                    var words = sent.Split(' ');
-                    var buf = new List<string>();
-                    foreach (var w in words)
+                    FlushCurrent();
+
+                    var words = sentence.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    var buffer = new List<string>();
+
+                    foreach (var word in words)
                     {
-                        var cand2 = buf.Count == 0 ? w : string.Join(" ", buf) + " " + w;
-                        if (Uri.EscapeDataString(cand2).Length <= limit)
+                        var candidateWord = buffer.Count == 0
+                            ? word
+                            : string.Join(" ", buffer) + " " + word;
+
+                        if (Uri.EscapeDataString(candidateWord).Length <= limit)
                         {
-                            buf.Add(w);
+                            buffer.Add(word);
                         }
                         else
                         {
-                            if (buf.Count > 0) chunks.Add(string.Join(" ", buf));
-                            buf.Clear();
-                            buf.Add(w);
+                            if (buffer.Count > 0)
+                                chunks.Add(string.Join(" ", buffer));
+
+                            buffer.Clear();
+                            buffer.Add(word);
                         }
                     }
-                    if (buf.Count > 0) chunks.Add(string.Join(" ", buf));
+
+                    if (buffer.Count > 0)
+                        chunks.Add(string.Join(" ", buffer));
                 }
                 else
                 {
-                    flushCurrent();
-                    current.Add(sent);
+                    FlushCurrent();
+                    current.Add(sentence);
                 }
             }
-            flushCurrent();
+
+            FlushCurrent();
             return chunks;
         }
 
-        private static string Trunc(string s, int max)
-            => s.Length <= max ? s : s[..max] + "…";
-
-        private sealed class MealResponse
+        private static string Trunc(string? s, int max)
         {
-            [JsonPropertyName("meals")]
-            public List<Meal>? Meals { get; set; }
-        }
-
-        private sealed class Meal
-        {
-            public string? idMeal { get; set; }
-            public string? strMeal { get; set; }
-            public string? strCategory { get; set; }
-            public string? strArea { get; set; }
-            public string? strInstructions { get; set; }
-            public string? strMealThumb { get; set; }
-            public string? strTags { get; set; }
-            public string? strYoutube { get; set; }
-            public string? strSource { get; set; }
-            public string? strIngredient1 { get; set; }
-            public string? strMeasure1 { get; set; }
-            public string? strIngredient2 { get; set; }
-            public string? strMeasure2 { get; set; }
-            public string? strIngredient3 { get; set; }
-            public string? strMeasure3 { get; set; }
-            public string? strIngredient4 { get; set; }
-            public string? strMeasure4 { get; set; }
-            public string? strIngredient5 { get; set; }
-            public string? strMeasure5 { get; set; }
-            public string? strIngredient6 { get; set; }
-            public string? strMeasure6 { get; set; }
-            public string? strIngredient7 { get; set; }
-            public string? strMeasure7 { get; set; }
-            public string? strIngredient8 { get; set; }
-            public string? strMeasure8 { get; set; }
-            public string? strIngredient9 { get; set; }
-            public string? strMeasure9 { get; set; }
-            public string? strIngredient10 { get; set; }
-            public string? strMeasure10 { get; set; }
-            public string? strIngredient11 { get; set; }
-            public string? strMeasure11 { get; set; }
-            public string? strIngredient12 { get; set; }
-            public string? strMeasure12 { get; set; }
-            public string? strIngredient13 { get; set; }
-            public string? strMeasure13 { get; set; }
-            public string? strIngredient14 { get; set; }
-            public string? strMeasure14 { get; set; }
-            public string? strIngredient15 { get; set; }
-            public string? strMeasure15 { get; set; }
-            public string? strIngredient16 { get; set; }
-            public string? strMeasure16 { get; set; }
-            public string? strIngredient17 { get; set; }
-            public string? strMeasure17 { get; set; }
-            public string? strIngredient18 { get; set; }
-            public string? strMeasure18 { get; set; }
-            public string? strIngredient19 { get; set; }
-            public string? strMeasure19 { get; set; }
-            public string? strIngredient20 { get; set; }
-            public string? strMeasure20 { get; set; }
-        }
-
-        private sealed class MyMemoryResult
-        {
-            public MyMemoryData? responseData { get; set; }
-        }
-        private sealed class MyMemoryData
-        {
-            public string? translatedText { get; set; }
+            s ??= string.Empty;
+            return s.Length <= max ? s : s[..max] + "…";
         }
     }
 }

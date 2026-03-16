@@ -2,7 +2,6 @@
 using Discord.WebSocket;
 using Discord;
 using sblngavnav5X.Commands;
-using TwitchLib.Communication.Interfaces;
 
 public class HelpAllModule : ModuleBase<SocketCommandContext>
 {

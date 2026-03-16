@@ -51,6 +51,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                 "1" => sizen = 64,
                 "2" => sizen = 256,
                 "3" => sizen = 512,
+                _ => sizen,
             };
         }
         catch
@@ -360,40 +361,33 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("версия")]
     public async Task BotVersionInfo()
     {
+        var packages = DataBase.GetAllPackageVersions();
+
         var botzname = new EmbedAuthorBuilder()
-        .WithName($"sblngavna ver {Utils.sblnver}");
+            .WithName($"sblngavna ver {Utils.sblnver}");
+
         var copy = new EmbedFooterBuilder()
-        .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
+            .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
             .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
-        var r = new EmbedFieldBuilder()
-        .WithName("Discord.Net")
-        .WithValue("***3.18.0 (API v10)***");
-        var r2 = new EmbedFieldBuilder()
-        .WithName("Victoria")
-        .WithValue("***7.0.5*** ");
-        var r3 = new EmbedFieldBuilder()
-        .WithName("TwitchLib")
-        .WithValue("***3.1.1*** ");
-        var r4 = new EmbedFieldBuilder()
-        .WithName("Lavalink + AudioSeven (LavaSrc x yt-source x yt-cipher)")
-        .WithValue("***4.2.1*** // ***4.8.1 x 1.18.0 x KIKKIA-PUBLIC***");
-        var r5 = new EmbedFieldBuilder()
-        .WithName("GovorNGN (beta)")
-        .WithValue("***1.5*** ");
-        var r6 = new EmbedFieldBuilder()
-        .WithName("MariaDB")
-        .WithValue("***11.8.2*** ");
-        var embed = new EmbedBuilder()
-            .AddField(r)
-            .AddField(r2)
-            .AddField(r4)
-            .AddField(r3)
-            .AddField(r5)
-            .AddField(r6)
-            .WithAuthor(botzname)
-            .WithFooter(copy)
-            .Build();
-        await ReplyAsync(embed: embed);
+
+        const int maxFieldsPerEmbed = 15;
+
+        for (int i = 0; i < packages.Count; i += maxFieldsPerEmbed)
+        {
+            var chunk = packages.Skip(i).Take(maxFieldsPerEmbed);
+
+            var embedBuilder = new EmbedBuilder()
+                .WithAuthor(botzname)
+                .WithFooter(copy)
+                .WithColor(Color.LighterGrey);
+
+            foreach (var item in chunk)
+            {
+                embedBuilder.AddField(item.PackageName, $"***{item.PackageVersion}***", false);
+            }
+
+            await ReplyAsync(embed: embedBuilder.Build());
+        }
     }
 
     [Command("позови")]

@@ -1,12 +1,5 @@
 ﻿using Discord;
 using Discord.Commands;
-using Discord.WebSocket;
-using System.Linq;
-using System.Threading.Tasks;
-using System;
-using System.Diagnostics;
-using System.Globalization;
-using System.Collections.Generic;
 using System.Text;
 
 namespace sblngavnav5X.Commands;
@@ -168,18 +161,18 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
         });
     }
     Dictionary<int, string> minesweeperValues = new Dictionary<int, string>()
-{
-    { -1 , ":bomb:" },
-    {  0 , "<:slyr3head:779368192036306954>" },
-    {  1 , ":one:" },
-    {  2 , ":two:" },
-    {  3 , ":three:" },
-    {  4 , ":four:" },
-    {  5 , ":five:" },
-    {  6 , ":six:" },
-    {  7 , ":seven:" },
-    {  8 , ":eight:" },
-};
+    {
+        { -1 , ":bomb:" },
+        {  0 , "<:slyr3head:779368192036306954>" },
+        {  1 , ":one:" },
+        {  2 , ":two:" },
+        {  3 , ":three:" },
+        {  4 , ":four:" },
+        {  5 , ":five:" },
+        {  6 , ":six:" },
+        {  7 , ":seven:" },
+        {  8 , ":eight:" },
+    };
 
     [Command("сапер")]
     public async Task Title(int size = 9, float ratio = 0.2f)
