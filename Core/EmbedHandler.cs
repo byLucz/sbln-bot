@@ -11,7 +11,6 @@ namespace sblngavnav5X.Core
                 .WithTitle(title)
                 .WithDescription(description)
                 .WithColor(color)
-                .WithCurrentTimestamp()
                 .WithFooter("powered by AudioSeven").Build()));
             return embed;
         }
