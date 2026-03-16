@@ -3,6 +3,7 @@ using Discord.Commands;
 using Discord.WebSocket;
 using sblngavnav5X.Core;
 using sblngavnav5X.Data;
+using sblngavnav5X.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -46,10 +47,9 @@ namespace sblngavnav5X.Commands
             await msg.AddReactionAsync(new Emoji("▶"));
         }
 
-        private async Task OnReactionAdded(
-            Cacheable<IUserMessage, ulong> message,
-            Cacheable<IMessageChannel, ulong> channel,
-            SocketReaction reaction)
+        private async Task OnReactionAdded(Cacheable<IUserMessage, ulong> message,
+                                           Cacheable<IMessageChannel, ulong> channel,
+                                           SocketReaction reaction)
         {
             try
             {
@@ -60,6 +60,7 @@ namespace sblngavnav5X.Commands
                 var now = DateTime.UtcNow;
                 if (_lastClick.TryGetValue(reaction.UserId, out var prev) && (now - prev).TotalSeconds < 1)
                     return;
+
                 _lastClick[reaction.UserId] = now;
 
                 var msg = await message.GetOrDownloadAsync();
@@ -67,21 +68,35 @@ namespace sblngavnav5X.Commands
 
                 if (reaction.Emote.Name == "◀")
                 {
-                    if (_currentPage > 0) _currentPage--;
+                    if (_currentPage > 0)
+                        _currentPage--;
                 }
                 else if (reaction.Emote.Name == "▶")
                 {
-                    if (_currentPage < _pages.Count - 1) _currentPage++;
+                    if (_currentPage < _pages.Count - 1)
+                        _currentPage++;
                 }
-                else return;
-
-                var user = msg.Channel.GetUserAsync(reaction.UserId).Result;
-                await msg.RemoveReactionAsync(reaction.Emote, user);
+                else
+                {
+                    return;
+                }
 
                 await msg.ModifyAsync(m => m.Embed = _pages[_currentPage]);
-            }
-            catch { await EmbedHandler.CreateErrorEmbed("knizniyklub", "ошибка пагинации"); }
 
+                try
+                {
+                    var user = await msg.Channel.GetUserAsync(reaction.UserId);
+                    if (user != null)
+                        await msg.RemoveReactionAsync(reaction.Emote, user);
+                }
+                catch
+                {
+                }
+            }
+            catch
+            {
+                await LoggingService.LogErrorAsync("knizhniy klub", "ошибка пагинации");
+            }
         }
 
         private static List<Embed> BuildSeasonEmbeds()

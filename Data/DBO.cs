@@ -321,24 +321,27 @@ namespace sblngavnav5X.Data
 
             string sql =
                 @"SELECT b.id,
-                    b.title,
-                    b.authors,
-                    b.suggested_by,
-                    b.image,
-                COALESCE(r.avg_score, 0) AS avg_score,
-                COALESCE(r.votes, 0)     AS votes
-                FROM books b
-                LEFT JOIN (
-                    SELECT book_id,
-                            ROUND(AVG(final_score), 1) AS avg_score,
-                            COUNT(*)                   AS votes
-                    FROM booksRating
-                    GROUP BY book_id) 
-                r ON r.book_id = b.id
-                ORDER BY avg_score DESC, votes DESC, b.id ASC";
+            b.title,
+            b.authors,
+            b.suggested_by,
+            b.image,
+            COALESCE(r.avg_score, 0) AS avg_score,
+            COALESCE(r.votes, 0)     AS votes
+          FROM books b
+          LEFT JOIN (
+              SELECT book_id,
+                     ROUND(AVG(final_score), 1) AS avg_score,
+                     COUNT(*)                   AS votes
+              FROM booksRating
+              GROUP BY book_id
+          ) r ON r.book_id = b.id
+          /**where**/
+          ORDER BY avg_score DESC, votes DESC, b.id ASC";
 
-            using var cmd = new MySqlCommand(sql.Replace("/**where**/",
-                                season.HasValue ? "WHERE b.season = @season" : string.Empty), conn);
+            using var cmd = new MySqlCommand(
+                sql.Replace("/**where**/", season.HasValue ? "WHERE b.season = @season" : string.Empty),
+                conn
+            );
 
             if (season.HasValue)
                 cmd.Parameters.AddWithValue("@season", season.Value);

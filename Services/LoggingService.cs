@@ -90,7 +90,7 @@ namespace sblngavnav5X.Services
                 Console.ForegroundColor = severityColor;
                 Console.Write(severityText);
 
-                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.ForegroundColor = ConsoleColor.Gray;
                 Console.Write($" {timeStamp} [{sourceText}] ");
 
                 Console.ForegroundColor = ConsoleColor.White;
