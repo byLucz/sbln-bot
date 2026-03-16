@@ -16,15 +16,8 @@ namespace sblngavnav5X.Data
         public const string token = "INSERT_HERE";
 
         public const string pref1 = "x ";
+
         public const string pref2 = "х ";
-
-        public static int govorUpdTime = 600000;
-
-        public const int streamUpdTime = 600;
-
-        public static string verbalMode = "выкл";
-
-        public const int booksSeason = 2;
 
         public const string connectionString = "INSERT_HERE";
 
@@ -36,9 +29,19 @@ namespace sblngavnav5X.Data
 
         public const string streamAuth = "INSERT_HERE";
 
+        public const int streamUpdTime = 600;
+
+        public const string streamNotifCh = "twitch";
+
         public const ulong messageSourceChannelId = 11111111111;
 
         public const string messagesFilePath = "INSERT_HERE";
+
+        public static int govorUpdTime = 600000;
+
+        public static string govorVM = "выкл";
+
+        public const int booksSeason = 2;
 
         public static string[] greetList = new[]
         {

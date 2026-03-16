@@ -1,9 +1,6 @@
 ﻿using Discord;
 using Discord.Commands;
 using Newtonsoft.Json.Linq;
-using System;
-using System.Net.Http;
-using System.Threading.Tasks;
 using sblngavnav5X.Data;
 
 namespace sblngavnav5X.Commands

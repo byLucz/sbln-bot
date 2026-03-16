@@ -68,7 +68,7 @@ namespace sblngavnav5X.GVR
             embed.AddField("шанс ролла", $"**{cfg.govorilka.Chance}%**", true);
             embed.AddField("кол-во сообщений подзагрузки", $"**{cfg.govorilka.Collection}**", true);
             embed.AddField("время подзагрузки", $"**{Utils.govorUpdTime/1000} сек**", true);
-            embed.AddField("режим вербальной нищеты", $"**{Utils.verbalMode}**", true);
+            embed.AddField("режим вербальной нищеты", $"**{Utils.govorVM}**", true);
 
             await ReplyAsync("", false, embed.Build());
         }
@@ -311,7 +311,7 @@ namespace sblngavnav5X.GVR
                 };
                 m.AddField($"режим вербальной нищеты переведен в положение", $"***{perekl}***", true);
                 await ReplyAsync(embed: m.Build());
-                Utils.verbalMode = perekl;
+                Utils.govorVM = perekl;
             }
             catch
             {

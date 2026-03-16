@@ -22,7 +22,7 @@ namespace sblngavnav5X.TwitchService
             _discord = discord;
 
             UpdInt = Utils.streamUpdTime;
-            NotifChannelName = "twitch";
+            NotifChannelName = Utils.streamNotifCh;
 
             TwitchAPI api = new TwitchAPI();
             api.Settings.ClientId = Utils.streamCid;
