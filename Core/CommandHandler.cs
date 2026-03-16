@@ -2,36 +2,70 @@
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
-using System.Reflection;
 using sblngavnav5X.GVR;
-using System.Timers;
-using System.Text.RegularExpressions;
-using System.Text;
-using sblngavnav5X.Data;
+using sblngavnav5X.Services;
+using System.Reflection;
 using Timer = System.Timers.Timer;
 using Victoria;
-using sblngavnav5X.Services;
-
+using sblngavnav5X.Data;
 
 namespace sblngavnav5X.Core
 {
-    public class CommandHandler
+    public sealed class CommandHandler : IDisposable
     {
         private readonly DiscordSocketClient _client;
         private readonly CommandService _commands;
         private readonly IServiceProvider _services;
-        private readonly GovorConfig govorilka;
+        private readonly GovorConfig _govorilka;
         private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
-        public static Timer t = new Timer(Utils.govorUpdTime);
+        private readonly GVRMessagesHandler _GVRMessagesHandler;
+        private readonly SemaphoreSlim _lavaReconnectLock = new(1, 1);
+
+        private static readonly Timer _timer = new(Utils.govorUpdTime)
+        {
+            AutoReset = true,
+            Enabled = false
+        };
+
+        private static readonly object _timerLock = new();
+
+        private bool _eventsHooked;
+        private bool _timerStarted;
+        private int _timerBusy;
+        private DateTime _lastLavaReconnectAttemptUtc = DateTime.MinValue;
+        private bool _disposed;
 
         public CommandHandler(IServiceProvider services, GovorConfig govorilka)
         {
+            _services = services;
+            _govorilka = govorilka;
+
             _commands = services.GetRequiredService<CommandService>();
             _client = services.GetRequiredService<DiscordSocketClient>();
-            _services = services;
             _lavaNode = services.GetRequiredService<LavaNode<LavaPlayer<LavaTrack>, LavaTrack>>();
-            this.govorilka = govorilka;
+            _GVRMessagesHandler = services.GetRequiredService<GVRMessagesHandler>();
+
             HookEvents();
+        }
+
+        public static void UpdateTimerInterval(double amount)
+        {
+            if (amount <= 0)
+                throw new ArgumentOutOfRangeException(nameof(amount), "Интервал должен быть больше 0");
+
+            lock (_timerLock)
+            {
+                _timer.Interval = amount;
+                Utils.govorUpdTime = (int)amount;
+            }
+        }
+
+        public static double GetTimerInterval()
+        {
+            lock (_timerLock)
+            {
+                return _timer.Interval;
+            }
         }
 
         public async Task InitializeAsync()
@@ -39,15 +73,36 @@ namespace sblngavnav5X.Core
             await _commands.AddModulesAsync(
                 assembly: Assembly.GetEntryAssembly(),
                 services: _services);
-            
         }
 
-        public void HookEvents()
+        private void HookEvents()
         {
+            if (_eventsHooked)
+                return;
+
             _commands.CommandExecuted += CommandExecutedAsync;
             _commands.Log += LogAsync;
             _client.MessageReceived += HandleMessageAsync;
-            _client.Ready += StartTimer;
+            _client.Ready += OnClientReadyAsync;
+            _client.Connected += OnClientConnectedAsync;
+            _timer.Elapsed += OnTimedEvent;
+
+            _eventsHooked = true;
+        }
+
+        private void UnhookEvents()
+        {
+            if (!_eventsHooked)
+                return;
+
+            _commands.CommandExecuted -= CommandExecutedAsync;
+            _commands.Log -= LogAsync;
+            _client.MessageReceived -= HandleMessageAsync;
+            _client.Ready -= OnClientReadyAsync;
+            _client.Connected -= OnClientConnectedAsync;
+            _timer.Elapsed -= OnTimedEvent;
+
+            _eventsHooked = false;
         }
 
         private async Task HandleMessageAsync(SocketMessage socketMessage)
@@ -55,40 +110,42 @@ namespace sblngavnav5X.Core
             if (socketMessage is not SocketUserMessage message)
                 return;
 
-            var context = new SocketCommandContext(_client, message);
-
             if (message.Author.IsBot)
                 return;
 
-            int caracterPos = 0;
-            if (message.HasStringPrefix(Utils.pref1, ref caracterPos) || message.HasStringPrefix(Utils.pref2, ref caracterPos))
+            var context = new SocketCommandContext(_client, message);
+
+            int characterPos = 0;
+            var hasPrefix =
+                message.HasStringPrefix(Utils.pref1, ref characterPos) ||
+                message.HasStringPrefix(Utils.pref2, ref characterPos);
+
+            if (hasPrefix)
             {
-                var result = await _commands.ExecuteAsync(context, caracterPos, _services);
+                var result = await _commands.ExecuteAsync(context, characterPos, _services);
+
                 if (!result.IsSuccess)
-                    Console.WriteLine(result.ErrorReason);
-                if (result.Error == CommandError.UnmetPrecondition)
-                    await message.Channel.SendMessageAsync(result.ErrorReason);
-            }
-            else
-            {
-                if (govorilka.Rand == true)
                 {
-                    govorilka.Count = Utils.RandomNumber(3, 20);
-                    await MarkovOutput(context);
+                    await LoggingService.LogInformationAsync(
+                        "COMND",
+                        $"Команда завершилась с ошибкой. User={message.Author.Id}, Error={result.Error}, Reason={result.ErrorReason}");
+
+                    if (result.Error == CommandError.UnmetPrecondition &&
+                        !string.IsNullOrWhiteSpace(result.ErrorReason))
+                    {
+                        await message.Channel.SendMessageAsync(result.ErrorReason);
+                    }
                 }
-                else
-                {
-                    await MarkovOutput(context);
-                }
+
+                return;
             }
+
+            await _GVRMessagesHandler.TrySendGeneratedMessageAsync(context);
         }
 
-        public async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
+        private async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
         {
-            if (!command.IsSpecified)
-                return;
-
-            if (result.IsSuccess)
+            if (!command.IsSpecified || result.IsSuccess)
                 return;
 
             await context.Channel.SendMessageAsync($"🔴ОШИБКА🔴 - {result}");
@@ -96,227 +153,147 @@ namespace sblngavnav5X.Core
 
         private Task LogAsync(LogMessage log)
         {
-            Console.WriteLine(log.ToString());
+            return LoggingService.LogInformationAsync("COMND", log.ToString());
+        }
 
-            return Task.CompletedTask;
-        }
-        private async Task MarkovOutput(SocketCommandContext context)
+        private async Task OnClientReadyAsync()
         {
-            if (Utils.RandomNumber(1, 100 + 1) <= govorilka.Chance)
-            {
-                using (context.Channel.EnterTypingState())
-                {
-                    await MarkovTalk(context, (int)govorilka.Step, (int)govorilka.Count);
-                }
-            }
+            await StartTimerAsync();
+            await EnsureLavaNodeConnectedAsync("ready");
         }
-        private async Task MarkovTalk(SocketCommandContext ctx, int step, int wordCount)
+
+        private Task OnClientConnectedAsync()
         {
-            if (!File.Exists("messages.csv"))
+            return EnsureLavaNodeConnectedAsync("connected");
+        }
+
+        private async Task StartTimerAsync()
+        {
+            if (_timerStarted)
+                return;
+
+            _timerStarted = true;
+            _timer.Start();
+
+            await LoggingService.LogInformationAsync("GOVOR", "Таймер сбора сообщений запущен");
+        }
+
+        private async Task EnsureLavaNodeConnectedAsync(string reason)
+        {
+            if (_lavaNode.IsConnected)
             {
-                await LoggingService.LogInformationAsync("GVR", "Файл messages.csv не найден, генерация ответа пропущена");
+                await LoggingService.LogInformationAsync("VI-KA", $"Lavalink подключен / State=({reason})");
                 return;
             }
 
-            var message = File.ReadLines("messages.csv");
-            var messages = message.Select(x => x.ToString()).ToList();
-            if (!message.Any()) return;
-
-            var filtered = FilterMessages(ctx, messages);
-            if (!filtered.Any()) return;
-
-            var chain = MakeChain(filtered, step);
-            if (!chain.Any()) return;
-
-            var result = GenerateMessage(chain, step, wordCount);
-            if (string.IsNullOrEmpty(result)) return;
-
-            await ctx.Channel.SendMessageAsync(result);
-        }
-        private List<string> FilterMessages(SocketCommandContext ctx, List<string> messages)
-        {
-
-            var control = @"[x!?.,:;()\[\]/]+";
-            var filter = @"";
-            var filtered = new List<string>();
-
-            foreach (var msg in messages)
+            await _lavaReconnectLock.WaitAsync();
+            try
             {
+                if (_lavaNode.IsConnected)
+                    return;
 
-                var rep = Regex.Replace(msg, filter, "");
-                if (string.IsNullOrEmpty(rep)) continue;
+                var elapsed = DateTime.UtcNow - _lastLavaReconnectAttemptUtc;
+                if (elapsed < TimeSpan.FromSeconds(5))
+                    await Task.Delay(TimeSpan.FromSeconds(5) - elapsed);
 
-                var sb = new StringBuilder();
-                foreach (var s in rep.Select(x => x.ToString()))
-                {
-                    sb.Append(Regex.IsMatch(s, control) ? $" {s} " : s);
-                }
-                    if (!sb.ToString().Contains(@"https://"))
-                    {
-                        if (!sb.ToString().Contains(@" x "))
-                        {
-                            var split = Regex.Split(sb.ToString().ToLower(), @"\s+");
-                            if (!split.Any()) continue;
+                _lastLavaReconnectAttemptUtc = DateTime.UtcNow;
 
-                            var noEmpty = split.Where(x => !string.IsNullOrEmpty(x));
-                            if (!noEmpty.Any()) continue;
-
-                            filtered.AddRange(noEmpty);
-                        
-                        }
-                    }
-            }
-            return filtered;
-        }
-        private Dictionary<string, List<string>> MakeChain(List<string> filtered, int step)
-        {
-            var chain = new Dictionary<string, List<string>>();
-            for (var i = 0; i < filtered.Count - step; i++)
-            {
-                var k = string.Join(" ", filtered.Skip(i).Take(step));
-                var v = filtered[i + step];
-                if (!chain.ContainsKey(k))
-                {
-                    chain.Add(k, new List<string> { v });
-                }
-                else
-                {
-                    chain[k].Add(v);
-                }
-            }
-            return chain;
-        }
-
-        private string GenerateMessage(Dictionary<string, List<string>> chain, int step, int wordCount)
-        {
-            var control = @"[х!?.,;()[\]//]+";
-            var rand = new Random(DateTime.UtcNow.Millisecond);
-            var result = new StringBuilder();
-            var funnyInterjections = new List<string>
-            {
-                "лол", "лейм", "YZL", ")", "(((","соси", "шефчик", "йоу", "чел"
-            };
-
-            var temp = new List<string>
-            {
-                chain.ElementAt(rand.Next(0, chain.Count)).Key,
-            };
-
-            for (int i = 0; i < wordCount; i++)
-            {
-                var key = string.Join(" ", temp.Skip(i).Take(step));
-                if (!chain.ContainsKey(key))
-                {
-                    key = chain.ElementAt(rand.Next(0, chain.Count)).Key;
-                }
-                var value = chain[key].ElementAt(rand.Next(0, chain[key].Count));
-                while (result.Length == 0 && Regex.IsMatch(value, control))
-                {
-                    key = chain.ElementAt(rand.Next(0, chain.Count)).Key;
-                    value = chain[key].ElementAt(rand.Next(0, chain[key].Count));
-                }
-                temp.Add(value);
-
-                if (rand.NextDouble() < 0.05)
-                {
-                    var funny = funnyInterjections[rand.Next(funnyInterjections.Count)];
-                    result.Append($" {funny}");
-                }
-
-                if (govorilka.VerbalAbuseBySheff == true)
-                {
-                    result.Append(Regex.IsMatch(value, control) ? value : $" {value} бля");
-                }
-                else
-                {
-                    result.Append(Regex.IsMatch(value, control) ? value : $" {value} ");
-                }
-            }
-            return result.ToString();
-        }
-
-
-
-        private async Task StartTimer()
-        {
-            t.AutoReset = true;
-            t.Elapsed += new ElapsedEventHandler(OnTimedEvent);
-            t.Start();
-            if (!_lavaNode.IsConnected)
-            {
+                await LoggingService.LogInformationAsync("VI-KA", $"Переподключение Lavalink / State=({reason})...");
                 await _services.UseLavaNodeAsync();
-            }
-            if (_lavaNode.IsConnected)
-            {
-                await LoggingService.LogInformationAsync("VI-KA", $"есть контакт");
-            }
-            else
-            {
-                await LoggingService.LogCriticalAsync("VI-KA", $"нет контакт");
-            }
 
+                if (_lavaNode.IsConnected)
+                    await LoggingService.LogInformationAsync("VI-KA", "Подключен к Lavalink");
+                else
+                    await LoggingService.LogCriticalAsync("VI-KA", "Не подключен к Lavalink");
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogCriticalAsync("VI-KA", $"Ошибка переподключения Lavalink / State=({reason})", ex);
+            }
+            finally
+            {
+                _lavaReconnectLock.Release();
+            }
         }
 
-        private void OnTimedEvent(Object sender, ElapsedEventArgs e)
+        private void OnTimedEvent(object? sender, System.Timers.ElapsedEventArgs e)
         {
-            _ = ProcessTimedEventAsync();
+            if (Interlocked.Exchange(ref _timerBusy, 1) == 1)
+                return;
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await ProcessTimedEventAsync();
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _timerBusy, 0);
+                }
+            });
         }
 
         private async Task ProcessTimedEventAsync()
         {
             try
             {
-                ulong id = 500683173298962432;
-                var channel = _client.GetChannel(id) as IMessageChannel;
+                var channel = _client.GetChannel(Utils.MessageSourceChannelId) as IMessageChannel;
                 if (channel == null)
                 {
-                    await LoggingService.LogInformationAsync("GVR", $"Не удалось получить канал с ID {id}. Канал равен null");
+                    await LoggingService.LogInformationAsync("GOVOR", $"Не удалось получить канал с ID {Utils.MessageSourceChannelId}");
                     return;
                 }
 
-                var messages = channel.GetMessagesAsync((int)govorilka.Collection).Flatten();
+                var existingLines = File.Exists(Utils.MessagesFilePath)
+                    ? new HashSet<string>(await File.ReadAllLinesAsync(Utils.MessagesFilePath))
+                    : new HashSet<string>();
 
-                using (StreamWriter sw = new StreamWriter("messages.csv", append: true))
+                var newLines = new List<string>();
+                var messages = channel.GetMessagesAsync((int)_govorilka.Collection).Flatten();
+
+                await foreach (var message in messages)
                 {
-                    await foreach (IMessage message in messages)
+                    if (message == null ||
+                        string.IsNullOrWhiteSpace(message.Content) ||
+                        message.Attachments.Any() ||
+                        message.Embeds.Any())
                     {
-                        if (message == null || string.IsNullOrEmpty(message.Content) || message.Attachments.Any() || message.Embeds.Any())
-                            continue;
-
-                        try
-                        {
-                            sw.WriteLine(message.Content);
-                        }
-                        catch (Exception ex)
-                        {
-                            await LoggingService.LogCriticalAsync("GVR", $"Ошибка при записи сообщения. ID={message.Id}, Содержимое={message.Content}, Ошибка: {ex.Message}");
-                        }
+                        continue;
                     }
+
+                    var content = message.Content.Trim();
+                    if (existingLines.Add(content))
+                        newLines.Add(content);
                 }
-                await RemoveDuplicates();
+
+                if (newLines.Count > 0)
+                {
+                    await File.AppendAllLinesAsync(Utils.MessagesFilePath, newLines);
+                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений в датасет: {newLines.Count}");
+                }
             }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("GVR", $"Произошла ошибка в обработке таймера: {ex.Message}");
+                await LoggingService.LogCriticalAsync("GOVOR", $"Произошла ошибка в обработке таймера: {ex.Message}");
             }
         }
 
-        private async Task RemoveDuplicates()
+        public void Dispose()
         {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+
             try
             {
-                string[] lines = File.ReadAllLines("messages.csv");
-                if (lines.Length == 0)
-                {
-                    await LoggingService.LogInformationAsync("GVR", $"Файл messages.csv пуст, нечего очищать от дубликатов");
-                    return;
-                }
-
-                await File.WriteAllLinesAsync("messages.csv", lines.Distinct().ToArray());
+                _timer.Stop();
+                UnhookEvents();
+                _lavaReconnectLock.Dispose();
             }
-            catch (Exception ex)
+            catch
             {
-                await LoggingService.LogCriticalAsync("GVR", $"Произошла ошибка при чтении/записи файла: {ex.Message}");
             }
         }
     }
