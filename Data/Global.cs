@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 
 namespace sblngavnav5X.Data
 {
@@ -34,6 +35,10 @@ namespace sblngavnav5X.Data
         public const string streamCid = "INSERT_HERE";
 
         public const string streamAuth = "INSERT_HERE";
+
+        public const ulong messageSourceChannelId = 11111111111;
+
+        public const string messagesFilePath = "INSERT_HERE";
 
         public static string[] greetList = new[]
         {

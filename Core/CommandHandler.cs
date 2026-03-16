@@ -238,15 +238,15 @@ namespace sblngavnav5X.Core
         {
             try
             {
-                var channel = _client.GetChannel(Utils.MessageSourceChannelId) as IMessageChannel;
+                var channel = _client.GetChannel(Utils.messageSourceChannelId) as IMessageChannel;
                 if (channel == null)
                 {
-                    await LoggingService.LogInformationAsync("GOVOR", $"Не удалось получить канал с ID {Utils.MessageSourceChannelId}");
+                    await LoggingService.LogInformationAsync("GOVOR", $"Не удалось получить канал с ID {Utils.messageSourceChannelId}");
                     return;
                 }
 
-                var existingLines = File.Exists(Utils.MessagesFilePath)
-                    ? new HashSet<string>(await File.ReadAllLinesAsync(Utils.MessagesFilePath))
+                var existingLines = File.Exists(Utils.messagesFilePath)
+                    ? new HashSet<string>(await File.ReadAllLinesAsync(Utils.messagesFilePath))
                     : new HashSet<string>();
 
                 var newLines = new List<string>();
@@ -269,7 +269,7 @@ namespace sblngavnav5X.Core
 
                 if (newLines.Count > 0)
                 {
-                    await File.AppendAllLinesAsync(Utils.MessagesFilePath, newLines);
+                    await File.AppendAllLinesAsync(Utils.messagesFilePath, newLines);
                     await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений в датасет: {newLines.Count}");
                 }
             }
