@@ -1,35 +1,13 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using MySqlConnector;
+using static sblngavnav5X.Data.DataRoots;
+using static sblngavnav5X.Data.DataRoots.States;
 
 namespace sblngavnav5X.Data
 {
     public static class DataBase
     {
-        public static int realID;
-        public static List<string> yaicaList, volkList, patList, fffList, hugList, kissList, kusList, buhatList, ebaloList;
-        public static List<string> streamers, streamerIds;
-        public static List<string> statusText, statusPos, statusLink, statusType;
-
-        static DataBase()
-        {
-            yaicaList = new List<string>();
-            volkList = new List<string>();
-            patList = new List<string>();
-            fffList = new List<string>();
-            hugList = new List<string>();
-            kissList = new List<string>();
-            kusList = new List<string>();
-            buhatList = new List<string>();
-            ebaloList = new List<string>();
-            streamers = new List<string>();
-            streamerIds = new List<string>();
-            statusText = new List<string>();
-            statusPos = new List<string>();
-            statusLink = new List<string>();
-            statusType = new List<string>();
-        }
-
         public static string GetRandomMeme(string columnName)
         {
             using var conn = new MySqlConnection(Utils.connectionString);
@@ -66,18 +44,18 @@ namespace sblngavnav5X.Data
             using (var cmd = new MySqlCommand(sqlStrims, conn))
             using (var reader = cmd.ExecuteReader())
             {
-                streamers.Clear();
+                States.Streamers.Clear();
                 while (reader.Read())
-                    streamers.Add(reader.GetString("strimaki"));
+                    Streamers.Add(reader.GetString("strimaki"));
             }
 
             const string sqlIds = "SELECT puk FROM streamersid";
             using (var cmd = new MySqlCommand(sqlIds, conn))
             using (var reader = cmd.ExecuteReader())
             {
-                streamerIds.Clear();
+                StreamerIds.Clear();
                 while (reader.Read())
-                    streamerIds.Add(reader.GetString("puk"));
+                    StreamerIds.Add(reader.GetString("puk"));
             }
         }
 
@@ -138,17 +116,17 @@ namespace sblngavnav5X.Data
             using var cmd = new MySqlCommand(sql, conn);
             using var reader = cmd.ExecuteReader();
 
-            statusText.Clear();
-            statusPos.Clear();
-            statusLink.Clear();
-            statusType.Clear();
+            StatusText.Clear();
+            StatusPos.Clear();
+            StatusLink.Clear();
+            StatusType.Clear();
 
             while (reader.Read())
             {
-                statusText.Add(reader.GetString("StatusText"));
-                statusPos.Add(reader.GetString("StatusPos"));
-                statusLink.Add(reader.GetString("StatusLink"));
-                statusType.Add(reader.GetString("StatusType"));
+                StatusText.Add(reader.GetString("StatusText"));
+                StatusPos.Add(reader.GetString("StatusPos"));
+                StatusLink.Add(reader.GetString("StatusLink"));
+                StatusType.Add(reader.GetString("StatusType"));
             }
         }
 
@@ -335,17 +313,6 @@ namespace sblngavnav5X.Data
             return count > 0;
         }
 
-        public class BookWithRating
-        {
-            public int Id { get; set; }
-            public string Title { get; set; }
-            public string Authors { get; set; }
-            public string SuggestedBy { get; set; }
-            public double AvgScore { get; set; }
-            public int Votes { get; set; }
-            public string Image { get; set; }
-        }
-
         public static List<BookWithRating> GetBooksWithRatings(int? season)
         {
             var list = new List<BookWithRating>();
@@ -425,11 +392,6 @@ namespace sblngavnav5X.Data
                 dict[r.GetInt32("id")] = r.GetString("suggested_by");
             return dict;
         }
-        public class VersionEntry
-        {
-            public string Version { get; set; }
-            public DateTime Date { get; set; }
-        }
 
         public static List<VersionEntry> GetAllVersions()
         {
@@ -454,12 +416,31 @@ namespace sblngavnav5X.Data
             return list;
         }
 
-        public class RatingEntry
+        public static List<PackageVersionEntry> GetAllPackageVersions()
         {
-            public string UserId { get; set; }
-            public int BookId { get; set; }
-            public int[] Scores { get; set; }
-            public double FinalScore { get; set; }
+            var list = new List<PackageVersionEntry>();
+
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+
+            const string sql = @"SELECT package_name, package_version, created_at
+                                FROM packageVersions
+                                ORDER BY id";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            using var reader = cmd.ExecuteReader();
+
+            while (reader.Read())
+            {
+                list.Add(new PackageVersionEntry
+                {
+                    PackageName = reader.GetString("package_name"),
+                    PackageVersion = reader.GetString("package_version"),
+                    CreatedAt = reader.GetDateTime("created_at")
+                });
+            }
+
+            return list;
         }
 
         public static List<RatingEntry> GetAllRatings()
