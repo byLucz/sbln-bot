@@ -1,117 +1,285 @@
 ﻿using Discord;
+using System.Text;
 
 namespace sblngavnav5X.Services
 {
     public static class LoggingService
     {
-        public static async Task LogAsync(string src, LogSeverity severity, string message, Exception exception = null)
+        private static readonly SemaphoreSlim _sync = new(1, 1);
+        private static readonly string _logsDirectory =
+            Path.Combine(AppContext.BaseDirectory, "logs");
+
+        private const int LogRetentionDays = 14;
+        private static DateTime _lastCleanupDateUtc = DateTime.MinValue;
+
+        public static async Task LogAsync(
+            string src,
+            LogSeverity severity,
+            string? message,
+            Exception? exception = null)
         {
+            var now = DateTime.Now;
+            var utcNow = DateTime.UtcNow;
 
-            var timeStamp = DateTime.Now.ToString("dd/MM | HH:mm:ss");
-            if (severity.Equals(null))
+            var consoleTimeStamp = now.ToString("dd.MM | HH:mm:ss");
+            var fileTimeStamp = now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+
+            var severityText = GetSeverityString(severity);
+            var severityColor = GetConsoleColor(severity);
+            var sourceText = SourceToString(src);
+
+            var consoleMessage = BuildConsoleMessage(message, exception, src, severity);
+            var fileMessage = BuildFileMessage(message, exception, src, severity);
+
+            var generalLogPath = GetGeneralLogFilePath(now);
+            var errorLogPath = GetErrorLogFilePath(now);
+
+            await _sync.WaitAsync();
+            try
             {
-                severity = LogSeverity.Warning;
-            }
-            await Append($"{GetSeverityString(severity)}", GetConsoleColor(severity));
-            await Append($" {timeStamp} [{SourceToString(src)}] ", ConsoleColor.DarkGray);
+                Directory.CreateDirectory(_logsDirectory);
 
+                WriteToConsole(severityText, severityColor, consoleTimeStamp, sourceText, consoleMessage);
+                await WriteToFileAsync(generalLogPath, severityText, fileTimeStamp, sourceText, fileMessage);
+
+                if (severity == LogSeverity.Error || severity == LogSeverity.Critical || exception != null)
+                {
+                    await WriteToFileAsync(errorLogPath, severityText, fileTimeStamp, sourceText, fileMessage);
+                }
+
+                await CleanupOldLogsIfNeededAsync(utcNow);
+            }
+            finally
+            {
+                _sync.Release();
+            }
+        }
+
+        public static Task LogCriticalAsync(string source, string message, Exception? exc = null)
+            => LogAsync(source, LogSeverity.Critical, message, exc);
+
+        public static Task LogErrorAsync(string source, string message, Exception? exc = null)
+            => LogAsync(source, LogSeverity.Error, message, exc);
+
+        public static Task LogWarningAsync(string source, string message, Exception? exc = null)
+            => LogAsync(source, LogSeverity.Warning, message, exc);
+
+        public static Task LogInformationAsync(string source, string message)
+            => LogAsync(source, LogSeverity.Info, message);
+
+        public static Task LogDebugAsync(string source, string message)
+            => LogAsync(source, LogSeverity.Debug, message);
+
+        public static Task LogDiscordAsync(LogMessage log)
+            => LogAsync("discord", log.Severity, log.Message, log.Exception);
+
+        public static Task LogExceptionAsync(string source, Exception exc)
+            => LogAsync(source, LogSeverity.Error, "Что-то умерло...", exc);
+
+        private static void WriteToConsole(
+            string severityText,
+            ConsoleColor severityColor,
+            string timeStamp,
+            string sourceText,
+            string message)
+        {
+            var previousColor = Console.ForegroundColor;
+
+            try
+            {
+                Console.ForegroundColor = severityColor;
+                Console.Write(severityText);
+
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.Write($" {timeStamp} [{sourceText}] ");
+
+                Console.ForegroundColor = ConsoleColor.White;
+                Console.WriteLine(message);
+            }
+            finally
+            {
+                Console.ForegroundColor = previousColor;
+            }
+        }
+
+        private static async Task WriteToFileAsync(
+            string filePath,
+            string severityText,
+            string timeStamp,
+            string sourceText,
+            string message)
+        {
+            var line = $"{severityText} {timeStamp} [{sourceText}] {message}{Environment.NewLine}";
+            await File.AppendAllTextAsync(filePath, line, Encoding.UTF8);
+        }
+
+        private static string GetGeneralLogFilePath(DateTime now)
+        {
+            return Path.Combine(_logsDirectory, $"bot-{now:yyyy-MM-dd}.log");
+        }
+
+        private static string GetErrorLogFilePath(DateTime now)
+        {
+            return Path.Combine(_logsDirectory, $"errors-{now:yyyy-MM-dd}.log");
+        }
+
+        private static async Task CleanupOldLogsIfNeededAsync(DateTime utcNow)
+        {
+            if (_lastCleanupDateUtc.Date == utcNow.Date)
+                return;
+
+            _lastCleanupDateUtc = utcNow.Date;
+
+            if (!Directory.Exists(_logsDirectory))
+                return;
+
+            var files = Directory.GetFiles(_logsDirectory, "*.log", SearchOption.TopDirectoryOnly);
+            var threshold = utcNow.AddDays(-LogRetentionDays);
+
+            foreach (var file in files)
+            {
+                try
+                {
+                    var fileInfo = new FileInfo(file);
+                    if (fileInfo.LastWriteTimeUtc < threshold)
+                    {
+                        fileInfo.Delete();
+                    }
+                }
+                catch {}
+            }
+
+            await Task.CompletedTask;
+        }
+
+        private static string BuildConsoleMessage(
+            string? message,
+            Exception? exception,
+            string? src,
+            LogSeverity severity)
+        {
             if (exception != null)
-            {
-                var exType = exception.GetType().Name;
-                var exMessage = exception.Message ?? "(сообщение отсутствует)";
-                var exStack = exception.StackTrace ?? "(стек вызовов отсутствует)";
+                return BuildExceptionText(exception, message, singleLine: false);
 
-                await Append($"{exType}: {exMessage}\n{exStack}\n", GetConsoleColor(severity));
-            }
-            else if (!string.IsNullOrWhiteSpace(message))
+            if (!string.IsNullOrWhiteSpace(message))
+                return message.Trim();
+
+            return
+                $"Пустая запись лога. Source='{src ?? "(null)"}', Severity='{severity}', " +
+                "Message не передан, Exception отсутствует.";
+        }
+
+        private static string BuildFileMessage(
+            string? message,
+            Exception? exception,
+            string? src,
+            LogSeverity severity)
+        {
+            if (exception != null)
+                return BuildExceptionText(exception, message, singleLine: false);
+
+            if (!string.IsNullOrWhiteSpace(message))
+                return message.Trim();
+
+            return
+                $"Пустая запись лога. Source='{src ?? "(null)"}', Severity='{severity}', " +
+                "Message is null/empty, Exception is null.";
+        }
+
+        private static string BuildExceptionText(Exception exception, string? message, bool singleLine)
+        {
+            var sb = new StringBuilder();
+
+            if (!string.IsNullOrWhiteSpace(message))
             {
-                await Append($"{message}\n", ConsoleColor.White);
+                sb.Append(message.Trim());
+                sb.Append(singleLine ? " | " : Environment.NewLine);
+            }
+
+            AppendException(sb, exception, "Exception", singleLine);
+
+            return sb.ToString();
+        }
+
+        private static void AppendException(
+            StringBuilder sb,
+            Exception exception,
+            string label,
+            bool singleLine)
+        {
+            sb.Append($"{label}Type: {exception.GetType().FullName}");
+            sb.Append(singleLine ? " | " : Environment.NewLine);
+
+            sb.Append($"{label}Message: {exception.Message}");
+            sb.Append(singleLine ? " | " : Environment.NewLine);
+
+            if (!string.IsNullOrWhiteSpace(exception.StackTrace))
+            {
+                sb.Append($"{label}StackTrace:");
+                sb.Append(singleLine ? " | " : Environment.NewLine);
+                sb.Append(exception.StackTrace);
+                sb.Append(singleLine ? " | " : Environment.NewLine);
             }
             else
             {
-                await Append("[TOTAL] Что-то умерло\n", ConsoleColor.DarkRed);
+                sb.Append($"{label}StackTrace: (отсутствует)");
+                sb.Append(singleLine ? " | " : Environment.NewLine);
             }
-        }
 
-
-        public static async Task LogCriticalAsync(string source, string message, Exception exc = null)
-            => await LogAsync(source, LogSeverity.Critical, message, exc);
-
-
-        public static async Task LogInformationAsync(string source, string message)
-            => await LogAsync(source, LogSeverity.Info, message);
-
-        private static async Task Append(string message, ConsoleColor color)
-        {
-            await Task.Run(() => {
-                Console.ForegroundColor = color;
-                Console.Write(message);
-            });
-        }
-
-        private static string SourceToString(string src)
-        {
-            switch (src.ToLower())
+            if (exception.InnerException != null)
             {
-                case "discord":
-                    return "DSCRD";
-                case "victoria":
-                    return "VTORI";
-                case "audio":
-                    return "AUDIO";
-                case "admin":
-                    return "ADMIN";
-                case "gateway":
-                    return "GTWAY";
-                case "lavanode_0_socket":
-                    return "LVSOC";
-                case "lavanode_0":
-                    return "LVNOD";
-                case "bot":
-                    return "BOTWN";
-                default:
-                    return src;
+                AppendException(sb, exception.InnerException, "Inner", singleLine);
             }
+        }
+
+        private static string SourceToString(string? src)
+        {
+            if (string.IsNullOrWhiteSpace(src))
+                return "UNKWN";
+
+            return src.ToLowerInvariant() switch
+            {
+                "discord" => "DSCRD",
+                "victoria" => "VI-KA",
+                "audio" => "AUDIO",
+                "admin" => "ADMIN",
+                "gateway" => "GTWAY",
+                "lavanode_0_socket" => "LVSOC",
+                "lavanode_0" => "LVNOD",
+                "bot" => "BOTWN",
+                "comnd" => "COMND",
+                "govor" => "GOVOR",
+                "vi-ka" => "VI-KA",
+                _ => src.ToUpperInvariant()
+            };
         }
 
         private static string GetSeverityString(LogSeverity severity)
         {
-            switch (severity)
+            return severity switch
             {
-                case LogSeverity.Critical:
-                    return "CRIT";
-                case LogSeverity.Debug:
-                    return "DBUG";
-                case LogSeverity.Error:
-                    return "UERR";
-                case LogSeverity.Info:
-                    return "INFO";
-                case LogSeverity.Verbose:
-                    return "VERB";
-                case LogSeverity.Warning:
-                    return "WARN";
-                default: return "UNKN";
-            }
+                LogSeverity.Critical => "CRTIC",
+                LogSeverity.Debug => "D-BUG",
+                LogSeverity.Error => "ERROR",
+                LogSeverity.Info => "IN-FO",
+                LogSeverity.Verbose => "VRBSE",
+                LogSeverity.Warning => "WR-NG",
+                _ => "UNKWN"
+            };
         }
 
         private static ConsoleColor GetConsoleColor(LogSeverity severity)
         {
-            switch (severity)
+            return severity switch
             {
-                case LogSeverity.Critical:
-                    return ConsoleColor.Red;
-                case LogSeverity.Debug:
-                    return ConsoleColor.Magenta;
-                case LogSeverity.Error:
-                    return ConsoleColor.DarkRed;
-                case LogSeverity.Info:
-                    return ConsoleColor.Green;
-                case LogSeverity.Verbose:
-                    return ConsoleColor.DarkCyan;
-                case LogSeverity.Warning:
-                    return ConsoleColor.Yellow;
-                default: return ConsoleColor.White;
-            }
+                LogSeverity.Critical => ConsoleColor.Red,
+                LogSeverity.Debug => ConsoleColor.Magenta,
+                LogSeverity.Error => ConsoleColor.DarkRed,
+                LogSeverity.Info => ConsoleColor.Green,
+                LogSeverity.Verbose => ConsoleColor.DarkCyan,
+                LogSeverity.Warning => ConsoleColor.Yellow,
+                _ => ConsoleColor.White
+            };
         }
     }
 }
