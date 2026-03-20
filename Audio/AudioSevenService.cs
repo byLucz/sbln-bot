@@ -167,15 +167,49 @@ namespace sblngavnav5X.Audio
                 if (!_voiceChannelIds.TryGetValue(guildId, out var trackedVcId))
                     return;
 
+                if (user.IsBot || user.Id == _client.CurrentUser.Id)
+                    return;
+
+                var beforeTracked = before.VoiceChannel?.Id == trackedVcId;
+                var afterTracked = after.VoiceChannel?.Id == trackedVcId;
+                if (!beforeTracked && !afterTracked)
+                    return;
+
                 var vc = guild.GetVoiceChannel(trackedVcId);
                 if (vc is null) return;
 
                 if (!vc.ConnectedUsers.Any(u => !u.IsBot))
-                    await ForceLeaveAsync(guildId);
+                    _ = ScheduleAutoLeaveAsync(guildId, trackedVcId);
             }
             catch (Exception ex)
             {
-                await LoggingService.LogInformationAsync("VI-KA", $"WRN VoiceStateUpdated: {ex}");
+                await LoggingService.LogWarningAsync("VI-KA", $"VoiceStateUpdated: {ex}");
+            }
+        }
+
+        private async Task ScheduleAutoLeaveAsync(ulong guildId, ulong trackedVcId)
+        {
+            try
+            {
+                await Task.Delay(1200);
+
+                var guild = _client.GetGuild(guildId);
+                var vc = guild?.GetVoiceChannel(trackedVcId);
+                if (vc is null)
+                    return;
+
+                if (vc.ConnectedUsers.Any(u => !u.IsBot))
+                    return;
+
+                var player = await _lavaNode.TryGetPlayerAsync(guildId);
+                if (player is null || !player.State.IsConnected)
+                    return;
+
+                await ForceLeaveAsync(guildId);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync("VI-KA", $"ScheduleAutoLeave g={guildId}: {ex}");
             }
         }
 
@@ -229,7 +263,7 @@ namespace sblngavnav5X.Audio
             }
             catch (Exception ex)
             {
-                await LoggingService.LogInformationAsync("VI-KA", $"WRN LF g={guildId}: {ex.Message}");
+                await LoggingService.LogWarningAsync("VI-KA", $"LF g={guildId}: {ex.Message}");
             }
             finally
             {
@@ -419,7 +453,7 @@ namespace sblngavnav5X.Audio
                 try
                 {
                     var ok = await EmbedHandler.CreateMusicEmbed(
-                        "sbln muzik🎸🎧, скип+",
+                        "sbln muzik🎸🎧, играй+",
                         $"💎 Трек [{picked.Title}]({picked.Url}) добавлен в начало листа",
                         Color.Green);
                     await msg.ModifyAsync(m => m.Embed = ok);
@@ -468,12 +502,12 @@ namespace sblngavnav5X.Audio
 
                 var loopLine = IsRepeatEnabled(guildId) ? "\n🔁 **Луп включен**" : "";
 
-                var embed = await EmbedHandler.CreateMusicEmbed(
+                var embed = await EmbedHandler.CreateCustomMusicEmbed(
                     "sbln muzik🎸🎧",
                     $"**👺 Трек:** [{player.Track.Title}]({player.Track.Url})\n" +
                     $"**👤 Автор:** {player.Track.Author}\n" +
                     $"**⏳ Длительность:** {FormatTime(player.Track.Duration)}\n" +
-                    $"{loopLine}",
+                    $"{loopLine}", "▶/🔁 - скип/луп трека",
                     Color.Purple);
 
                 await msg.ModifyAsync(m => m.Embed = embed);
@@ -535,7 +569,7 @@ namespace sblngavnav5X.Audio
             try
             {
                 var ok = await EmbedHandler.CreateMusicEmbed(
-                    "sbln muzik🎸🎧, играй+",
+                    "sbln muzik🎸🎧, лист+",
                     $"💎 Выбран трек: [{picked.Title}]({picked.Url})",
                     Color.Green);
 
@@ -839,8 +873,7 @@ namespace sblngavnav5X.Audio
             var b = new EmbedBuilder()
                 .WithTitle(fullTitle)
                 .WithColor(Color.Purple)
-                .WithDescription(pageLines.Length > 3900 ? pageLines.Substring(0, 3900) + "\n…" : pageLines)
-                .WithCurrentTimestamp();
+                .WithDescription(pageLines.Length > 3900 ? pageLines.Substring(0, 3900) + "\n…" : pageLines);
 
             if (!string.IsNullOrWhiteSpace(footer))
                 b.WithFooter(footer);
@@ -857,7 +890,7 @@ namespace sblngavnav5X.Audio
                 try { await taskFactory(); }
                 catch (Exception ex)
                 {
-                    await LoggingService.LogInformationAsync("VI-KA", $"WRN FireAndForget {tag}: {ex.Message}");
+                    await LoggingService.LogWarningAsync("VI-KA", $"FireAndForget {tag}: {ex.Message}");
                 }
             });
         }

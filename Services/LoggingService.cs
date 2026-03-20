@@ -1,4 +1,5 @@
 ﻿using Discord;
+using Discord.WebSocket;
 using System.Text;
 
 namespace sblngavnav5X.Services
@@ -71,7 +72,10 @@ namespace sblngavnav5X.Services
             => LogAsync(source, LogSeverity.Debug, message);
 
         public static Task LogDiscordAsync(LogMessage log)
-            => LogAsync("discord", log.Severity, log.Message, log.Exception);
+        {
+            var severity = NormalizeDiscordSeverity(log);
+            return LogAsync("discord", severity, log.Message, log.Exception);
+        }
 
         public static Task LogExceptionAsync(string source, Exception exc)
             => LogAsync(source, LogSeverity.Error, "Что-то умерло...", exc);
@@ -199,6 +203,26 @@ namespace sblngavnav5X.Services
             AppendException(sb, exception, "Exception", singleLine);
 
             return sb.ToString();
+        }
+
+        private static LogSeverity NormalizeDiscordSeverity(LogMessage log)
+        {
+            if (log.Exception is GatewayReconnectException)
+                return LogSeverity.Info;
+
+            if (log.Exception is not null &&
+                log.Exception.Message.Contains("Server requested a reconnect", StringComparison.OrdinalIgnoreCase))
+            {
+                return LogSeverity.Info;
+            }
+
+            if (!string.IsNullOrWhiteSpace(log.Message) &&
+                log.Message.Contains("Server requested a reconnect", StringComparison.OrdinalIgnoreCase))
+            {
+                return LogSeverity.Info;
+            }
+
+            return log.Severity;
         }
 
         private static void AppendException(
