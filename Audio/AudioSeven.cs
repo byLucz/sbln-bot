@@ -181,6 +181,20 @@ namespace sblngavnav5X.Audio
             });
         }
 
+        [Command("озвучь")]
+        [Alias("ттс")]
+        public async Task SpeakAsync([Remainder] string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                await ReplyAsync("напиши текст для озвучки");
+                return;
+            }
+
+            var floweryQuery = $"ftts://{text.Trim()}";
+            await PlayAsync(floweryQuery);
+        }
+
         [Command("плейлист")]
         [Alias("лист")]
         public async Task QueueAsync()
