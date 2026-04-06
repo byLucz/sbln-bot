@@ -544,13 +544,19 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
     private static (bool isAnonymous, string preparedMessage) ParseMailMode(string rawMessage)
     {
+        if (string.IsNullOrWhiteSpace(rawMessage))
+            return (false, string.Empty);
+
         var text = rawMessage.Trim();
-        string[] anonymousPrefixes = new[] { "анонимно ", "анон ", "anon " };
+        string[] anonymousPrefixes = new[] { "анонимно", "анон", "anon" };
 
         foreach (var prefix in anonymousPrefixes)
         {
-            if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                return (true, text[prefix.Length..].Trim());
+            if (text.Equals(prefix, StringComparison.OrdinalIgnoreCase))
+                return (true, string.Empty);
+
+            if (text.StartsWith($"{prefix} ", StringComparison.OrdinalIgnoreCase))
+                return (true, text[(prefix.Length + 1)..].Trim());
         }
 
         return (false, text);
