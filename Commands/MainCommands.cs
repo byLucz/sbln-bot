@@ -1,11 +1,12 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
+using sblngavnav5X.Core;
+using sblngavnav5X.Data;
+using sblngavnav5X.Services;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
-using sblngavnav5X.Services;
-using sblngavnav5X.Data;
 
 namespace sblngavnav5X.Commands;
 
@@ -323,23 +324,64 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("почта")]
     public async Task SendMailAsync(SocketGuildUser user = null, [Remainder] string message = null)
     {
+        var hasAttachments = Context.Message.Attachments.Any();
+
         if (user == null)
         {
             await ReplyAsync("Укажи пользователя через @упоминание");
             return;
         }
-        if (string.IsNullOrWhiteSpace(message))
+
+        if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
         {
-            await ReplyAsync("Укажи сообщение, которое нужно отправить");
+            await ReplyAsync("Укажи сообщение или приложи вложение, которое нужно отправить");
+            return;
+        }
+
+        var (isAnonymous, preparedMessage) = ParseMailMode(message);
+        if (string.IsNullOrWhiteSpace(preparedMessage) && !hasAttachments)
+        {
+            await ReplyAsync("После флага анонимности нужно указать текст или приложить вложение");
             return;
         }
 
         try
         {
-            await user.SendMessageAsync(message);
+            var outgoingEmbed = new EmbedBuilder()
+                .WithColor(isAnonymous ? Color.DarkGrey : Color.Blue)
+                .WithTitle("📩 Вам письмо // sbln почта📧")
+                .WithDescription(string.IsNullOrWhiteSpace(preparedMessage) ? "*пустое сообщение*" : preparedMessage)
+                .WithFooter("↩️ Для ответа отправителю сделай реплай на это сообщение");
+
+            if (isAnonymous)
+            {
+                outgoingEmbed.AddField("Отправитель", "Анонимно", true);
+            }
+            else
+            {
+                outgoingEmbed
+                    .AddField("Отправитель:", $"{Context.User.Username}", true)
+                    .AddField("Получатель:", $"{user.Username}", true);
+            }
+
+            if (hasAttachments)
+            {
+                var attachmentLinks = string.Join('\n', Context.Message.Attachments.Select(a => a.Url));
+                outgoingEmbed.AddField("Вложения:", attachmentLinks);
+            }
+
+            var sentMessage = await user.SendMessageAsync(embed: outgoingEmbed.Build());
+            CommandHandler.RegisterMailReplyRoute(sentMessage.Id, Context.User.Id, user.Id, isAnonymous);
+
+            await LoggingService.LogInformationAsync(
+                "XMAIL",
+                $"SEND anonymous={isAnonymous} sender={Context.User.Id} recipient={user.Id} content={preparedMessage}");
+
             var embed = new EmbedBuilder()
                 .WithColor(Color.Green)
-                .WithDescription($"Сообщение: `{message}` отправлено в ЛС: {user.Mention}")
+                .WithDescription($"Сообщение отправлено в ЛС: {user.Mention}")
+                .AddField("Режим:", isAnonymous ? "Анон" : "Обычный", true)
+                .AddField("Вложения:", Context.Message.Attachments.Count, true)
                 .WithThumbnailUrl(user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl())
                 .WithFooter("sbln почта📧")
                 .Build();
@@ -499,5 +541,20 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         Embed embed = EmbedBuilder.Build();
         await ReplyAsync(embed: embed);
     }
+
+    private static (bool isAnonymous, string preparedMessage) ParseMailMode(string rawMessage)
+    {
+        var text = rawMessage.Trim();
+        string[] anonymousPrefixes = new[] { "анонимно ", "анон ", "anon " };
+
+        foreach (var prefix in anonymousPrefixes)
+        {
+            if (text.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return (true, text[prefix.Length..].Trim());
+        }
+
+        return (false, text);
+    }
+
 }
 

@@ -2,12 +2,13 @@
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
+using sblngavnav5X.Data;
 using sblngavnav5X.GVR;
 using sblngavnav5X.Services;
+using System.Collections.Concurrent;
 using System.Reflection;
-using Timer = System.Timers.Timer;
 using Victoria;
-using sblngavnav5X.Data;
+using Timer = System.Timers.Timer;
 
 namespace sblngavnav5X.Core
 {
@@ -20,6 +21,7 @@ namespace sblngavnav5X.Core
         private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
         private readonly GVRMessagesHandler _GVRMessagesHandler;
         private readonly SemaphoreSlim _lavaReconnectLock = new(1, 1);
+        private static readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
 
         private static readonly Timer _timer = new(Utils.govorUpdTime)
         {
@@ -34,6 +36,7 @@ namespace sblngavnav5X.Core
         private int _timerBusy;
         private DateTime _lastLavaReconnectAttemptUtc = DateTime.MinValue;
         private bool _disposed;
+        private sealed record MailReplyRoute(ulong SenderId, ulong RecipientId, bool IsAnonymous);
 
         public CommandHandler(IServiceProvider services, GovorConfig govorilka)
         {
@@ -66,6 +69,11 @@ namespace sblngavnav5X.Core
             {
                 return _timer.Interval;
             }
+        }
+
+        public static void RegisterMailReplyRoute(ulong sentMessageId, ulong senderId, ulong recipientId, bool isAnonymous)
+        {
+            _mailReplyRoutes[sentMessageId] = new MailReplyRoute(senderId, recipientId, isAnonymous);
         }
 
         public async Task InitializeAsync()
@@ -113,6 +121,9 @@ namespace sblngavnav5X.Core
             if (message.Author.IsBot)
                 return;
 
+            if (await TryHandleMailReplyAsync(message))
+                return;
+
             var context = new SocketCommandContext(_client, message);
 
             int characterPos = 0;
@@ -141,6 +152,64 @@ namespace sblngavnav5X.Core
             }
 
             await _GVRMessagesHandler.TrySendGeneratedMessageAsync(context);
+        }
+
+        private async Task<bool> TryHandleMailReplyAsync(SocketUserMessage message)
+        {
+            if (message.Channel is not IDMChannel)
+                return false;
+
+            if (message.Reference?.MessageId.IsSpecified != true)
+                return false;
+
+            var referencedMessageId = message.Reference.MessageId.Value;
+            if (!_mailReplyRoutes.TryGetValue(referencedMessageId, out var route))
+                return false;
+
+            if (message.Author.Id != route.RecipientId)
+                return false;
+
+            var sender = _client.GetUser(route.SenderId);
+            if (sender == null)
+                return false;
+
+            var text = string.IsNullOrWhiteSpace(message.Content) ? "*пустое сообщение*" : message.Content;
+            var attachmentLinks = message.Attachments.Any()
+                ? string.Join('\n', message.Attachments.Select(a => a.Url))
+                : null;
+
+            var forwardedEmbed = new EmbedBuilder()
+                .WithColor(route.IsAnonymous ? Color.DarkGrey : Color.Blue)
+                .WithTitle("📬 Ответ на почту")
+                .WithDescription(text)
+                .WithFooter("sbln почта📧");
+
+            if (route.IsAnonymous)
+            {
+                forwardedEmbed.AddField("Отправитель:", "Анон", true);
+            }
+            else
+            {
+                forwardedEmbed
+                    .AddField("Отправитель:", $"{message.Author.Username}", true)
+                    .AddField("Получатель:", $"{sender.Username}", true);
+            }
+
+            if (!string.IsNullOrWhiteSpace(attachmentLinks))
+                forwardedEmbed.AddField("Вложения", attachmentLinks);
+
+            await sender.SendMessageAsync(embed: forwardedEmbed.Build());
+            await message.Channel.SendMessageAsync(embed: new EmbedBuilder()
+                .WithColor(Color.Green)
+                .WithDescription("✅ Ответ отправлен")
+                .WithFooter("sbln почта📧")
+                .Build());
+
+            await LoggingService.LogInformationAsync(
+                "XMAIL",
+                $"REPLY anonymous={route.IsAnonymous} sender={route.SenderId} recipient={route.RecipientId} replier={message.Author.Id} contentLength={message.Content} attachments={message.Attachments.Count}");
+
+            return true;
         }
 
         private async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
