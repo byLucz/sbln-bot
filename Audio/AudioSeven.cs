@@ -41,7 +41,7 @@ namespace sblngavnav5X.Audio
 
         [Command("играй")]
         [Alias("и")]
-        public async Task PlayAsync([Remainder] string searchQuery)
+        public async Task PlayAsync([Remainder] string searchQuery, [Optional] bool isTTS)
         {
             if (!await EnsureUserInVoiceAsync(requireSameAsBot: false))
                 return;
@@ -192,7 +192,7 @@ namespace sblngavnav5X.Audio
             }
 
             var floweryQuery = $"ftts://{text.Trim()}";
-            await PlayAsync(floweryQuery);
+            await PlayAsync(floweryQuery, true);
         }
 
         [Command("плейлист")]
@@ -385,7 +385,7 @@ namespace sblngavnav5X.Audio
 
                 var playlistQEmbed = await EmbedHandler.CreateMusicEmbed(
                     "sbln muzik🎸🎧",
-                    $"{searchResponse.Playlist.Name} --- добавлено в очередь 🤙",
+                    $"{searchResponse.Playlist.Name} --- плейлист **добавлен в очередь** 🤙",
                     Color.Orange);
 
                 await Context.Channel.SendMessageAsync(embed: playlistQEmbed);
@@ -407,7 +407,7 @@ namespace sblngavnav5X.Audio
 
                 var playlistQEmbed = await EmbedHandler.CreateMusicEmbed(
                     "sbln muzik🎸🎧",
-                    $"{searchResponse.Playlist.Name} --- добавлено в очередь 🤙",
+                    $"{searchResponse.Playlist.Name} --- плейлист **добавлен в очередь** 🤙",
                     Color.Orange);
 
                 await Context.Channel.SendMessageAsync(embed: playlistQEmbed);
@@ -419,7 +419,7 @@ namespace sblngavnav5X.Audio
 
             var qEmbed = await EmbedHandler.CreateCustomMusicEmbed(
                 "sbln muzik🎸🎧",
-                $"[{track.Title}]({track.Url}) **добавлено в очередь** 🤙", "🔼 - в начало листа",
+                $"[{track.Title}]({track.Url}) **добавлен в очередь** 🤙", "🔼 - в начало листа",
                 Color.Orange);
 
             var msg = await Context.Channel.SendMessageAsync(embed: qEmbed);
