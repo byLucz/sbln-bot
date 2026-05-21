@@ -29,6 +29,8 @@ namespace sblngavnav5X.Data
 
         public const string streamAuth = "INSERT_HERE";
 
+        public const string gBooksApi = "INSERT_HERE";
+
         public const int streamUpdTime = 600;
 
         public const string streamNotifCh = "twitch";

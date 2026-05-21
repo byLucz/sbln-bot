@@ -7,14 +7,19 @@ namespace sblngavnav5X.Commands
 {
     public class BooksClubCommands : ModuleBase<SocketCommandContext>
     {
+        private readonly HttpClient _http;
+
+        public BooksClubCommands(IHttpClientFactory httpClientFactory)
+        {
+            _http = httpClientFactory.CreateClient();
+        }
 
         [Command("книга")]
         public async Task FindBookAsync([Remainder] string title)
         {
-            string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru";
+            string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru&key={Utils.gBooksApi}";
 
-            using HttpClient client = new HttpClient();
-            HttpResponseMessage response = await client.GetAsync(url);
+            HttpResponseMessage response = await _http.GetAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -95,8 +100,7 @@ namespace sblngavnav5X.Commands
 
             string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(input)}&langRestrict=ru";
 
-            using var client = new HttpClient();
-            var response = await client.GetAsync(url);
+            var response = await _http.GetAsync(url);
             if (!response.IsSuccessStatusCode)
             {
                 await ReplyAsync("❌ Ошибка при поиске книги");

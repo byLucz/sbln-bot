@@ -230,7 +230,7 @@ namespace sblngavnav5X.Data
                     r.GetString("title"),
                     r.GetString("authors"),
                     r.GetString("image"),
-                    DateTime.Parse(r.GetString("selected_date")),
+                    r.GetDateTime("selected_date"),
                     r.GetString("suggested_by")
                 );
             }
