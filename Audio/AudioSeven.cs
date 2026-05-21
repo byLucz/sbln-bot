@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using sblngavnav5X.Core;
+using sblngavnav5X.Services;
 using System.Runtime.InteropServices;
 using Victoria;
 using Victoria.Rest.Search;
@@ -9,7 +10,8 @@ namespace sblngavnav5X.Audio
 {
     public sealed class AudioSeven(
         LavaNode<LavaPlayer<LavaTrack>, LavaTrack> lavaNode,
-        AudioSevenService audioService) : ModuleBase<SocketCommandContext>
+        AudioSevenService audioService,
+        IHttpClientFactory httpClientFactory) : ModuleBase<SocketCommandContext>
     {
         public async Task JoinAsync()
         {
@@ -41,7 +43,7 @@ namespace sblngavnav5X.Audio
 
         [Command("играй")]
         [Alias("и")]
-        public async Task PlayAsync([Remainder] string searchQuery, [Optional] bool isTTS)
+        public async Task PlayAsync([Remainder] string searchQuery)
         {
             if (!await EnsureUserInVoiceAsync(requireSameAsBot: false))
                 return;
@@ -71,7 +73,10 @@ namespace sblngavnav5X.Audio
                 {
                     searchResponse = await lavaNode.LoadTrackAsync(normalized);
                 }
-                catch{}
+                catch (Exception ex)
+                {
+                    await LoggingService.LogErrorAsync("VI-KA", $"LoadTrackAsync fail: {normalized}", ex);
+                }
 
                 var trackCount = searchResponse?.Tracks?.Count ?? 0;
 
@@ -192,7 +197,44 @@ namespace sblngavnav5X.Audio
             }
 
             var floweryQuery = $"ftts://{text.Trim()}";
-            await PlayAsync(floweryQuery, true);
+            await PlayAsync(floweryQuery);
+        }
+
+        [Command("голосование", RunMode = RunMode.Async)]
+        [Alias("голос")]
+        public async Task VoteAsync([Remainder] string options)
+        {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: false))
+                return;
+
+            var items = options.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (items.Count < 2)
+            {
+                await ReplyAsync("для голосования нужно минимум 2 варианта через `|`");
+                return;
+            }
+
+            var guildId = Context.Guild.Id;
+            if (await lavaNode.TryGetPlayerAsync(guildId) is null or { State.IsConnected: false })
+                await JoinAsync();
+
+            var winner = items[Random.Shared.Next(items.Count)];
+            var statusMsg = await ReplyAsync(embed: new EmbedBuilder()
+                .WithColor(Color.DarkBlue)
+                .WithTitle("ГОЛОСОВАНИЕ")
+                .WithDescription("⏳ Кукапим секвенции...")
+                .WithFooter("sbln ultra-выбератор🤔⚡")
+                .Build());
+
+            using var http = httpClientFactory.CreateClient();
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("sblnokv5x");
+
+            await audioService.RunVoteAsync(guildId, statusMsg, items, winner, http);
         }
 
         [Command("плейлист")]

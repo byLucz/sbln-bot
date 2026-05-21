@@ -1,5 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using NAudio.Wave;
+using NAudio.Wave.SampleProviders;
 using sblngavnav5X.Core;
 using sblngavnav5X.Services;
 using System.Collections.Concurrent;
@@ -24,6 +26,8 @@ namespace sblngavnav5X.Audio
         private readonly ConcurrentDictionary<ulong, ulong> _lastNowPlayingId = new();
         private readonly ConcurrentDictionary<ulong, (string trackKey, DateTimeOffset at)> _lastNowPlayingTrack = new();
         private readonly ConcurrentDictionary<ulong, DateTime> _lastClickTime = new();
+        private readonly ConcurrentDictionary<ulong, bool> _silentMode = new();
+        private readonly ConcurrentDictionary<ulong, TaskCompletionSource<bool>> _trackStartAwaiters = new();
         private readonly ConcurrentDictionary<ulong, PaginatorState> _paginatorsByMessageId = new();
         private readonly ConcurrentDictionary<ulong, QueueInsertState> _queueInsertByMessageId = new();
         private readonly ConcurrentDictionary<ulong, SearchPickState> _searchPicksByMessageId = new();
@@ -57,6 +61,8 @@ namespace sblngavnav5X.Audio
         public bool TryGetTrackedVoiceChannelId(ulong guildId, out ulong voiceChannelId) =>
             _voiceChannelIds.TryGetValue(guildId, out voiceChannelId);
 
+        public IEnumerable<ulong> GetActiveGuildIds() => _voiceChannelIds.Keys;
+
         public void ClearGuildChannels(ulong guildId)
         {
             _voiceChannelIds.TryRemove(guildId, out _);
@@ -75,6 +81,9 @@ namespace sblngavnav5X.Audio
 
         public bool IsRepeatEnabled(ulong guildId) =>
             _repeatEnabled.TryGetValue(guildId, out var enabled) && enabled;
+
+        public void SetSilentMode(ulong guildId, bool silent) => _silentMode[guildId] = silent;
+        public bool IsSilentMode(ulong guildId) => _silentMode.TryGetValue(guildId, out var v) && v;
 
         public async Task RunInGuildLockAsync(ulong guildId, Func<Task> action)
         {
@@ -98,8 +107,19 @@ namespace sblngavnav5X.Audio
             );
         }
 
+        public Task WaitForTrackStartAsync(ulong guildId, TimeSpan timeout)
+        {
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _trackStartAwaiters[guildId] = tcs;
+            return Task.WhenAny(tcs.Task, Task.Delay(timeout))
+                       .ContinueWith(__ => { _trackStartAwaiters.TryRemove(guildId, out var _tcs); });
+        }
+
         private Task OnTrackStartAsync(TrackStartEventArg arg)
         {
+            if (_trackStartAwaiters.TryRemove(arg.GuildId, out var tcs))
+                tcs.TrySetResult(true);
+
             FireAndForget(async () =>
             {
                 await SendNowPlayingAsync(arg.GuildId, arg.Track);
@@ -275,6 +295,9 @@ namespace sblngavnav5X.Audio
 
         private async Task SendNowPlayingAsync(ulong guildId, LavaTrack track)
         {
+            if (IsSilentMode(guildId))
+                return;
+
             if (!_textChannelIds.TryGetValue(guildId, out var tcId))
                 return;
 
@@ -775,6 +798,285 @@ namespace sblngavnav5X.Audio
                 .WithFooter("sbln muzik🎸🎧 & sbln статистикс🔭")
                 .WithCurrentTimestamp()
                 .Build();
+        }
+
+        public async Task RunVoteAsync(ulong guildId, IUserMessage statusMsg, List<string> items, string winner, HttpClient http)
+        {
+            var player = await _lavaNode.TryGetPlayerAsync(guildId);
+            if (player is null) return;
+
+            var savedTrackUrl = player.Track?.Url;
+            var savedPosition = player.Track?.Position ?? TimeSpan.Zero;
+
+            string tempPath = string.Empty;
+            TimeSpan announceDuration, cdDuration;
+
+            try
+            {
+                (tempPath, announceDuration, cdDuration) = await BuildVoteAudioAsync(items, winner, http);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogErrorAsync("VI-KA", "BuildVoteAudioAsync crashed", ex);
+                await statusMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
+                    .WithColor(Color.Red)
+                    .WithTitle("ГОЛОСОВАНИЕ")
+                    .WithDescription("❌ Ошибка при подготовке аудио")
+                    .WithFooter("sbln ultra-выбератор🤔⚡")
+                    .Build());
+                return;
+            }
+
+            await RunInGuildLockAsync(guildId, async () =>
+            {
+                SetRepeat(guildId, false);
+                player.GetQueue().Clear();
+                try { await player.SeekAsync(_lavaNode, player.Track?.Duration ?? TimeSpan.Zero); }
+                catch (Exception ex) { await LoggingService.LogWarningAsync("VI-KA", $"SeekAsync (stop) fail: {ex.Message}"); }
+            });
+
+            SetSilentMode(guildId, true);
+
+            try
+            {
+                var rawPath = Path.GetFullPath(tempPath);
+                var fileUri = new Uri(rawPath).AbsoluteUri;
+
+                var searchResp = await _lavaNode.LoadTrackAsync(rawPath);
+                if (searchResp?.Tracks?.Count == 0 || searchResp?.Tracks == null)
+                    searchResp = await _lavaNode.LoadTrackAsync(fileUri);
+
+                var voteTrack = searchResp?.Tracks?.FirstOrDefault();
+                if (voteTrack != null)
+                {
+                    var trackStarted = WaitForTrackStartAsync(guildId, TimeSpan.FromSeconds(10));
+                    await player.PlayAsync(_lavaNode, voteTrack, false);
+                    await trackStarted;
+                }
+
+                await statusMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
+                    .WithColor(Color.DarkBlue)
+                    .WithTitle("ГОЛОСОВАНИЕ")
+                    .WithDescription("🎙️ Варианты дрипа...\n\n" +
+                        string.Join("\n", items.Select((item, i) => $"`{i + 1}.` {item}")))
+                    .WithFooter("sbln ultra-выбератор🤔⚡")
+                    .Build());
+
+                await Task.Delay(announceDuration);
+
+                var cdSeconds = Math.Max(1, (int)cdDuration.TotalSeconds);
+                var cdDeadline = DateTimeOffset.UtcNow.AddSeconds(cdSeconds);
+                for (int i = cdSeconds; i >= 1; i--)
+                {
+                    await statusMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
+                        .WithColor(Color.DarkBlue)
+                        .WithTitle("ГОЛОСОВАНИЕ")
+                        .WithDescription($"⏳ ВАЙБИМ: **{i}** с\n\n" +
+                            string.Join("\n", items.Select((item, idx) => $"`{idx + 1}.` {item}")))
+                        .WithFooter("sbln ultra-выбератор🤔⚡")
+                        .Build());
+
+                    var nextTick = cdDeadline.AddSeconds(-(i - 1));
+                    var waitMs = (int)(nextTick - DateTimeOffset.UtcNow).TotalMilliseconds;
+                    if (waitMs > 0) await Task.Delay(waitMs);
+                }
+
+                await statusMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
+                    .WithColor(Color.Gold)
+                    .WithTitle("ГОЛОСОВАНИЕ ЗАВЕРШЕНО")
+                    .WithDescription($"**Я выбираю:** `{winner}`")
+                    .WithFooter("sbln ultra-выбератор🤔⚡")
+                    .Build());
+
+                await Task.Delay(4000);
+            }
+            finally
+            {
+                SetSilentMode(guildId, false);
+
+                if (!string.IsNullOrEmpty(savedTrackUrl))
+                {
+                    try
+                    {
+                        LavaTrack? restoredTrack = null;
+                        await RunInGuildLockAsync(guildId, async () =>
+                        {
+                            var p = await _lavaNode.TryGetPlayerAsync(guildId);
+                            if (p is null) return;
+                            var r = await _lavaNode.LoadTrackAsync(savedTrackUrl);
+                            restoredTrack = r?.Tracks?.FirstOrDefault();
+                            if (restoredTrack is null) return;
+                            await p.PlayAsync(_lavaNode, restoredTrack, false);
+                        });
+
+                        if (restoredTrack != null && savedPosition > TimeSpan.FromSeconds(3))
+                        {
+                            await Task.Delay(800);
+                            await RunInGuildLockAsync(guildId, async () =>
+                            {
+                                var p = await _lavaNode.TryGetPlayerAsync(guildId);
+                                if (p?.Track != null)
+                                    try { await p.SeekAsync(_lavaNode, savedPosition); }
+                                    catch (Exception ex) { await LoggingService.LogWarningAsync("VI-KA", $"SeekAsync (restore) fail: {ex.Message}"); }
+                            });
+                        }
+                    }
+                    catch { }
+                }
+
+                try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
+            }
+        }
+
+        private static async Task<(string path, TimeSpan announceDuration, TimeSpan cdDuration)> BuildVoteAudioAsync(
+            List<string> items, string winner, HttpClient http)
+        {
+            var targetFormat = new WaveFormat(44100, 16, 2);
+            var audioDir = Path.Combine(AppContext.BaseDirectory, "audio");
+            Directory.CreateDirectory(audioDir);
+
+            foreach (var stale in Directory.GetFiles(audioDir, "vote_*.wav"))
+            {
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(stale) < DateTime.UtcNow.AddHours(-2))
+                        File.Delete(stale);
+                }
+                catch { }
+            }
+
+            var tempPath = Path.Combine(audioDir, $"vote_{Guid.NewGuid():N}.wav");
+
+            static (ISampleProvider sp, TimeSpan duration) DecodeMp3(Stream mp3Stream)
+            {
+                using var mpeg = new NLayer.MpegFile(mp3Stream);
+                int srcRate = mpeg.SampleRate;
+                int srcChannels = mpeg.Channels;
+                var samples = new List<float>(srcRate * srcChannels * 6);
+                var buf = new float[4096]; int read;
+                while ((read = mpeg.ReadSamples(buf, 0, buf.Length)) > 0)
+                    for (int i = 0; i < read; i++) samples.Add(buf[i]);
+                var duration = TimeSpan.FromSeconds((double)samples.Count / srcChannels / srcRate);
+                var floatBytes = new byte[samples.Count * 4];
+                Buffer.BlockCopy(samples.ToArray(), 0, floatBytes, 0, floatBytes.Length);
+                var srcFormat = WaveFormat.CreateIeeeFloatWaveFormat(srcRate, srcChannels);
+                ISampleProvider sp = new RawSourceWaveStream(new MemoryStream(floatBytes), srcFormat).ToSampleProvider();
+                if (srcRate != 44100) sp = new WdlResamplingSampleProvider(sp, 44100);
+                if (srcChannels == 1) sp = new MonoToStereoSampleProvider(sp);
+                return (sp, duration);
+            }
+
+            async Task<float[]> FetchTtsSamples(string text)
+            {
+                var url = $"https://api.flowery.pw/v1/tts?voice=Aleksandr&translate=false&silence=0&audio_format=mp3&playback_rate=100&text={Uri.EscapeDataString(text)}";
+                using var resp = await http.GetAsync(url);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var body = await resp.Content.ReadAsStringAsync();
+                    throw new HttpRequestException($"FloweryTTS {(int)resp.StatusCode}: {body}");
+                }
+                var bytes = await resp.Content.ReadAsByteArrayAsync();
+                if (bytes.Length < 1000)
+                    throw new InvalidDataException($"TTS слишком мало байт ({bytes.Length})");
+                await Task.Delay(300);
+                using var ms = new MemoryStream(bytes);
+                var (sp, _) = DecodeMp3(ms);
+                var list = new List<float>();
+                var buf = new float[4096]; int r;
+                while ((r = sp.Read(buf, 0, buf.Length)) > 0)
+                    for (int i = 0; i < r; i++) list.Add(buf[i]);
+                return list.ToArray();
+            }
+
+            static void WriteAsPcm(float[] samples, WaveFileWriter w)
+            {
+                var pcm = new byte[samples.Length * 2];
+                for (int i = 0; i < samples.Length; i++)
+                {
+                    short s = (short)Math.Clamp((int)(samples[i] * 32767f), short.MinValue, short.MaxValue);
+                    pcm[i * 2] = (byte)s;
+                    pcm[i * 2 + 1] = (byte)(s >> 8);
+                }
+                w.Write(pcm, 0, pcm.Length);
+            }
+
+            var cdPath = FindCountdownMp3(audioDir);
+            float[] bgSamples = [];
+            if (cdPath != null)
+            {
+                using var cdStream = File.OpenRead(cdPath);
+                var (cdSp, _) = DecodeMp3(cdStream);
+                var cdList = new List<float>();
+                var cdBuf = new float[4096]; int cdRead;
+                while ((cdRead = cdSp.Read(cdBuf, 0, cdBuf.Length)) > 0)
+                    for (int k = 0; k < cdRead; k++) cdList.Add(cdBuf[k]);
+                bgSamples = cdList.ToArray();
+            }
+
+            int bgOffset = 0;
+            float[] MixWithBg(float[] ttsSamples)
+            {
+                var result = new float[ttsSamples.Length];
+                for (int i = 0; i < ttsSamples.Length; i++)
+                {
+                    float bg = bgSamples.Length > 0 ? bgSamples[(bgOffset + i) % bgSamples.Length] * 0.4f : 0f;
+                    result[i] = Math.Clamp(ttsSamples[i] + bg, -1f, 1f);
+                }
+                if (bgSamples.Length > 0) bgOffset = (bgOffset + ttsSamples.Length) % bgSamples.Length;
+                return result;
+            }
+
+            var announceDuration = TimeSpan.Zero;
+
+            using var writer = new WaveFileWriter(tempPath, targetFormat);
+
+            var introSamples = await FetchTtsSamples("Такие варики");
+            WriteAsPcm(MixWithBg(introSamples), writer);
+            announceDuration += TimeSpan.FromSeconds((double)introSamples.Length / 2 / 44100);
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                var samples = await FetchTtsSamples($"Вариант {i + 1}. {items[i]}");
+                WriteAsPcm(MixWithBg(samples), writer);
+                announceDuration += TimeSpan.FromSeconds((double)samples.Length / 2 / 44100);
+            }
+
+            var startSamples = await FetchTtsSamples("Голосование началось");
+            WriteAsPcm(MixWithBg(startSamples), writer);
+            announceDuration += TimeSpan.FromSeconds((double)startSamples.Length / 2 / 44100);
+
+            int targetCdSeconds = 10 + Math.Max(0, items.Count - 2) * 3;
+            var cdDuration = TimeSpan.FromSeconds(targetCdSeconds);
+
+            int targetCdSamples = targetCdSeconds * 44100 * 2;
+            var cdPure = new float[targetCdSamples];
+            for (int k = 0; k < targetCdSamples; k++)
+                cdPure[k] = bgSamples.Length > 0 ? bgSamples[(bgOffset + k) % bgSamples.Length] : 0f;
+            if (bgSamples.Length > 0) bgOffset = (bgOffset + targetCdSamples) % bgSamples.Length;
+            WriteAsPcm(cdPure, writer);
+
+            var winnerSamples = await FetchTtsSamples($"Я выбираааю: {winner}");
+            WriteAsPcm(winnerSamples, writer);
+
+            return (tempPath, announceDuration, cdDuration);
+        }
+
+        private static string? FindCountdownMp3(string outputAudioDir)
+        {
+            var direct = Path.Combine(outputAudioDir, "countdown.mp3");
+            if (File.Exists(direct)) return direct;
+
+            var dir = Directory.GetParent(outputAudioDir);
+            while (dir != null)
+            {
+                foreach (var folder in new[] { "audio", "Audio" })
+                {
+                    var candidate = Path.Combine(dir.FullName, folder, "countdown.mp3");
+                    if (File.Exists(candidate)) return candidate;
+                }
+                dir = dir.Parent;
+            }
+            return null;
         }
 
         public void Dispose()
