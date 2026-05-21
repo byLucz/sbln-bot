@@ -21,7 +21,7 @@ public class HelpAllModule : ModuleBase<SocketCommandContext>
     [Command("памаги")]
     public async Task HelpAll()
     {
-        _pages = HelpCommands.GetAllHelpPages();
+        _pages = HelpCommands.GetHelpPages();
         _currentPage = 0;
 
         var msg = await ReplyAsync(embed: _pages[_currentPage]);

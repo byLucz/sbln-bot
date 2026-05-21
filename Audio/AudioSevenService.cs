@@ -5,6 +5,7 @@ using NAudio.Wave.SampleProviders;
 using sblngavnav5X.Core;
 using sblngavnav5X.Services;
 using System.Collections.Concurrent;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using Victoria;
@@ -871,7 +872,7 @@ namespace sblngavnav5X.Audio
                     await statusMsg.ModifyAsync(m => m.Embed = new EmbedBuilder()
                         .WithColor(Color.DarkBlue)
                         .WithTitle("ГОЛОСОВАНИЕ")
-                        .WithDescription($"⏳ ВАЙБИМ: **{i}** с\n\n" +
+                        .WithDescription($"⏳ ВАЙБИМ: **{i}**с.\n\n" +
                             string.Join("\n", items.Select((item, idx) => $"`{idx + 1}.` {item}")))
                         .WithFooter("sbln ultra-выбератор🤔⚡")
                         .Build());
@@ -969,7 +970,10 @@ namespace sblngavnav5X.Audio
             async Task<float[]> FetchTtsSamples(string text)
             {
                 var url = $"https://api.flowery.pw/v1/tts?voice=Aleksandr&translate=false&silence=0&audio_format=mp3&playback_rate=100&text={Uri.EscapeDataString(text)}";
-                using var resp = await http.GetAsync(url);
+                using var resp = await http.SendAsync(new HttpRequestMessage(HttpMethod.Get, url)
+                {
+                    Headers = { UserAgent = { ProductInfoHeaderValue.Parse("sbln-bot/5.5") } }
+                });
                 if (!resp.IsSuccessStatusCode)
                 {
                     var body = await resp.Content.ReadAsStringAsync();
