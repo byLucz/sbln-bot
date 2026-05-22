@@ -36,7 +36,7 @@ namespace sblngavnav5X.Core
         private int _timerBusy;
         private DateTime _lastLavaReconnectAttemptUtc = DateTime.MinValue;
         private bool _disposed;
-        private sealed record MailReplyRoute(ulong SenderId, ulong RecipientId, bool IsAnonymous);
+        private sealed record MailReplyRoute(ulong SenderId, ulong RecipientId, bool IsAnonymous, DateTimeOffset CreatedAt);
 
         public CommandHandler(IServiceProvider services, GovorConfig govorilka)
         {
@@ -73,7 +73,14 @@ namespace sblngavnav5X.Core
 
         public static void RegisterMailReplyRoute(ulong sentMessageId, ulong senderId, ulong recipientId, bool isAnonymous)
         {
-            _mailReplyRoutes[sentMessageId] = new MailReplyRoute(senderId, recipientId, isAnonymous);
+            var cutoff = DateTimeOffset.UtcNow.AddHours(-10);
+            foreach (var key in _mailReplyRoutes.Keys.ToArray())
+            {
+                if (_mailReplyRoutes.TryGetValue(key, out var r) && r.CreatedAt < cutoff)
+                    _mailReplyRoutes.TryRemove(key, out _);
+            }
+
+            _mailReplyRoutes[sentMessageId] = new MailReplyRoute(senderId, recipientId, isAnonymous, DateTimeOffset.UtcNow);
         }
 
         public async Task InitializeAsync()
@@ -140,12 +147,6 @@ namespace sblngavnav5X.Core
                     await LoggingService.LogInformationAsync(
                         "COMND",
                         $"Команда завершилась с ошибкой. User={message.Author.Id}, Error={result.Error}, Reason={result.ErrorReason}");
-
-                    if (result.Error == CommandError.UnmetPrecondition &&
-                        !string.IsNullOrWhiteSpace(result.ErrorReason))
-                    {
-                        await message.Channel.SendMessageAsync(result.ErrorReason);
-                    }
                 }
 
                 return;
@@ -217,7 +218,55 @@ namespace sblngavnav5X.Core
             if (!command.IsSpecified || result.IsSuccess)
                 return;
 
-            await context.Channel.SendMessageAsync($"🔴ОШИБКА🔴 - {result}");
+            var cmd = command.Value;
+            string reply = result.Error switch
+            {
+                CommandError.BadArgCount =>
+                    $"🔴 Не хватает аргументов\n{BuildUsageHint(cmd)}",
+
+                CommandError.ParseFailed =>
+                    $"🔴 Неверный тип аргумента\n{BuildUsageHint(cmd)}",
+
+                CommandError.ObjectNotFound =>
+                    $"🔴 Не найден объект: {result.ErrorReason}\n{BuildUsageHint(cmd)}",
+
+                CommandError.UnmetPrecondition when !string.IsNullOrWhiteSpace(result.ErrorReason) =>
+                    result.ErrorReason,
+
+                _ => $"🔴ОШИБКА🔴 - {result.ErrorReason}"
+            };
+
+            await context.Channel.SendMessageAsync(reply);
+        }
+
+        private static string BuildUsageHint(CommandInfo cmd)
+        {
+            if (!cmd.Parameters.Any())
+                return string.Empty;
+
+            var paramStr = string.Join(" ", cmd.Parameters.Select(p =>
+            {
+                var typeName = FriendlyTypeName(p.Type);
+                var label = string.IsNullOrWhiteSpace(p.Summary) ? $"{p.Name}:{typeName}" : p.Summary;
+                return p.IsOptional ? $"[{label}]" : $"<{label}>";
+            }));
+
+            var prefix = Utils.pref1;
+            var aliases = cmd.Aliases.Count > 0 ? $" ({string.Join("/", cmd.Aliases)})" : "";
+            return $"Использование: `{prefix} {cmd.Name}{aliases} {paramStr}`";
+        }
+
+        private static string FriendlyTypeName(Type t)
+        {
+            var u = Nullable.GetUnderlyingType(t) ?? t;
+            if (u == typeof(int) || u == typeof(long) || u == typeof(uint)) return "число";
+            if (u == typeof(float) || u == typeof(double) || u == typeof(decimal)) return "число";
+            if (u == typeof(string)) return "текст";
+            if (u == typeof(bool)) return "да/нет";
+            if (u.Name.Contains("GuildUser") || u.Name.Contains("SocketUser")) return "@пользователь";
+            if (u.Name.Contains("Role")) return "@роль";
+            if (u.Name.Contains("Channel")) return "#канал";
+            return u.Name.ToLower();
         }
 
         private Task LogAsync(LogMessage log)
