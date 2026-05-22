@@ -179,22 +179,11 @@ namespace sblngavnav5X.Commands
                 }
             }
 
-            var embedMessage = new EmbedBuilder()
-            {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by rzhunemogu.ru"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln шутки 😂",
-                },
-                Color = Color.Orange
-            };
-
-            embedMessage.WithDescription($"{jokeText}");
-
-            var jokeMessage = await ReplyAsync(embed: embedMessage.Build());
+            var jokeMessage = await ReplyAsync(embed: EmbedHandler.Authored(
+                "sbln шутки 😂",
+                jokeText,
+                Color.Orange,
+                "powered by rzhunemogu.ru"));
             var emote = Emote.Parse("<:slyr4head:816639053008338944>");
             await jokeMessage.AddReactionAsync(emote);
         }
@@ -225,22 +214,12 @@ namespace sblngavnav5X.Commands
                 author = $"бля - {e.Message}";
             }
 
-            var embedMessage = new EmbedBuilder()
-            {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = $"{author}",
-                    IconUrl = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTdfR4o2lIVZ0sLL1y_SRYPYIXQ5hXxI-w89A&s"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln цитаты⛲"
-                },
-                Color = Color.LighterGrey
-            };
-
-            embedMessage.WithDescription($"***{toReturn}***");
-            await ReplyAsync(embed: embedMessage.Build());
+            await ReplyAsync(embed: EmbedHandler.Authored(
+                "sbln цитаты⛲",
+                $"***{toReturn}***",
+                Color.LighterGrey,
+                author,
+                "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTdfR4o2lIVZ0sLL1y_SRYPYIXQ5hXxI-w89A&s"));
         }
 
         [Command("волк")]
@@ -347,21 +326,7 @@ namespace sblngavnav5X.Commands
         }
 
         private static Embed BuildJokeMenuEmbed(string description)
-        {
-            return new EmbedBuilder()
-            {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by rzhunemogu.ru"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln шутки 😂",
-                },
-                Color = Color.Orange,
-                Description = description
-            }.Build();
-        }
+            => EmbedHandler.Authored("sbln шутки 😂", description, Color.Orange, "powered by rzhunemogu.ru");
 
         private async Task SendMemeActionAsync(string category, string title)
         {

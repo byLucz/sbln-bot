@@ -1,9 +1,11 @@
 ﻿using Discord;
 using Discord.Commands;
 using Newtonsoft.Json;
+using sblngavnav5X.Core;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Data;
+using System.Text.RegularExpressions;
 using static sblngavnav5X.Data.DataRoots;
 
 namespace sblngavnav5X.Commands;
@@ -78,25 +80,27 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
         }
     }
 
+    private static readonly Regex _mathSafeRegex = new(@"^[\d\s\+\-\*\/\(\)\.]+$", RegexOptions.Compiled);
+
     [Command("кал")]
     public async Task MathAsync([Remainder] string math)
     {
+        if (!_mathSafeRegex.IsMatch(math))
+        {
+            await ReplyAsync("🔴ОШИБКА🔴 - недопустимые символы в выражении");
+            return;
+        }
+
         try
         {
             using var dt = new DataTable();
             var result = dt.Compute(math, null);
 
-            var m = new EmbedBuilder()
-            {
-                Description = $"{math} = {result}",
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln калькулятор📚📐",
-                },
-                Color = Color.DarkerGrey
-            };
-
-            await ReplyAsync(embed: m.Build());
+            await ReplyAsync(embed: EmbedHandler.Authored(
+                "sbln калькулятор📚📐",
+                $"{math} = {result}",
+                Color.DarkerGrey,
+                "sbln"));
         }
         catch (Exception e)
         {
@@ -144,19 +148,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
 
             const string iconUrl = "https://cdn0.iconfinder.com/data/icons/bitcoin-94/64/chip-bitcoin-512.png";
 
-            var e = new EmbedBuilder()
-            {
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln крипта💰📈",
-                },
-                Color = Color.LightOrange,
-                ThumbnailUrl = iconUrl,
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by bitfinex💸"
-                }
-            };
+            var e = EmbedHandler.FieldsEmbed("sbln крипта💰📈", Color.LightOrange, "powered by bitfinex💸", iconUrl);
 
             e.AddField("*BTC*", $"{btc.LastPrice:0.00#}$", true);
             e.AddField("прирост", $"{btc.DailyChange:0.00#}$", true);
@@ -222,19 +214,11 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
             return;
         }
 
-        var z = new EmbedBuilder()
-        {
-            Author = new EmbedAuthorBuilder()
-            {
-                Name = "sbln курс валют💱💵",
-            },
-            Color = Color.DarkTeal,
-            ThumbnailUrl = "https://upload.wikimedia.org/wikipedia/commons/1/18/Russia-Coin-1-2009-a.png",
-            Footer = new EmbedFooterBuilder()
-            {
-                Text = "powered by CENTROBANK OF RUSSIA🏦🇷🇺"
-            }
-        };
+        var z = EmbedHandler.FieldsEmbed(
+            "sbln курс валют💱💵",
+            Color.DarkTeal,
+            "powered by CENTROBANK OF RUSSIA🏦🇷🇺",
+            "https://upload.wikimedia.org/wikipedia/commons/1/18/Russia-Coin-1-2009-a.png");
 
         z.AddField("USD", $"{Utils.Round(b.rates.USD, 2)}₽", true);
         z.AddField("EUR", $"{Utils.Round(b.rates.EUR, 2)}₽", true);

@@ -90,19 +90,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("апт")]
     public async Task BotUptime()
     {
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("Время работы бота⌛")
-            .WithDescription(
-            $"🦾 - {DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()}" 
-            )
-               .WithFooter(footer =>
-               {
-                   footer
-                   .WithText("sbln статистикс🔭");
-               });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
-
+        await ReplyAsync(embed: EmbedHandler.Simple(
+            "Время работы бота⌛",
+            $"🦾 - {DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()}",
+            Color.Blue,
+            "sbln статистикс🔭"));
     }
 
     [Command("ст", RunMode = RunMode.Async)]
@@ -123,15 +115,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         await _client.SetStatusAsync(statustype);
         await _client.SetGameAsync(args);
 
-        var EmbedBuilder = new EmbedBuilder()
-               .WithDescription($"Игра изменена на **{args}** со статусом **{status}** ✅")
-               .WithFooter(footer =>
-               {
-                   footer
-                   .WithText("sbln статус🎫");
-               });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        await ReplyAsync(embed: EmbedHandler.Simple(
+            string.Empty,
+            $"Игра изменена на **{args}** со статусом **{status}** ✅",
+            Color.Green,
+            "sbln статус🎫"));
     }
 
     [Command("актив")]
@@ -161,15 +149,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         DataBase.AddStatus(finalText ?? "","", finalLink ?? "", actType.ToString());
         await _client.SetGameAsync(finalText, finalLink, actType);
 
-        var EmbedBuilder = new EmbedBuilder()
-               .WithDescription($"Активность установлена: **{actType}** - **{finalText}** ✅")
-               .WithFooter(footer =>
-               {
-                   footer
-                   .WithText("sbln статус🎫");
-               });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        await ReplyAsync(embed: EmbedHandler.Simple(
+            string.Empty,
+            $"Активность установлена: **{actType}** - **{finalText}** ✅",
+            Color.Green,
+            "sbln статус🎫"));
     }
 
     [Command("инфа разрабов")]
@@ -183,7 +167,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
          $"🔹Активность: **{Context.Client.Activity}**\n" +
          $"🔹Cостояние: **{Context.Client.ConnectionState}**\n" +
          $"🔹Состояние токена: **{Context.Client.TokenType} {Context.Client.LoginState}**\n" +
-         $"🔹Задержка выполнения: **{Context.Client.Latency - 37}ms **\n" +
+         $"🔹Задержка выполнения: **{Math.Max(0, Context.Client.Latency - 37)}ms **\n" +
          $"🔹Время процесса **{DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()}**\n" +
          $"🔹Идентификатор процесса: **{Environment.CurrentManagedThreadId}**\n" +
          $"🔹Директория процесса: **{Environment.CurrentDirectory}**\n" +
@@ -497,20 +481,12 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await user.KickAsync();
 
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("sbln кик <:roflanPominki:552795319516135424>")
-            .WithDescription($":white_check_mark: {user.Mention} был кикнут с сервера **{Context.Guild.Name}** \n❓Причина: ***{reason}***")
-            .WithCurrentTimestamp()
-            .WithThumbnailUrl(user.GetAvatarUrl())
-            .WithColor(Color.DarkRed)
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText($"приговор вынес {Context.User.Username}")
-                .WithIconUrl(Context.User.GetAvatarUrl());
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        await ReplyAsync(embed: EmbedHandler.Moderation(
+            "sbln кик <:roflanPominki:552795319516135424>",
+            $":white_check_mark: {user.Mention} был кикнут с сервера **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
+            user.GetAvatarUrl(),
+            Context.User.Username,
+            Context.User.GetAvatarUrl()));
     }
 
     [Command("бан")]
@@ -526,20 +502,12 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await user.BanAsync();
 
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("sbln бан <:roflanPominki:552795319516135424>")
-            .WithDescription($":white_check_mark: {user.Mention} был забанен на сервере **{Context.Guild.Name}** \n❓Причина: ***{reason}***")
-            .WithCurrentTimestamp()
-            .WithThumbnailUrl(user.GetAvatarUrl())
-            .WithColor(Color.DarkRed)
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText($"приговор вынес {Context.User.Username}")
-                .WithIconUrl(Context.User.GetAvatarUrl());
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        await ReplyAsync(embed: EmbedHandler.Moderation(
+            "sbln бан <:roflanPominki:552795319516135424>",
+            $":white_check_mark: {user.Mention} был забанен на сервере **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
+            user.GetAvatarUrl(),
+            Context.User.Username,
+            Context.User.GetAvatarUrl()));
     }
 
     private static (bool isAnonymous, string preparedMessage) ParseMailMode(string rawMessage)

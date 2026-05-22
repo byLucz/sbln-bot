@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.Commands;
+using sblngavnav5X.Core;
 
 namespace sblngavnav5X.Commands
 {
@@ -29,19 +30,7 @@ namespace sblngavnav5X.Commands
                 sunrise = dtDateTime.AddSeconds(b.sysSc.sunrise).ToLocalTime();
                 sunset = dtDateTime.AddSeconds(b.sysSc.sunset).ToLocalTime();
                 string Iconurl =  $@"http://openweathermap.org/img/wn/{models[0].icon}@2x.png";
-           var e = new EmbedBuilder()
-           {
-               Author = new EmbedAuthorBuilder()
-               {
-                   Name = "sbln погода🥵🥶",
-               },
-               Color = Color.Gold,
-               ThumbnailUrl = Iconurl,
-               Footer = new EmbedFooterBuilder()
-               {
-                   Text = "powered by openweathermap🗺"
-               }
-           };
+           var e = EmbedHandler.FieldsEmbed("sbln погода🥵🥶", Color.Gold, "powered by openweathermap🗺", Iconurl);
            e.AddField("погода на данный момент",$"в городе {city}",false);
            e.AddField("🌡температура", $"{Convert.ToDecimal(b.main.temp)-273}°",true);
                 e.AddField("🤒ощущается как", $"{Convert.ToDecimal(b.main.feels_like)-273}°",true);
@@ -52,7 +41,7 @@ namespace sblngavnav5X.Commands
                 e.AddField("💨ветер", $"{Convert.ToDecimal(b.windSc.speed)}m/s", true);
                 e.AddField("🌄восход", $"{sunrise}", true);
                 e.AddField("🌆закат", $"{sunset}", true);
-                await ReplyAsync(embed:e.Build());
+                await ReplyAsync(embed: e.Build());
            }
            else
            {

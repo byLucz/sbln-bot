@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.Commands;
+using sblngavnav5X.Core;
 using System.Text;
 
 namespace sblngavnav5X.Commands;
@@ -275,33 +276,29 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
         var shieldChoice = shieldOptions[rand.Next(shieldOptions.Count)];
         var abilitiesChoice = abilityOptions[rand.Next(abilityOptions.Count)];
 
-        var embedBuilder = new EmbedBuilder();
+        Embed embed;
 
         if (opponent != null)
         {
-            embedBuilder
+            embed = EmbedHandler.FieldsEmbed(string.Empty, Color.DarkRed, "sbln апекс🔫")
                 .WithTitle($"1X1 APEX DUEL⚔️")
                 .WithDescription($"***{Context.User.Username} VS {opponent.Username}***")
                 .AddField("Первое оружие", $"{primaryWeapon} ({primaryUpgrade})", false)
                 .AddField("Второе оружие", $"{secondaryWeapon} ({secondaryUpgrade})", false)
                 .AddField("Щит", shieldChoice, false)
                 .AddField("Способности", abilitiesChoice, false)
-                .WithColor(Color.DarkRed)
-                .WithFooter("sbln апекс🔫");
+                .Build();
         }
         else
         {
-            embedBuilder
+            embed = EmbedHandler.FieldsEmbed(string.Empty, Color.DarkerGrey, "sbln апекс🔫")
                 .WithTitle("APEX SET🗡")
                 .AddField("Первое оружие", $"{primaryWeapon} ({primaryUpgrade})", false)
                 .AddField("Второе оружие", $"{secondaryWeapon} ({secondaryUpgrade})", false)
                 .AddField("Щит", shieldChoice, false)
                 .AddField("Способности", abilitiesChoice, false)
-                .WithColor(Color.DarkerGrey)
-                .WithFooter("sbln апекс🔫");
+                .Build();
         }
-
-        var embed = embedBuilder.Build();
         var message = await ReplyAsync(embed: embed);
         var emote = Emote.Parse("<:slyrCinema:1347218953604435998>");
         await message.AddReactionAsync(emote);
