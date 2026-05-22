@@ -44,7 +44,7 @@ public static class PgApiPanelBuilder
 
     public static readonly (string Label, string Key)[] Actions =
     [
-        ("Health",       "health"),
+        ("Health-check", "health"),
         ("Проекты",      "projects"),
         ("Статус pg",    "status"),
         ("Сервисы pg",   "services"),
@@ -80,31 +80,45 @@ public static class PgApiPanelBuilder
         return builder.Build();
     }
 
-    public static Embed BuildPanelEmbed(int page)
+    private static string? _cachedPing;
+
+    public static Embed BuildPanelEmbed(int page, string? pingInfo = null)
     {
-        const int pageSize = 5;
-        var totalPages = (int)Math.Ceiling(Actions.Length / (double)pageSize);
-        page = Math.Clamp(page, 0, totalPages - 1);
+        if (pingInfo is not null) _cachedPing = pingInfo;
 
-        var listed = string.Join('\n', Actions
-            .Skip(page * pageSize).Take(pageSize)
-            .Select((x, i) => $"{i + 1}. {x.Label}"));
+        var eb = EmbedHandler.FieldsEmbed("Панель управления pgAPI", Color.Teal, "sbln x lois.media")
+            .WithDescription("[PG Container v0.2](https://github.com/loismedia/pg)");
 
-        return EmbedHandler.FieldsEmbed("Панель управления pgAPI", Color.Teal, "sbln x lois.media")
-            .WithDescription("[PG Container v0.2](https://github.com/loismedia/pg)")
-            .AddField("Доступные команды:", listed)
-            .Build();
+        if (_cachedPing is not null)
+            eb.AddField("⏱️ Время отклика", _cachedPing, inline: true);
+
+        return eb.Build();
     }
 }
 
 [RequirePgRole]
 public class PgApiCommands : ModuleBase<SocketCommandContext>
 {
+    private readonly PgApiService _pgApi;
+
+    public PgApiCommands(PgApiService pgApi)
+    {
+        _pgApi = pgApi;
+    }
+
     [Command("пг")]
     public async Task PgApiPanel()
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        string health = await _pgApi.HealthAsync();
+        sw.Stop();
+
+        string pingInfo = health.StartsWith("❌")
+            ? "недоступен"
+            : $"{sw.ElapsedMilliseconds} мс";
+
         await Context.Channel.SendMessageAsync(
-            embed: PgApiPanelBuilder.BuildPanelEmbed(0),
+            embed: PgApiPanelBuilder.BuildPanelEmbed(0, pingInfo),
             components: PgApiPanelBuilder.BuildPageComponents(0));
     }
 }
@@ -166,7 +180,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
 
         bool success = !result.StartsWith("❌");
         await FollowupAsync(
-            embed: EmbedHandler.Simple($"pgAPI • {action}", result, success ? Color.DarkBlue : Color.DarkRed, "pgAPI"),
+            embed: EmbedHandler.Simple($"pgAPI/{action}", result, success ? Color.DarkBlue : Color.DarkRed, "sbln x lois.media"),
             ephemeral: true);
     }
 }

@@ -21,24 +21,23 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         _client = client;
     }
 
-    //[Command("111")]
-    //[RequireOwner]
-    //public async Task ChangeLog()
-    //{
-    //    var EmbedBuilder = new EmbedBuilder()
-    //    .WithDescription($"{Format.Bold($"devlog ver {Utils.sblnver}")} - Обновление внутреннего дизайна, MariaDB, sbln.portal и шефские рецепты\n" +
-    //       $"• Начинается эра веб-панели sbln.portal, которая будет предоставлять полный coverage для ботика и открывать окна новых возможностей\n" +
-    //       $"• Из основного: полное хранение данных в MariaDB, команда {Format.Bold("х рецепт")} для вкуснейших блюд от шефа и целая гора оптимизаций и улучшений\n" +
-    //       $"• [Полный чендж-лог доступен на сайте 🌀](https://lois.media/sbln/v5.5.0)")
-    //    .WithFooter(footer =>
-    //    {
-    //        footer
-    //        .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
-    //        .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
-    //    });
-    //    Embed embed = EmbedBuilder.Build();
-    //    await ReplyAsync(embed: embed);
-    //}
+    [Command("111")]
+    [RequireOwner]
+    public async Task ChangeLog()
+    {
+        var embed = new EmbedBuilder()
+            .WithDescription(
+                $"{Format.Bold($"devlog ver {Utils.sblnver}")} — Накопительный апдейт качества и стабильности\n" +
+                $"• Серия фиксов core-логики, обработчиков и edge-кейсов\n" +
+                $"• Централизованный embed builder, улучшен command handler и HTTP pipeline\n" +
+                $"• Музыка: команда {Format.Bold("голосование|голос")} для выбора любых чиллаутов\n" +
+                $"• [Полный чендж-лог на сайте 🌀](https://lois.media/sbln/v5.6.0)")
+            .WithFooter(footer => footer
+                .WithText("part of Lois Media Group😋 · dev by lucz@lois.media🏃")
+                .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x"))
+            .Build();
+        await ReplyAsync(embed: embed);
+    }
 
     [Command("ава")]
     public async Task Avatar([Optional] string size, [Optional] IGuildUser User)

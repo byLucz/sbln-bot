@@ -362,8 +362,6 @@ namespace sblngavnav5X.Commands
             }
         }
 
-        // ── Season rating ────────────────────────────────────────────────────
-
         [Command("рейтинг")]
         public async Task ShowSeasonRatingAsync(int? season = null)
         {
