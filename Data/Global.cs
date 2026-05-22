@@ -31,6 +31,12 @@ namespace sblngavnav5X.Data
 
         public const string gBooksApi = "INSERT_HERE";
 
+        public const string pgApiBaseUrl = "INSERT_HERE";
+
+        public const string pgApiToken = "INSERT_HERE";
+
+        public static readonly ulong pgApiRoleId = 11111111111;
+
         public const int streamUpdTime = 600;
 
         public const string streamNotifCh = "twitch";
@@ -44,6 +50,8 @@ namespace sblngavnav5X.Data
         public static string govorVM = "выкл";
 
         public const int booksSeason = 2;
+
+        public const string booksJsonPath = "INSERT_HERE";
 
         public static string[] greetList = new[]
         {

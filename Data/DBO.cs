@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using MySqlConnector;
+using System.Text.Json;
 using static sblngavnav5X.Data.DataRoots;
 using static sblngavnav5X.Data.DataRoots.States;
 
@@ -444,6 +445,71 @@ namespace sblngavnav5X.Data
             }
 
             return list;
+        }
+
+        private static readonly object _exportLock = new();
+
+        public static void ExportBooksJson(string path, Dictionary<string, string> userNames)
+        {
+            var books = new Dictionary<int, BookExportDto>();
+
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            const string sql = @"
+                SELECT b.id, b.title, b.authors, b.suggested_by, b.season,
+                       r.user_id, r.score_plot, r.score_style, r.score_characters,
+                       r.score_originality, r.score_vibe, r.final_score
+                FROM books b
+                LEFT JOIN booksRating r ON r.book_id = b.id
+                ORDER BY b.id";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            using var reader = cmd.ExecuteReader();
+
+            while (reader.Read())
+            {
+                int id = reader.GetInt32("id");
+                if (!books.TryGetValue(id, out var book))
+                {
+                    book = new BookExportDto
+                    {
+                        id         = id,
+                        title      = reader.GetString("title"),
+                        authors    = reader.GetString("authors"),
+                        suggestedBy = reader.GetString("suggested_by"),
+                        season     = reader.GetInt32("season")
+                    };
+                    books[id] = book;
+                }
+
+                if (!reader.IsDBNull(reader.GetOrdinal("user_id")))
+                {
+                    string uid  = reader.GetString("user_id");
+                    string name = userNames.TryGetValue(uid, out var n) ? n : uid;
+                    book.ratings[name] = new RatingExportDto
+                    {
+                        scores = new[]
+                        {
+                            reader.GetInt32("score_plot"),
+                            reader.GetInt32("score_style"),
+                            reader.GetInt32("score_characters"),
+                            reader.GetInt32("score_originality"),
+                            reader.GetInt32("score_vibe")
+                        },
+                        final = Math.Round(reader.GetDouble("final_score"), 1)
+                    };
+                }
+            }
+
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            string json = JsonSerializer.Serialize(books.Values.ToList(), options);
+
+            lock (_exportLock)
+            {
+                string tmp = path + ".tmp";
+                File.WriteAllText(tmp, json);
+                File.Move(tmp, path, overwrite: true);
+            }
         }
 
         public static List<RatingEntry> GetAllRatings()

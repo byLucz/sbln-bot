@@ -99,6 +99,22 @@ namespace sblngavnav5X.Data
             public double FinalScore { get; set; }
         }
 
+        public sealed class BookExportDto
+        {
+            public int id { get; set; }
+            public string title { get; set; } = "";
+            public string authors { get; set; } = "";
+            public string suggestedBy { get; set; } = "";
+            public int season { get; set; }
+            public Dictionary<string, RatingExportDto> ratings { get; set; } = new();
+        }
+
+        public sealed class RatingExportDto
+        {
+            public int[] scores { get; set; } = [];
+            public double final { get; set; }
+        }
+
         public class MealResponse
         {
             [JsonPropertyName("meals")]

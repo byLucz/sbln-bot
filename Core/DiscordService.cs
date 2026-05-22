@@ -124,6 +124,7 @@ namespace sblngavnav5X.Core
                 .AddSingleton<WeatherHelp>()
                 .AddSingleton<StreamMonoService>()
                 .AddSingleton<WelcomeService>()
+                .AddSingleton<PgApiService>()
                 .AddSingleton<GuildConfig>(_ => new GuildConfig())
                 .AddSingleton<GovorConfig>(_ => new GovorConfig())
                 .AddLavaNode(x =>
