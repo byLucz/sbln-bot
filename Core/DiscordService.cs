@@ -52,7 +52,38 @@ namespace sblngavnav5X.Core
             await DataBase.ApplyLastStatusAsync(_client);
             DataBase.DownloadStreamers();
 
-            await Task.Delay(-1);
+            using var cts = new CancellationTokenSource();
+
+            Console.CancelKeyPress += (_, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+            };
+
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
+
+            try
+            {
+                await Task.Delay(-1, cts.Token);
+            }
+            catch (TaskCanceledException) { }
+
+            await ShutdownAsync();
+        }
+
+        private async Task ShutdownAsync()
+        {
+            await LoggingService.LogInformationAsync("EXSRV", "Завершение работы...");
+
+            foreach (var guildId in _audioService.GetActiveGuildIds().ToArray())
+            {
+                try { await _audioService.ForceLeaveAsync(guildId); } catch { }
+            }
+
+            try { await _client.LogoutAsync(); } catch { }
+            try { await _client.StopAsync(); } catch { }
+
+            _services.Dispose();
         }
 
         private void SubscribeDiscordEvents()

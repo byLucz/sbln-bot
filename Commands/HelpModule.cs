@@ -72,7 +72,8 @@ public class HelpAllModule : ModuleBase<SocketCommandContext>
             return;
         }
 
-        var user = msg.Channel.GetUserAsync(reaction.UserId).Result;
+        var user = await msg.Channel.GetUserAsync(reaction.UserId);
+        if (user is null) return;
         await msg.RemoveReactionAsync(reaction.Emote, user);
 
         await msg.ModifyAsync(m => m.Embed = _pages[_currentPage]);
