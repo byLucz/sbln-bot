@@ -1,11 +1,12 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
+using sblngavnav5X.Core;
+using sblngavnav5X.Data;
+using sblngavnav5X.Services;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
-using sblngavnav5X.Services;
-using sblngavnav5X.Data;
 
 namespace sblngavnav5X.Commands;
 
@@ -20,24 +21,23 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         _client = client;
     }
 
-    //[Command("111")]
-    //[RequireOwner]
-    //public async Task ChangeLog()
-    //{
-    //    var EmbedBuilder = new EmbedBuilder()
-    //    .WithDescription($"{Format.Bold($"devlog ver {Utils.sblnver}")} - Обновление внутреннего дизайна, MariaDB, sbln.portal и шефские рецепты\n" +
-    //       $"• Начинается эра веб-панели sbln.portal, которая будет предоставлять полный coverage для ботика и открывать окна новых возможностей\n" +
-    //       $"• Из основного: полное хранение данных в MariaDB, команда {Format.Bold("х рецепт")} для вкуснейших блюд от шефа и целая гора оптимизаций и улучшений\n" +
-    //       $"• [Полный чендж-лог доступен на сайте 🌀](https://lois.media/sbln/v5.5.0)")
-    //    .WithFooter(footer =>
-    //    {
-    //        footer
-    //        .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
-    //        .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
-    //    });
-    //    Embed embed = EmbedBuilder.Build();
-    //    await ReplyAsync(embed: embed);
-    //}
+    [Command("111")]
+    [RequireOwner]
+    public async Task ChangeLog()
+    {
+        var embed = new EmbedBuilder()
+            .WithDescription(
+                $"{Format.Bold($"devlog ver {Utils.sblnver}")} — Накопительный апдейт качества и стабильности\n" +
+                $"• Серия фиксов core-логики, обработчиков и edge-кейсов\n" +
+                $"• Централизованный embed builder, улучшен command handler и HTTP pipeline\n" +
+                $"• Музыка: команда {Format.Bold("голосование|голос")} для выбора любых чиллаутов\n" +
+                $"• [Полный чендж-лог на сайте 🌀](https://lois.media/sbln/v5.6.0)")
+            .WithFooter(footer => footer
+                .WithText("part of Lois Media Group😋 · dev by lucz@lois.media🏃")
+                .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x"))
+            .Build();
+        await ReplyAsync(embed: embed);
+    }
 
     [Command("ава")]
     public async Task Avatar([Optional] string size, [Optional] IGuildUser User)
@@ -51,6 +51,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                 "1" => sizen = 64,
                 "2" => sizen = 256,
                 "3" => sizen = 512,
+                _ => sizen,
             };
         }
         catch
@@ -88,19 +89,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("апт")]
     public async Task BotUptime()
     {
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("Время работы бота⌛")
-            .WithDescription(
-            $"🦾 - {DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()}" 
-            )
-               .WithFooter(footer =>
-               {
-                   footer
-                   .WithText("sbln статистикс🔭");
-               });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
-
+        await ReplyAsync(embed: EmbedHandler.Simple(
+            "Время работы бота⌛",
+            $"🦾 - {DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()}",
+            Color.Blue,
+            "sbln статистикс🔭"));
     }
 
     [Command("ст", RunMode = RunMode.Async)]
@@ -121,15 +114,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         await _client.SetStatusAsync(statustype);
         await _client.SetGameAsync(args);
 
-        var EmbedBuilder = new EmbedBuilder()
-               .WithDescription($"Игра изменена на **{args}** со статусом **{status}** ✅")
-               .WithFooter(footer =>
-               {
-                   footer
-                   .WithText("sbln статус🎫");
-               });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        await ReplyAsync(embed: EmbedHandler.Simple(
+            string.Empty,
+            $"Игра изменена на **{args}** со статусом **{status}** ✅",
+            Color.Green,
+            "sbln статус🎫"));
     }
 
     [Command("актив")]
@@ -159,15 +148,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         DataBase.AddStatus(finalText ?? "","", finalLink ?? "", actType.ToString());
         await _client.SetGameAsync(finalText, finalLink, actType);
 
-        var EmbedBuilder = new EmbedBuilder()
-               .WithDescription($"Активность установлена: **{actType}** - **{finalText}** ✅")
-               .WithFooter(footer =>
-               {
-                   footer
-                   .WithText("sbln статус🎫");
-               });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        await ReplyAsync(embed: EmbedHandler.Simple(
+            string.Empty,
+            $"Активность установлена: **{actType}** - **{finalText}** ✅",
+            Color.Green,
+            "sbln статус🎫"));
     }
 
     [Command("инфа разрабов")]
@@ -181,7 +166,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
          $"🔹Активность: **{Context.Client.Activity}**\n" +
          $"🔹Cостояние: **{Context.Client.ConnectionState}**\n" +
          $"🔹Состояние токена: **{Context.Client.TokenType} {Context.Client.LoginState}**\n" +
-         $"🔹Задержка выполнения: **{Context.Client.Latency - 37}ms **\n" +
+         $"🔹Задержка выполнения: **{Math.Max(0, Context.Client.Latency - 37)}ms **\n" +
          $"🔹Время процесса **{DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()}**\n" +
          $"🔹Идентификатор процесса: **{Environment.CurrentManagedThreadId}**\n" +
          $"🔹Директория процесса: **{Environment.CurrentDirectory}**\n" +
@@ -322,23 +307,64 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("почта")]
     public async Task SendMailAsync(SocketGuildUser user = null, [Remainder] string message = null)
     {
+        var hasAttachments = Context.Message.Attachments.Any();
+
         if (user == null)
         {
             await ReplyAsync("Укажи пользователя через @упоминание");
             return;
         }
-        if (string.IsNullOrWhiteSpace(message))
+
+        if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
         {
-            await ReplyAsync("Укажи сообщение, которое нужно отправить");
+            await ReplyAsync("Укажи сообщение или приложи вложение, которое нужно отправить");
+            return;
+        }
+
+        var (isAnonymous, preparedMessage) = ParseMailMode(message);
+        if (string.IsNullOrWhiteSpace(preparedMessage) && !hasAttachments)
+        {
+            await ReplyAsync("После флага анонимности нужно указать текст или приложить вложение");
             return;
         }
 
         try
         {
-            await user.SendMessageAsync(message);
+            var outgoingEmbed = new EmbedBuilder()
+                .WithColor(isAnonymous ? Color.DarkGrey : Color.Blue)
+                .WithTitle("📩 Вам письмо // sbln почта📧")
+                .WithDescription(string.IsNullOrWhiteSpace(preparedMessage) ? "*пустое сообщение*" : preparedMessage)
+                .WithFooter("↩️ Для ответа отправителю сделай реплай на это сообщение");
+
+            if (isAnonymous)
+            {
+                outgoingEmbed.AddField("Отправитель", "Анонимно", true);
+            }
+            else
+            {
+                outgoingEmbed
+                    .AddField("Отправитель:", $"{Context.User.Username}", true)
+                    .AddField("Получатель:", $"{user.Username}", true);
+            }
+
+            if (hasAttachments)
+            {
+                var attachmentLinks = string.Join('\n', Context.Message.Attachments.Select(a => a.Url));
+                outgoingEmbed.AddField("Вложения:", attachmentLinks);
+            }
+
+            var sentMessage = await user.SendMessageAsync(embed: outgoingEmbed.Build());
+            CommandHandler.RegisterMailReplyRoute(sentMessage.Id, Context.User.Id, user.Id, isAnonymous);
+
+            await LoggingService.LogInformationAsync(
+                "XMAIL",
+                $"SEND anonymous={isAnonymous} sender={Context.User.Id} recipient={user.Id} content={preparedMessage}");
+
             var embed = new EmbedBuilder()
                 .WithColor(Color.Green)
-                .WithDescription($"Сообщение: `{message}` отправлено в ЛС: {user.Mention}")
+                .WithDescription($"Сообщение отправлено в ЛС: {user.Mention}")
+                .AddField("Режим:", isAnonymous ? "Анон" : "Обычный", true)
+                .AddField("Вложения:", Context.Message.Attachments.Count, true)
                 .WithThumbnailUrl(user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl())
                 .WithFooter("sbln почта📧")
                 .Build();
@@ -360,40 +386,33 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("версия")]
     public async Task BotVersionInfo()
     {
+        var packages = DataBase.GetAllPackageVersions();
+
         var botzname = new EmbedAuthorBuilder()
-        .WithName($"sblngavna ver {Utils.sblnver}");
+            .WithName($"sblngavna ver {Utils.sblnver}");
+
         var copy = new EmbedFooterBuilder()
-        .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
+            .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
             .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
-        var r = new EmbedFieldBuilder()
-        .WithName("Discord.Net")
-        .WithValue("***3.18.0 (API v10)***");
-        var r2 = new EmbedFieldBuilder()
-        .WithName("Victoria")
-        .WithValue("***7.0.5*** ");
-        var r3 = new EmbedFieldBuilder()
-        .WithName("TwitchLib")
-        .WithValue("***3.1.1*** ");
-        var r4 = new EmbedFieldBuilder()
-        .WithName("Lavalink + AudioSeven (LavaSrc x yt-source x yt-cipher)")
-        .WithValue("***4.1.2*** // ***4.8.1 x 1.18.0 x KIKKIA-PUBLIC***");
-        var r5 = new EmbedFieldBuilder()
-        .WithName("GovorNGN (beta)")
-        .WithValue("***1.5*** ");
-        var r6 = new EmbedFieldBuilder()
-        .WithName("MariaDB")
-        .WithValue("***11.8.2*** ");
-        var embed = new EmbedBuilder()
-            .AddField(r)
-            .AddField(r2)
-            .AddField(r4)
-            .AddField(r3)
-            .AddField(r5)
-            .AddField(r6)
-            .WithAuthor(botzname)
-            .WithFooter(copy)
-            .Build();
-        await ReplyAsync(embed: embed);
+
+        const int maxFieldsPerEmbed = 15;
+
+        for (int i = 0; i < packages.Count; i += maxFieldsPerEmbed)
+        {
+            var chunk = packages.Skip(i).Take(maxFieldsPerEmbed);
+
+            var embedBuilder = new EmbedBuilder()
+                .WithAuthor(botzname)
+                .WithFooter(copy)
+                .WithColor(Color.LighterGrey);
+
+            foreach (var item in chunk)
+            {
+                embedBuilder.AddField(item.PackageName, $"***{item.PackageVersion}***", false);
+            }
+
+            await ReplyAsync(embed: embedBuilder.Build());
+        }
     }
 
     [Command("позови")]
@@ -461,20 +480,12 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await user.KickAsync();
 
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("sbln кик <:roflanPominki:552795319516135424>")
-            .WithDescription($":white_check_mark: {user.Mention} был кикнут с сервера **{Context.Guild.Name}** \n❓Причина: ***{reason}***")
-            .WithCurrentTimestamp()
-            .WithThumbnailUrl(user.GetAvatarUrl())
-            .WithColor(Color.DarkRed)
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText($"приговор вынес {Context.User.Username}")
-                .WithIconUrl(Context.User.GetAvatarUrl());
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        await ReplyAsync(embed: EmbedHandler.Moderation(
+            "sbln кик <:roflanPominki:552795319516135424>",
+            $":white_check_mark: {user.Mention} был кикнут с сервера **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
+            user.GetAvatarUrl(),
+            Context.User.Username,
+            Context.User.GetAvatarUrl()));
     }
 
     [Command("бан")]
@@ -490,20 +501,33 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await user.BanAsync();
 
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("sbln бан <:roflanPominki:552795319516135424>")
-            .WithDescription($":white_check_mark: {user.Mention} был забанен на сервере **{Context.Guild.Name}** \n❓Причина: ***{reason}***")
-            .WithCurrentTimestamp()
-            .WithThumbnailUrl(user.GetAvatarUrl())
-            .WithColor(Color.DarkRed)
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText($"приговор вынес {Context.User.Username}")
-                .WithIconUrl(Context.User.GetAvatarUrl());
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        await ReplyAsync(embed: EmbedHandler.Moderation(
+            "sbln бан <:roflanPominki:552795319516135424>",
+            $":white_check_mark: {user.Mention} был забанен на сервере **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
+            user.GetAvatarUrl(),
+            Context.User.Username,
+            Context.User.GetAvatarUrl()));
     }
+
+    private static (bool isAnonymous, string preparedMessage) ParseMailMode(string rawMessage)
+    {
+        if (string.IsNullOrWhiteSpace(rawMessage))
+            return (false, string.Empty);
+
+        var text = rawMessage.Trim();
+        string[] anonymousPrefixes = new[] { "анонимно", "анон", "anon" };
+
+        foreach (var prefix in anonymousPrefixes)
+        {
+            if (text.Equals(prefix, StringComparison.OrdinalIgnoreCase))
+                return (true, string.Empty);
+
+            if (text.StartsWith($"{prefix} ", StringComparison.OrdinalIgnoreCase))
+                return (true, text[(prefix.Length + 1)..].Trim());
+        }
+
+        return (false, text);
+    }
+
 }
 

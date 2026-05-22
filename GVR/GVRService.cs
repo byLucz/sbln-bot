@@ -11,7 +11,7 @@ namespace sblngavnav5X.GVR
     {
         private readonly GovorConfig _govorilka;
         private readonly GuildConfig _guild;
-        public string chips;
+
         public GVRService(GovorConfig govor, GuildConfig guild)
         {
             _govorilka = govor;
@@ -30,7 +30,7 @@ namespace sblngavnav5X.GVR
             .WithName("sbln говорилка🎤📓")
             .WithIconUrl("https://emojio.ru/images/apple-b/1f9e0.png");
             })
-            .WithFooter("powered by GovorNGN (beta 1.5)")
+            .WithFooter("powered by GovorNGN")
             .AddField("доб+", "добавляет определенное кол-во сообщений, переписывая все что до этого было в бд")
             .AddField("доб", "добавляет определенное кол-во сообщений в бд")
             .AddField("чистись", "очищает все говно из бд")
@@ -49,6 +49,7 @@ namespace sblngavnav5X.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task GetSettings()
         {
+            string chips;
             var cfg = _guild;
             var user = Context.User as SocketGuildUser;
             if (_govorilka.Rand == true)
@@ -61,13 +62,13 @@ namespace sblngavnav5X.GVR
             }
             var embed = new EmbedBuilder();
             embed.WithAuthor("sbln говорилка/настройки🎤📓", "https://emojio.ru/images/apple-b/1f9e0.png");
-            embed.WithFooter("powered by GovorNGN (beta 1.5)");
+            embed.WithFooter("powered by GovorNGN");
             embed.AddField("шаг рандома", $"**{cfg.govorilka.Step}**", true);
             embed.AddField("число слов", $"**{chips}**", true);
             embed.AddField("шанс ролла", $"**{cfg.govorilka.Chance}%**", true);
             embed.AddField("кол-во сообщений подзагрузки", $"**{cfg.govorilka.Collection}**", true);
             embed.AddField("время подзагрузки", $"**{Utils.govorUpdTime/1000} сек**", true);
-            embed.AddField("режим вербальной нищеты", $"**{Utils.verbalMode}**", true);
+            embed.AddField("режим вербальной нищеты", $"**{Utils.govorVM}**", true);
 
             await ReplyAsync("", false, embed.Build());
         }
@@ -91,7 +92,7 @@ namespace sblngavnav5X.GVR
             {
                 Footer = new EmbedFooterBuilder()
                 {
-                    Text = "powered by GovorNGN (beta 1.5)"
+                    Text = "powered by GovorNGN"
                 },
                 Author = new EmbedAuthorBuilder()
                 {
@@ -107,14 +108,19 @@ namespace sblngavnav5X.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task TimeMS(int amount)
         {
-            CommandHandler.t.Interval = amount;
-            Utils.govorUpdTime = amount;
+            if (amount <= 0)
+            {
+                await ReplyAsync("Укажи значение больше 0.");
+                return;
+            }
+
+            CommandHandler.UpdateTimerInterval(amount);
 
             var m = new EmbedBuilder()
             {
                 Footer = new EmbedFooterBuilder()
                 {
-                    Text = "powered by GovorNGN (beta 1.5)"
+                    Text = "powered by GovorNGN"
                 },
                 Author = new EmbedAuthorBuilder()
                 {
@@ -122,7 +128,8 @@ namespace sblngavnav5X.GVR
                 },
                 Color = Color.LighterGrey
             };
-            m.AddField($"время подзагрузки обновлено на", $"***{amount/1000} cекунд***", true);
+
+            m.AddField("время подзагрузки обновлено на", $"***{amount / 1000.0:0.##} секунд***", true);
             await ReplyAsync(embed: m.Build());
         }
 
@@ -135,7 +142,7 @@ namespace sblngavnav5X.GVR
             {
                 Footer = new EmbedFooterBuilder()
                 {
-                    Text = "powered by GovorNGN (beta 1.5)"
+                    Text = "powered by GovorNGN"
                 },
                 Author = new EmbedAuthorBuilder()
                 {
@@ -164,7 +171,7 @@ namespace sblngavnav5X.GVR
             {
                 Footer = new EmbedFooterBuilder()
                 {
-                    Text = "powered by GovorNGN (beta 1.5)"
+                    Text = "powered by GovorNGN"
                 },
                 Author = new EmbedAuthorBuilder()
                 {
@@ -190,7 +197,7 @@ namespace sblngavnav5X.GVR
                 {
                     Footer = new EmbedFooterBuilder()
                     {
-                        Text = "powered by GovorNGN (beta 1.5)"
+                        Text = "powered by GovorNGN"
                     },
                     Author = new EmbedAuthorBuilder()
                     {
@@ -214,7 +221,7 @@ namespace sblngavnav5X.GVR
                 {
                     Footer = new EmbedFooterBuilder()
                     {
-                        Text = "powered by GovorNGN (beta 1.5)"
+                        Text = "powered by GovorNGN"
                     },
                     Author = new EmbedAuthorBuilder()
                     {
@@ -239,7 +246,7 @@ namespace sblngavnav5X.GVR
                 {
                     Footer = new EmbedFooterBuilder()
                     {
-                        Text = "powered by GovorNGN (beta 1.5)"
+                        Text = "powered by GovorNGN"
                     },
                     Author = new EmbedAuthorBuilder()
                     {
@@ -265,7 +272,7 @@ namespace sblngavnav5X.GVR
             {
                 Footer = new EmbedFooterBuilder()
                 {
-                    Text = "powered by GovorNGN (beta 1.5)"
+                    Text = "powered by GovorNGN"
                 },
                 Author = new EmbedAuthorBuilder()
                 {
@@ -287,13 +294,14 @@ namespace sblngavnav5X.GVR
                 var clr = perekl switch
                 {
                     "вкл" => _govorilka.VerbalAbuseBySheff = true,
-                    "выкл" => _govorilka.VerbalAbuseBySheff = false
+                    "выкл" => _govorilka.VerbalAbuseBySheff = false,
+                    _ => _govorilka.VerbalAbuseBySheff = false
                 };
                 var m = new EmbedBuilder()
                 {
                     Footer = new EmbedFooterBuilder()
                     {
-                        Text = "powered by GovorNGN (beta 1.5)"
+                        Text = "powered by GovorNGN"
                     },
                     Author = new EmbedAuthorBuilder()
                     {
@@ -303,7 +311,7 @@ namespace sblngavnav5X.GVR
                 };
                 m.AddField($"режим вербальной нищеты переведен в положение", $"***{perekl}***", true);
                 await ReplyAsync(embed: m.Build());
-                Utils.verbalMode = perekl;
+                Utils.govorVM = perekl;
             }
             catch
             {
@@ -326,7 +334,7 @@ namespace sblngavnav5X.GVR
                 {
                     Footer = new EmbedFooterBuilder()
                     {
-                        Text = "powered by GovorNGN (beta 1.5)"
+                        Text = "powered by GovorNGN"
                     },
                     Author = new EmbedAuthorBuilder()
                     {
@@ -348,7 +356,7 @@ namespace sblngavnav5X.GVR
             {
                 Footer = new EmbedFooterBuilder()
                 {
-                    Text = "powered by GovorNGN (beta 1.5)"
+                    Text = "powered by GovorNGN"
                 },
                 Author = new EmbedAuthorBuilder()
                 {

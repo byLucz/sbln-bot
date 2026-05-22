@@ -16,6 +16,9 @@ namespace sblngavnav5X.Audio
         private static readonly Regex SoundCloudPrefixRegex =
             new(@"^\s*(?:склауд|саундклауд)\s+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+        private static readonly Regex YandexPrefixRegex =
+            new(@"^\s*(?:яндекс|санкции)\s+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
         public static string Normalize(string raw, out int playlistIndex)
         {
             playlistIndex = 0;
@@ -27,6 +30,13 @@ namespace sblngavnav5X.Audio
                 searchQuery = m.Groups[1].Value.Trim().TrimEnd(')', ']', '}', '>', '.', ',', ';');
             else
                 searchQuery = LeadingCommandRegex.Replace(searchQuery, "").Trim();
+
+            if (searchQuery.StartsWith("ftts://", StringComparison.OrdinalIgnoreCase))
+            {
+                searchQuery = NormalizeFloweryTtsQuery(searchQuery);
+                searchQuery = searchQuery.Replace("%", "%25", StringComparison.Ordinal);
+                return searchQuery;
+            }
 
             if (searchQuery.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
                 searchQuery = searchQuery.Replace("youtu.be/", "youtube.com/watch?v=", StringComparison.OrdinalIgnoreCase);
@@ -59,10 +69,47 @@ namespace sblngavnav5X.Audio
                 searchQuery = "scsearch:" + q;
             }
 
+            if (!Uri.TryCreate(searchQuery, UriKind.Absolute, out _) && YandexPrefixRegex.IsMatch(searchQuery))
+            {
+                var q = YandexPrefixRegex.Replace(searchQuery, "").Trim();
+                searchQuery = "ymsearch:" + q;
+            }
+
             if (!Uri.TryCreate(searchQuery, UriKind.Absolute, out _) && !HasKnownSearchPrefix(searchQuery))
                 searchQuery = "ytsearch:" + searchQuery;
 
             return searchQuery;
+        }
+
+        private static string NormalizeFloweryTtsQuery(string query)
+        {
+            const string prefix = "ftts://";
+
+            if (string.IsNullOrWhiteSpace(query) ||
+                !query.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return query;
+
+            var rest = query[prefix.Length..].Trim();
+            if (string.IsNullOrWhiteSpace(rest))
+                return query;
+
+            var qIndex = rest.IndexOf('?');
+
+            var textPart = qIndex >= 0 ? rest[..qIndex] : rest;
+            var optionsPart = qIndex >= 0 ? rest[qIndex..] : string.Empty;
+
+            try
+            {
+                textPart = Uri.UnescapeDataString(textPart);
+            }
+            catch {}
+
+            while (textPart.Contains("  ", StringComparison.Ordinal))
+                textPart = textPart.Replace("  ", " ", StringComparison.Ordinal);
+
+            textPart = Uri.EscapeDataString(textPart);
+
+            return prefix + textPart + optionsPart;
         }
 
         private static Dictionary<string, string> ParseQuery(string query)
@@ -85,7 +132,9 @@ namespace sblngavnav5X.Audio
         {
             return q.StartsWith("ytsearch:", StringComparison.OrdinalIgnoreCase) ||
                    q.StartsWith("scsearch:", StringComparison.OrdinalIgnoreCase) ||
-                   q.StartsWith("spsearch:", StringComparison.OrdinalIgnoreCase);
+                   q.StartsWith("ymsearch:", StringComparison.OrdinalIgnoreCase) ||
+                   q.StartsWith("spsearch:", StringComparison.OrdinalIgnoreCase) ||
+                   q.StartsWith("ftts:", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

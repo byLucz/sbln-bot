@@ -1,35 +1,14 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using MySqlConnector;
+using System.Text.Json;
+using static sblngavnav5X.Data.DataRoots;
+using static sblngavnav5X.Data.DataRoots.States;
 
 namespace sblngavnav5X.Data
 {
     public static class DataBase
     {
-        public static int realID;
-        public static List<string> yaicaList, volkList, patList, fffList, hugList, kissList, kusList, buhatList, ebaloList;
-        public static List<string> streamers, streamerIds;
-        public static List<string> statusText, statusPos, statusLink, statusType;
-
-        static DataBase()
-        {
-            yaicaList = new List<string>();
-            volkList = new List<string>();
-            patList = new List<string>();
-            fffList = new List<string>();
-            hugList = new List<string>();
-            kissList = new List<string>();
-            kusList = new List<string>();
-            buhatList = new List<string>();
-            ebaloList = new List<string>();
-            streamers = new List<string>();
-            streamerIds = new List<string>();
-            statusText = new List<string>();
-            statusPos = new List<string>();
-            statusLink = new List<string>();
-            statusType = new List<string>();
-        }
-
         public static string GetRandomMeme(string columnName)
         {
             using var conn = new MySqlConnection(Utils.connectionString);
@@ -66,18 +45,18 @@ namespace sblngavnav5X.Data
             using (var cmd = new MySqlCommand(sqlStrims, conn))
             using (var reader = cmd.ExecuteReader())
             {
-                streamers.Clear();
+                States.Streamers.Clear();
                 while (reader.Read())
-                    streamers.Add(reader.GetString("strimaki"));
+                    Streamers.Add(reader.GetString("strimaki"));
             }
 
             const string sqlIds = "SELECT puk FROM streamersid";
             using (var cmd = new MySqlCommand(sqlIds, conn))
             using (var reader = cmd.ExecuteReader())
             {
-                streamerIds.Clear();
+                StreamerIds.Clear();
                 while (reader.Read())
-                    streamerIds.Add(reader.GetString("puk"));
+                    StreamerIds.Add(reader.GetString("puk"));
             }
         }
 
@@ -138,17 +117,17 @@ namespace sblngavnav5X.Data
             using var cmd = new MySqlCommand(sql, conn);
             using var reader = cmd.ExecuteReader();
 
-            statusText.Clear();
-            statusPos.Clear();
-            statusLink.Clear();
-            statusType.Clear();
+            StatusText.Clear();
+            StatusPos.Clear();
+            StatusLink.Clear();
+            StatusType.Clear();
 
             while (reader.Read())
             {
-                statusText.Add(reader.GetString("StatusText"));
-                statusPos.Add(reader.GetString("StatusPos"));
-                statusLink.Add(reader.GetString("StatusLink"));
-                statusType.Add(reader.GetString("StatusType"));
+                StatusText.Add(reader.GetString("StatusText"));
+                StatusPos.Add(reader.GetString("StatusPos"));
+                StatusLink.Add(reader.GetString("StatusLink"));
+                StatusType.Add(reader.GetString("StatusType"));
             }
         }
 
@@ -252,7 +231,7 @@ namespace sblngavnav5X.Data
                     r.GetString("title"),
                     r.GetString("authors"),
                     r.GetString("image"),
-                    DateTime.Parse(r.GetString("selected_date")),
+                    r.GetDateTime("selected_date"),
                     r.GetString("suggested_by")
                 );
             }
@@ -335,17 +314,6 @@ namespace sblngavnav5X.Data
             return count > 0;
         }
 
-        public class BookWithRating
-        {
-            public int Id { get; set; }
-            public string Title { get; set; }
-            public string Authors { get; set; }
-            public string SuggestedBy { get; set; }
-            public double AvgScore { get; set; }
-            public int Votes { get; set; }
-            public string Image { get; set; }
-        }
-
         public static List<BookWithRating> GetBooksWithRatings(int? season)
         {
             var list = new List<BookWithRating>();
@@ -354,24 +322,27 @@ namespace sblngavnav5X.Data
 
             string sql =
                 @"SELECT b.id,
-                    b.title,
-                    b.authors,
-                    b.suggested_by,
-                    b.image,
-                COALESCE(r.avg_score, 0) AS avg_score,
-                COALESCE(r.votes, 0)     AS votes
-                FROM books b
-                LEFT JOIN (
-                    SELECT book_id,
-                            ROUND(AVG(final_score), 1) AS avg_score,
-                            COUNT(*)                   AS votes
-                    FROM booksRating
-                    GROUP BY book_id) 
-                r ON r.book_id = b.id
-                ORDER BY avg_score DESC, votes DESC, b.id ASC";
+            b.title,
+            b.authors,
+            b.suggested_by,
+            b.image,
+            COALESCE(r.avg_score, 0) AS avg_score,
+            COALESCE(r.votes, 0)     AS votes
+          FROM books b
+          LEFT JOIN (
+              SELECT book_id,
+                     ROUND(AVG(final_score), 1) AS avg_score,
+                     COUNT(*)                   AS votes
+              FROM booksRating
+              GROUP BY book_id
+          ) r ON r.book_id = b.id
+          /**where**/
+          ORDER BY avg_score DESC, votes DESC, b.id ASC";
 
-            using var cmd = new MySqlCommand(sql.Replace("/**where**/",
-                                season.HasValue ? "WHERE b.season = @season" : string.Empty), conn);
+            using var cmd = new MySqlCommand(
+                sql.Replace("/**where**/", season.HasValue ? "WHERE b.season = @season" : string.Empty),
+                conn
+            );
 
             if (season.HasValue)
                 cmd.Parameters.AddWithValue("@season", season.Value);
@@ -425,11 +396,6 @@ namespace sblngavnav5X.Data
                 dict[r.GetInt32("id")] = r.GetString("suggested_by");
             return dict;
         }
-        public class VersionEntry
-        {
-            public string Version { get; set; }
-            public DateTime Date { get; set; }
-        }
 
         public static List<VersionEntry> GetAllVersions()
         {
@@ -454,12 +420,96 @@ namespace sblngavnav5X.Data
             return list;
         }
 
-        public class RatingEntry
+        public static List<PackageVersionEntry> GetAllPackageVersions()
         {
-            public string UserId { get; set; }
-            public int BookId { get; set; }
-            public int[] Scores { get; set; }
-            public double FinalScore { get; set; }
+            var list = new List<PackageVersionEntry>();
+
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+
+            const string sql = @"SELECT package_name, package_version, created_at
+                                FROM packageVersions
+                                ORDER BY id";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            using var reader = cmd.ExecuteReader();
+
+            while (reader.Read())
+            {
+                list.Add(new PackageVersionEntry
+                {
+                    PackageName = reader.GetString("package_name"),
+                    PackageVersion = reader.GetString("package_version"),
+                    CreatedAt = reader.GetDateTime("created_at")
+                });
+            }
+
+            return list;
+        }
+
+        private static readonly object _exportLock = new();
+
+        public static void ExportBooksJson(string path, Dictionary<string, string> userNames)
+        {
+            var books = new Dictionary<int, BookExportDto>();
+
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            const string sql = @"
+                SELECT b.id, b.title, b.authors, b.suggested_by, b.season,
+                       r.user_id, r.score_plot, r.score_style, r.score_characters,
+                       r.score_originality, r.score_vibe, r.final_score
+                FROM books b
+                LEFT JOIN booksRating r ON r.book_id = b.id
+                ORDER BY b.id";
+
+            using var cmd = new MySqlCommand(sql, conn);
+            using var reader = cmd.ExecuteReader();
+
+            while (reader.Read())
+            {
+                int id = reader.GetInt32("id");
+                if (!books.TryGetValue(id, out var book))
+                {
+                    book = new BookExportDto
+                    {
+                        id         = id,
+                        title      = reader.GetString("title"),
+                        authors    = reader.GetString("authors"),
+                        suggestedBy = reader.GetString("suggested_by"),
+                        season     = reader.GetInt32("season")
+                    };
+                    books[id] = book;
+                }
+
+                if (!reader.IsDBNull(reader.GetOrdinal("user_id")))
+                {
+                    string uid  = reader.GetString("user_id");
+                    string name = userNames.TryGetValue(uid, out var n) ? n : uid;
+                    book.ratings[name] = new RatingExportDto
+                    {
+                        scores = new[]
+                        {
+                            reader.GetInt32("score_plot"),
+                            reader.GetInt32("score_style"),
+                            reader.GetInt32("score_characters"),
+                            reader.GetInt32("score_originality"),
+                            reader.GetInt32("score_vibe")
+                        },
+                        final = Math.Round(reader.GetDouble("final_score"), 1)
+                    };
+                }
+            }
+
+            var options = new JsonSerializerOptions { WriteIndented = true };
+            string json = JsonSerializer.Serialize(books.Values.ToList(), options);
+
+            lock (_exportLock)
+            {
+                string tmp = path + ".tmp";
+                File.WriteAllText(tmp, json);
+                File.Move(tmp, path, overwrite: true);
+            }
         }
 
         public static List<RatingEntry> GetAllRatings()

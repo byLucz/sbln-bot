@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using sblngavnav5X.Core;
+using sblngavnav5X.Services;
 using System.Runtime.InteropServices;
 using Victoria;
 using Victoria.Rest.Search;
@@ -9,7 +10,8 @@ namespace sblngavnav5X.Audio
 {
     public sealed class AudioSeven(
         LavaNode<LavaPlayer<LavaTrack>, LavaTrack> lavaNode,
-        AudioSevenService audioService) : ModuleBase<SocketCommandContext>
+        AudioSevenService audioService,
+        IHttpClientFactory httpClientFactory) : ModuleBase<SocketCommandContext>
     {
         public async Task JoinAsync()
         {
@@ -65,9 +67,20 @@ namespace sblngavnav5X.Audio
 
             try
             {
-                var searchResponse = await lavaNode.LoadTrackAsync(normalized);
+                SearchResponse? searchResponse = null;
 
-                if (searchResponse.Tracks.Count == 0)
+                try
+                {
+                    searchResponse = await lavaNode.LoadTrackAsync(normalized);
+                }
+                catch (Exception ex)
+                {
+                    await LoggingService.LogErrorAsync("VI-KA", $"LoadTrackAsync fail: {normalized}", ex);
+                }
+
+                var trackCount = searchResponse?.Tracks?.Count ?? 0;
+
+                if (trackCount == 0)
                 {
                     if (Context.Channel is ITextChannel tc)
                     {
@@ -171,6 +184,57 @@ namespace sblngavnav5X.Audio
                     await ReplyAsync(embed: err);
                 }
             });
+        }
+
+        [Command("озвучь")]
+        [Alias("ттс")]
+        public async Task SpeakAsync([Remainder] string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                await ReplyAsync("напиши текст для озвучки");
+                return;
+            }
+
+            var floweryQuery = $"ftts://{text.Trim()}";
+            await PlayAsync(floweryQuery);
+        }
+
+        [Command("голосование", RunMode = RunMode.Async)]
+        [Alias("голос")]
+        public async Task VoteAsync([Remainder] string options)
+        {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: false))
+                return;
+
+            var items = options.Split('|', StringSplitOptions.RemoveEmptyEntries)
+                .Select(x => x.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (items.Count < 2)
+            {
+                await ReplyAsync("для голосования нужно минимум 2 варианта через `|`");
+                return;
+            }
+
+            var guildId = Context.Guild.Id;
+            if (await lavaNode.TryGetPlayerAsync(guildId) is null or { State.IsConnected: false })
+                await JoinAsync();
+
+            var winner = items[Random.Shared.Next(items.Count)];
+            var statusMsg = await ReplyAsync(embed: new EmbedBuilder()
+                .WithColor(Color.DarkBlue)
+                .WithTitle("ГОЛОСОВАНИЕ")
+                .WithDescription("⏳ Кукапим секвенции...")
+                .WithFooter("sbln ultra-выбератор🤔⚡")
+                .Build());
+
+            using var http = httpClientFactory.CreateClient();
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("sblnokv5x");
+
+            await audioService.RunVoteAsync(guildId, statusMsg, items, winner, http);
         }
 
         [Command("плейлист")]
@@ -363,7 +427,7 @@ namespace sblngavnav5X.Audio
 
                 var playlistQEmbed = await EmbedHandler.CreateMusicEmbed(
                     "sbln muzik🎸🎧",
-                    $"{searchResponse.Playlist.Name} --- добавлено в очередь 🤙",
+                    $"{searchResponse.Playlist.Name} --- плейлист **добавлен в очередь** 🤙",
                     Color.Orange);
 
                 await Context.Channel.SendMessageAsync(embed: playlistQEmbed);
@@ -385,7 +449,7 @@ namespace sblngavnav5X.Audio
 
                 var playlistQEmbed = await EmbedHandler.CreateMusicEmbed(
                     "sbln muzik🎸🎧",
-                    $"{searchResponse.Playlist.Name} --- добавлено в очередь 🤙",
+                    $"{searchResponse.Playlist.Name} --- плейлист **добавлен в очередь** 🤙",
                     Color.Orange);
 
                 await Context.Channel.SendMessageAsync(embed: playlistQEmbed);
@@ -397,7 +461,7 @@ namespace sblngavnav5X.Audio
 
             var qEmbed = await EmbedHandler.CreateCustomMusicEmbed(
                 "sbln muzik🎸🎧",
-                $"[{track.Title}]({track.Url}) **добавлено в очередь** 🤙", "🔼 - в начало листа",
+                $"[{track.Title}]({track.Url}) **добавлен в очередь** 🤙", "🔼 - в начало листа",
                 Color.Orange);
 
             var msg = await Context.Channel.SendMessageAsync(embed: qEmbed);

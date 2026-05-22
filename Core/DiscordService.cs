@@ -18,14 +18,13 @@ namespace sblngavnav5X.Core
         public readonly DiscordSocketClient _client;
         private readonly CommandHandler _commandHandler;
         private readonly InteractionHandler _interHandler;
-        private readonly CommandService _commandService;
         private readonly ServiceProvider _services;
         private readonly AudioSevenService _audioService;
         private readonly StreamMonoService _streams;
+        private readonly WelcomeService _welcomeService;
 
         public DiscordService()
         {
-
             _services = ConfigureServices();
 
             _client = _services.GetRequiredService<DiscordSocketClient>();
@@ -33,24 +32,58 @@ namespace sblngavnav5X.Core
             _audioService = _services.GetRequiredService<AudioSevenService>();
             _streams = _services.GetRequiredService<StreamMonoService>();
             _interHandler = _services.GetRequiredService<InteractionHandler>();
+            _welcomeService = _services.GetRequiredService<WelcomeService>();
 
             SubscribeDiscordEvents();
         }
 
         public async Task InitializeAsync()
         {
-            string Token = Utils.token;
+            string token = Utils.token;
+
             _client.Ready += _streams.CreateStreamMonoAsync;
-            await _client.LoginAsync(TokenType.Bot, Token);
+
+            await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
+
             await _commandHandler.InitializeAsync();
             await _interHandler.InitializeAsync();
-            var welcomeService = new WelcomeService(_client);
+
             await DataBase.ApplyLastStatusAsync(_client);
             DataBase.DownloadStreamers();
-            var kuma = new KumaReporter(_client, Utils.kumaConn);
-            await Task.Delay(-1);
 
+            using var cts = new CancellationTokenSource();
+
+            Console.CancelKeyPress += (_, e) =>
+            {
+                e.Cancel = true;
+                cts.Cancel();
+            };
+
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
+
+            try
+            {
+                await Task.Delay(-1, cts.Token);
+            }
+            catch (TaskCanceledException) { }
+
+            await ShutdownAsync();
+        }
+
+        private async Task ShutdownAsync()
+        {
+            await LoggingService.LogInformationAsync("EXSRV", "Завершение работы...");
+
+            foreach (var guildId in _audioService.GetActiveGuildIds().ToArray())
+            {
+                try { await _audioService.ForceLeaveAsync(guildId); } catch { }
+            }
+
+            try { await _client.LogoutAsync(); } catch { }
+            try { await _client.StopAsync(); } catch { }
+
+            await _services.DisposeAsync();
         }
 
         private void SubscribeDiscordEvents()
@@ -58,19 +91,18 @@ namespace sblngavnav5X.Core
             _client.Log += LogAsync;
         }
 
-        private async Task LogAsync(LogMessage logMessage)
+        private Task LogAsync(LogMessage log)
         {
-            await LoggingService.LogAsync(logMessage.Source, logMessage.Severity, logMessage.Message);
+            return LoggingService.LogDiscordAsync(log);
         }
 
         private ServiceProvider ConfigureServices()
         {
-            var config = new DiscordSocketConfig()
+            var config = new DiscordSocketConfig
             {
-
                 GatewayIntents = GatewayIntents.All
-
             };
+
             return new ServiceCollection()
                 .AddLogging()
                 .AddSingleton(new DiscordSocketClient(config))
@@ -79,24 +111,27 @@ namespace sblngavnav5X.Core
                 .AddSingleton<InteractionService>(provider =>
                 {
                     var client = provider.GetRequiredService<DiscordSocketClient>();
-                    var config = new InteractionServiceConfig
+                    var interactionConfig = new InteractionServiceConfig
                     {
                         DefaultRunMode = RunMode.Async,
-                        LogLevel = LogSeverity.Info, 
+                        LogLevel = LogSeverity.Info
                     };
-                    return new InteractionService(client, config);
+                    return new InteractionService(client, interactionConfig);
                 })
                 .AddSingleton<InteractionHandler>()
                 .AddSingleton<AudioSevenService>()
+                .AddSingleton<GVRMessagesHandler>()
+                .AddSingleton<WeatherHelp>()
+                .AddSingleton<StreamMonoService>()
+                .AddSingleton<WelcomeService>()
+                .AddSingleton<PgApiService>()
+                .AddSingleton<GuildConfig>(_ => new GuildConfig())
+                .AddSingleton<GovorConfig>(_ => new GovorConfig())
                 .AddLavaNode(x =>
                 {
                     x.SelfDeaf = true;
                 })
-                .AddSingleton<WeatherHelp>()
-                .AddSingleton<StreamMonoService>()
-                .AddSingleton<GuildConfig>(x => new GuildConfig())
-                .AddSingleton<GovorConfig>(x => new GovorConfig())
-                .AddTransient<HttpClient>()
+                .AddHttpClient()
                 .BuildServiceProvider();
         }
     }

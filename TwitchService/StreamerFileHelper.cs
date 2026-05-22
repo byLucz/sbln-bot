@@ -1,12 +1,13 @@
 ﻿using sblngavnav5X.Data;
 using sblngavnav5X.TwitchService;
-using TwitchLib.Api.Helix.Models.Users;
+using TwitchLib.Api.Helix.Models.Users.GetUsers;
 
 namespace sblngavnav5X.Services.Twitch
 {
     public class StreamerFileHelper
     {
         private readonly StreamMonoService _lsms;
+
         public StreamerFileHelper(StreamMonoService lsms)
         {
             _lsms = lsms;
@@ -40,7 +41,7 @@ namespace sblngavnav5X.Services.Twitch
             string streamer = name.ToLower();
             string streamerId;
 
-            if (!(_lsms.StreamList.Contains(streamer)))
+            if (!_lsms.StreamList.Contains(streamer))
                 return false;
 
             try
@@ -60,19 +61,12 @@ namespace sblngavnav5X.Services.Twitch
 
         public async Task<string> TryVerifyStreamerAsync(string streamer)
         {
-            try
-            {
-                List<string> tmp = new List<string>();
-                tmp.Add(streamer);
+            List<string> tmp = new() { streamer };
 
-                GetUsersResponse result = await _lsms.TwitchApi.Helix.Users.GetUsersAsync(logins: tmp, accessToken: _lsms.TwitchApi.Settings.AccessToken);
+            GetUsersResponse result =
+                await _lsms.TwitchApi.Helix.Users.GetUsersAsync(logins: tmp, accessToken: _lsms.TwitchApi.Settings.AccessToken);
 
-                return result.Users[0].Id;
-            }
-            catch (Exception e)
-            {
-                throw;
-            }
+            return result.Users[0].Id;
         }
     }
 }

@@ -1,12 +1,6 @@
 ﻿using Discord;
 using Discord.Commands;
-using Discord.WebSocket;
-using System.Linq;
-using System.Threading.Tasks;
-using System;
-using System.Diagnostics;
-using System.Globalization;
-using System.Collections.Generic;
+using sblngavnav5X.Core;
 using System.Text;
 
 namespace sblngavnav5X.Commands;
@@ -168,18 +162,18 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
         });
     }
     Dictionary<int, string> minesweeperValues = new Dictionary<int, string>()
-{
-    { -1 , ":bomb:" },
-    {  0 , "<:slyr3head:779368192036306954>" },
-    {  1 , ":one:" },
-    {  2 , ":two:" },
-    {  3 , ":three:" },
-    {  4 , ":four:" },
-    {  5 , ":five:" },
-    {  6 , ":six:" },
-    {  7 , ":seven:" },
-    {  8 , ":eight:" },
-};
+    {
+        { -1 , ":bomb:" },
+        {  0 , "<:slyr3head:779368192036306954>" },
+        {  1 , ":one:" },
+        {  2 , ":two:" },
+        {  3 , ":three:" },
+        {  4 , ":four:" },
+        {  5 , ":five:" },
+        {  6 , ":six:" },
+        {  7 , ":seven:" },
+        {  8 , ":eight:" },
+    };
 
     [Command("сапер")]
     public async Task Title(int size = 9, float ratio = 0.2f)
@@ -282,33 +276,29 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
         var shieldChoice = shieldOptions[rand.Next(shieldOptions.Count)];
         var abilitiesChoice = abilityOptions[rand.Next(abilityOptions.Count)];
 
-        var embedBuilder = new EmbedBuilder();
+        Embed embed;
 
         if (opponent != null)
         {
-            embedBuilder
+            embed = EmbedHandler.FieldsEmbed(string.Empty, Color.DarkRed, "sbln апекс🔫")
                 .WithTitle($"1X1 APEX DUEL⚔️")
                 .WithDescription($"***{Context.User.Username} VS {opponent.Username}***")
                 .AddField("Первое оружие", $"{primaryWeapon} ({primaryUpgrade})", false)
                 .AddField("Второе оружие", $"{secondaryWeapon} ({secondaryUpgrade})", false)
                 .AddField("Щит", shieldChoice, false)
                 .AddField("Способности", abilitiesChoice, false)
-                .WithColor(Color.DarkRed)
-                .WithFooter("sbln апекс🔫");
+                .Build();
         }
         else
         {
-            embedBuilder
+            embed = EmbedHandler.FieldsEmbed(string.Empty, Color.DarkerGrey, "sbln апекс🔫")
                 .WithTitle("APEX SET🗡")
                 .AddField("Первое оружие", $"{primaryWeapon} ({primaryUpgrade})", false)
                 .AddField("Второе оружие", $"{secondaryWeapon} ({secondaryUpgrade})", false)
                 .AddField("Щит", shieldChoice, false)
                 .AddField("Способности", abilitiesChoice, false)
-                .WithColor(Color.DarkerGrey)
-                .WithFooter("sbln апекс🔫");
+                .Build();
         }
-
-        var embed = embedBuilder.Build();
         var message = await ReplyAsync(embed: embed);
         var emote = Emote.Parse("<:slyrCinema:1347218953604435998>");
         await message.AddReactionAsync(emote);

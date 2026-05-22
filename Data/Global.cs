@@ -4,26 +4,20 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 
 namespace sblngavnav5X.Data
 {
 
     public static class Utils
     {
-        public const string sblnver = "5.5.2";
+        public const string sblnver = "5.6.0";
 
         public const string token = "INSERT_HERE";
 
         public const string pref1 = "x ";
+
         public const string pref2 = "х ";
-
-        public static int govorUpdTime = 600000;
-
-        public const int streamUpdTime = 600;
-
-        public static string verbalMode = "выкл";
-
-        public const int booksSeason = 2;
 
         public const string connectionString = "INSERT_HERE";
 
@@ -34,6 +28,30 @@ namespace sblngavnav5X.Data
         public const string streamCid = "INSERT_HERE";
 
         public const string streamAuth = "INSERT_HERE";
+
+        public const string gBooksApi = "INSERT_HERE";
+
+        public const string pgApiBaseUrl = "INSERT_HERE";
+
+        public const string pgApiToken = "INSERT_HERE";
+
+        public static readonly ulong pgApiRoleId = 11111111111;
+
+        public const int streamUpdTime = 600;
+
+        public const string streamNotifCh = "twitch";
+
+        public const ulong messageSourceChannelId = 11111111111;
+
+        public const string messagesFilePath = "INSERT_HERE";
+
+        public static int govorUpdTime = 600000;
+
+        public static string govorVM = "выкл";
+
+        public const int booksSeason = 2;
+
+        public const string booksJsonPath = "INSERT_HERE";
 
         public static string[] greetList = new[]
         {
