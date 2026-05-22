@@ -1,17 +1,29 @@
 ﻿using Discord;
 using Discord.Commands;
+using Discord.WebSocket;
 using Newtonsoft.Json.Linq;
 using sblngavnav5X.Data;
+using sblngavnav5X.Services;
 
 namespace sblngavnav5X.Commands
 {
     public class BooksClubCommands : ModuleBase<SocketCommandContext>
     {
         private readonly HttpClient _http;
+        private readonly DiscordSocketClient _client;
 
-        public BooksClubCommands(IHttpClientFactory httpClientFactory)
+        private static ulong _ratingMsgId;
+        private static List<Embed> _ratingPages = new();
+        private static int _ratingPage;
+        private static bool _ratingActive;
+        private static readonly Dictionary<ulong, DateTime> _ratingLastClick = new();
+
+        public BooksClubCommands(IHttpClientFactory httpClientFactory, DiscordSocketClient client)
         {
             _http = httpClientFactory.CreateClient();
+            _client = client;
+            _client.ReactionAdded -= OnRatingReactionAdded;
+            _client.ReactionAdded += OnRatingReactionAdded;
         }
 
         [Command("книга")]
@@ -162,6 +174,7 @@ namespace sblngavnav5X.Commands
 
             string scoreEmoji = Utils.GetScoreEmoji(finalScore);
             DataBase.SaveRating(Context.User.Id.ToString(), book.id, scores, finalScore);
+            TriggerBooksExport();
 
             var embed = new EmbedBuilder()
                 .WithTitle($"<:KKLOGO:1352283192014409869> {book.title}")
@@ -314,6 +327,147 @@ namespace sblngavnav5X.Commands
             }
 
             await ReplyAsync(embed: embed.Build());
+        }
+
+        private void TriggerBooksExport()
+        {
+            if (string.IsNullOrWhiteSpace(Utils.booksJsonPath)) return;
+            var userNames = Context.Guild.Users
+                .ToDictionary(u => u.Id.ToString(), u => u.Username);
+            Task.Run(() =>
+            {
+                try { DataBase.ExportBooksJson(Utils.booksJsonPath, userNames); }
+                catch (Exception ex) { _ = LoggingService.LogWarningAsync("BOOKS", $"JSON export fail: {ex.Message}"); }
+            });
+        }
+
+        [Command("книжныйэкспорт")]
+        public async Task ManualExportAsync()
+        {
+            if (string.IsNullOrWhiteSpace(Utils.booksJsonPath))
+            {
+                await ReplyAsync("❌ `booksJsonPath` не задан в Utils");
+                return;
+            }
+            try
+            {
+                var userNames = Context.Guild.Users
+                    .ToDictionary(u => u.Id.ToString(), u => u.Username);
+                DataBase.ExportBooksJson(Utils.booksJsonPath, userNames);
+                await ReplyAsync("✅ `books_data.json` обновлён");
+            }
+            catch (Exception ex)
+            {
+                await ReplyAsync($"❌ Ошибка экспорта: {ex.Message}");
+            }
+        }
+
+        // ── Season rating ────────────────────────────────────────────────────
+
+        [Command("рейтинг")]
+        public async Task ShowSeasonRatingAsync(int? season = null)
+        {
+            _ratingPages = BuildSeasonEmbeds();
+            if (_ratingPages.Count == 0)
+                _ratingPages = new() { new EmbedBuilder().WithTitle("---").WithColor(Color.DarkGrey).Build() };
+
+            int max = DataBase.GetMaxSeason();
+            _ratingPage = season.HasValue && season.Value >= 1
+                ? Math.Clamp(season.Value - 1, 0, _ratingPages.Count - 1)
+                : 0;
+
+            var msg = await ReplyAsync(embed: _ratingPages[_ratingPage]);
+            _ratingMsgId = msg.Id;
+            _ratingActive = true;
+
+            await msg.AddReactionAsync(new Emoji("◀"));
+            await msg.AddReactionAsync(new Emoji("▶"));
+        }
+
+        private async Task OnRatingReactionAdded(
+            Cacheable<IUserMessage, ulong> message,
+            Cacheable<IMessageChannel, ulong> channel,
+            SocketReaction reaction)
+        {
+            try
+            {
+                if (reaction.UserId == _client.CurrentUser.Id) return;
+                if (!_ratingActive) return;
+                if (reaction.MessageId != _ratingMsgId) return;
+
+                var now = DateTime.UtcNow;
+                if (_ratingLastClick.TryGetValue(reaction.UserId, out var prev) && (now - prev).TotalSeconds < 1)
+                    return;
+                _ratingLastClick[reaction.UserId] = now;
+
+                var msg = await message.GetOrDownloadAsync();
+                if (msg is null) return;
+
+                if (reaction.Emote.Name == "◀")
+                {
+                    if (_ratingPage > 0) _ratingPage--;
+                }
+                else if (reaction.Emote.Name == "▶")
+                {
+                    if (_ratingPage < _ratingPages.Count - 1) _ratingPage++;
+                }
+                else return;
+
+                await msg.ModifyAsync(m => m.Embed = _ratingPages[_ratingPage]);
+
+                var user = await msg.Channel.GetUserAsync(reaction.UserId);
+                if (user != null)
+                    try { await msg.RemoveReactionAsync(reaction.Emote, user); } catch { }
+            }
+            catch
+            {
+                await LoggingService.LogErrorAsync("knizhniy klub", "ошибка пагинации рейтинга");
+            }
+        }
+
+        private static List<Embed> BuildSeasonEmbeds()
+        {
+            var list = new List<Embed>();
+            int max = DataBase.GetMaxSeason();
+            var seasons = max >= 1 ? Enumerable.Range(1, max).ToList() : new List<int> { 1 };
+            int nextSeason = Math.Max(1, max) + 1;
+
+            foreach (var s in seasons)
+                list.Add(BuildSeasonEmbed(s, max));
+            list.Add(BuildSeasonEmbed(nextSeason, max));
+
+            int idx = list.FindIndex(e => e.Title?.EndsWith($"сезон {Math.Max(1, max)}") == true);
+            if (idx > 0) { var first = list[idx]; list.RemoveAt(idx); list.Insert(0, first); }
+
+            return list;
+        }
+
+        private static Embed BuildSeasonEmbed(int season, int maxSeason)
+        {
+            var eb = new EmbedBuilder()
+                .WithTitle($"<:KKLOGO:1352283192014409869> Рейтинг клуба SZN#{season}")
+                .WithColor(Color.Gold)
+                .WithFooter("knizhniy klub📖");
+
+            var books = DataBase.GetBooksWithRatings(season);
+            if (books == null || books.Count == 0)
+            {
+                if (season > maxSeason && maxSeason >= 0)
+                    eb.WithDescription("📭COMING SOON!");
+                return eb.Build();
+            }
+
+            foreach (var b in books)
+            {
+                var emoji = Utils.GetScoreEmoji(b.AvgScore);
+                eb.AddField(
+                    $"📖 {b.Title} ({b.Authors})",
+                    $"👤 {b.SuggestedBy}\n⭐ Средняя оценка: {b.AvgScore:F1} // {emoji} ({b.Votes} голосов)",
+                    inline: false);
+            }
+
+            eb.WithDescription("[📊 Полный рейтинг на сайте](https://lois.media/sbln/books)");
+            return eb.Build();
         }
     }
 }
