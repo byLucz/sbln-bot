@@ -60,7 +60,7 @@ namespace sblngavnav5X.Core
                 cts.Cancel();
             };
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => cts.Cancel();
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { cts.Cancel(); } catch { } };
 
             try
             {
@@ -93,6 +93,9 @@ namespace sblngavnav5X.Core
 
         private Task LogAsync(LogMessage log)
         {
+            if (log.Exception?.StackTrace?.Contains("Victoria.LavaNode") == true)
+                return Task.CompletedTask;
+
             return LoggingService.LogDiscordAsync(log);
         }
 
