@@ -66,6 +66,9 @@ namespace sblngavnav5X.Core
             if (string.IsNullOrWhiteSpace(generated))
                 return;
 
+            if (generated.Length > 2000)
+                generated = generated[..2000];
+
             await context.Channel.SendMessageAsync(generated);
         }
 
