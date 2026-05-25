@@ -512,6 +512,36 @@ namespace sblngavnav5X.Data
             }
         }
 
+        public static List<string> LoadStreamsOnline()
+        {
+            var list = new List<string>();
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            using var cmd = new MySqlCommand("SELECT puk FROM streamersid WHERE is_online = 1", conn);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(r.GetString("puk"));
+            return list;
+        }
+
+        public static void AddStreamOnline(string streamId)
+        {
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            using var cmd = new MySqlCommand("UPDATE streamersid SET is_online = 1 WHERE puk = @id", conn);
+            cmd.Parameters.AddWithValue("@id", streamId);
+            cmd.ExecuteNonQuery();
+        }
+
+        public static void RemoveStreamOnline(string streamId)
+        {
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            using var cmd = new MySqlCommand("UPDATE streamersid SET is_online = 0 WHERE puk = @id", conn);
+            cmd.Parameters.AddWithValue("@id", streamId);
+            cmd.ExecuteNonQuery();
+        }
+
         public static List<RatingEntry> GetAllRatings()
         {
             var list = new List<RatingEntry>();

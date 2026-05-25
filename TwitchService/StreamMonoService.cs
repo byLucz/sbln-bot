@@ -17,6 +17,13 @@ namespace sblngavnav5X.TwitchService
         private readonly DiscordSocketClient _discord;
         private LiveStreamMonitorService _liveStreamMonitor;
 
+        private void LoadStreamOnlineState()
+        {
+            foreach (var id in DataBase.LoadStreamsOnline())
+                if (!StreamsOnline.Contains(id))
+                    StreamsOnline.Add(id);
+        }
+
         public StreamMonoService(DiscordSocketClient discord)
         {
             _discord = discord;
@@ -92,6 +99,7 @@ namespace sblngavnav5X.TwitchService
                 if (StreamIdList == null || !StreamIdList.Any())
                     throw new ArgumentException("StreamIdList пуст");
 
+                LoadStreamOnlineState();
                 _liveStreamMonitor.SetChannelsById(StreamIdList);
                 _liveStreamMonitor.Start();
             }
@@ -155,17 +163,16 @@ namespace sblngavnav5X.TwitchService
                 await x.SendMessageAsync($"@everyone, {e.Stream.UserName} сейчас стримит!", false, eb.Build());
 
             StreamsOnline.Add(e.Stream.UserId);
+            DataBase.AddStreamOnline(e.Stream.UserId);
 
-            if (StreamsOnline.Contains(e.Stream.UserId))
-                await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} добавлен в лист отслеживания");
-            else
-                await LoggingService.LogCriticalAsync("TTVLK", $"Ошибка при добавлении {e.Stream.UserName}");
+            await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} добавлен в лист отслеживания");
         }
 
         private async void OnStreamOfflineEvent(object sender, OnStreamOfflineArgs e)
         {
-            bool removalBool = StreamsOnline.Remove(e.Stream.UserId);
-            await Console.Out.WriteLineAsync($"Стример {e.Stream.UserName} оффлайн {removalBool}");
+            StreamsOnline.Remove(e.Stream.UserId);
+            DataBase.RemoveStreamOnline(e.Stream.UserId);
+            await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} оффлайн, убран из листа");
         }
 
         private async void OnChannelsSetEvent(object sender, OnChannelsSetArgs e)
@@ -254,7 +261,7 @@ namespace sblngavnav5X.TwitchService
                 Footer = b,
                 Author = a,
                 Color = new Color(191, 0, 255),
-                ImageUrl = thumbnailUrl.Replace("{width}", "1280").Replace("{height}", "720"),
+                ImageUrl = thumbnailUrl.Replace("{width}", "1280").Replace("{height}", "720") + $"?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
                 Title = streamModel.Title,
                 Url = streamModel.Link,
             };
