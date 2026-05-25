@@ -1,4 +1,4 @@
-﻿using Discord.Commands;
+using Discord.Commands;
 using sblngavnav5X.Data;
 using sblngavnav5X.GVR;
 using sblngavnav5X.Services;
@@ -11,12 +11,9 @@ namespace sblngavnav5X.Core
     {
         private readonly GovorConfig _govorilka;
 
-        private const string MessagesFilePath = "messages.csv";
-
         private static readonly Regex SplitRegex = new(@"\s+", RegexOptions.Compiled);
         private static readonly Regex UrlRegex = new(@"https?://", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex PunctuationRegex = new(@"[!?.,:;()\[\]/]+", RegexOptions.Compiled);
-        private static readonly Regex StartPunctuationRegex = new(@"[х!?.,;()\[\]/]+", RegexOptions.Compiled);
+        private static readonly Regex PunctRegex = new(@"^[!?.,:;()\[\]/]+$", RegexOptions.Compiled);
 
         private static readonly string[] FunnyInterjections =
         {
@@ -47,127 +44,169 @@ namespace sblngavnav5X.Core
             if (step <= 0 || wordCount <= 0)
                 return;
 
-            if (!File.Exists(MessagesFilePath))
+            if (!File.Exists(Utils.messagesFilePath))
             {
-                await LoggingService.LogInformationAsync("GOVOR", "Файл messages.csv не найден, генерация ответа пропущена");
+                await LoggingService.LogInformationAsync("GOVOR", $"Файл {Utils.messagesFilePath} не найден, генерация ответа пропущена");
                 return;
             }
 
-            var messages = await File.ReadAllLinesAsync(MessagesFilePath);
-            if (messages.Length == 0)
+            var rawLines = await File.ReadAllLinesAsync(Utils.messagesFilePath);
+            if (rawLines.Length == 0)
                 return;
 
-            var filtered = FilterMessages(messages);
-            if (filtered.Count == 0)
+            var sentences = ParseSentences(rawLines);
+            if (sentences.Count == 0)
                 return;
 
-            var chain = MakeChain(filtered, step);
+            var (chain, sentenceStarts) = MakeChain(sentences, step);
             if (chain.Count == 0)
                 return;
 
-            var generated = GenerateMessage(chain, step, wordCount);
+            var generated = GenerateMessage(chain, sentenceStarts, step, wordCount);
             if (string.IsNullOrWhiteSpace(generated))
                 return;
 
             await context.Channel.SendMessageAsync(generated);
         }
 
-        private static List<string> FilterMessages(IEnumerable<string> messages)
+        private static List<List<string>> ParseSentences(IEnumerable<string> rawLines)
         {
-            var filtered = new List<string>();
+            var result = new List<List<string>>();
 
-            foreach (var msg in messages)
+            foreach (var line in rawLines)
             {
-                if (string.IsNullOrWhiteSpace(msg))
-                    continue;
-
-                if (UrlRegex.IsMatch(msg))
-                    continue;
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                if (UrlRegex.IsMatch(line)) continue;
 
                 var sb = new StringBuilder();
-
-                foreach (var ch in msg)
+                foreach (var ch in line)
                 {
-                    var symbol = ch.ToString();
-                    sb.Append(PunctuationRegex.IsMatch(symbol) ? $" {symbol} " : symbol);
+                    var s = ch.ToString();
+                    sb.Append(PunctRegex.IsMatch(s) ? $" {s} " : s);
                 }
 
-                var normalized = sb.ToString();
+                var words = SplitRegex
+                    .Split(sb.ToString().ToLowerInvariant())
+                    .Where(w => !string.IsNullOrWhiteSpace(w) && w != "x")
+                    .ToList();
 
-                if (normalized.Contains(" x ", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                var split = SplitRegex
-                    .Split(normalized.ToLowerInvariant())
-                    .Where(x => !string.IsNullOrWhiteSpace(x));
-
-                filtered.AddRange(split);
+                if (words.Count >= 2)
+                    result.Add(words);
             }
 
-            return filtered;
+            return result;
         }
 
-        private static Dictionary<string, List<string>> MakeChain(List<string> filtered, int step)
+        private static (Dictionary<string, List<string>> chain, List<string> sentenceStarts)
+            MakeChain(List<List<string>> sentences, int step)
         {
             var chain = new Dictionary<string, List<string>>();
+            var sentenceStarts = new List<string>();
 
-            for (var i = 0; i < filtered.Count - step; i++)
+            foreach (var words in sentences)
             {
-                var key = string.Join(" ", filtered.Skip(i).Take(step));
-                var value = filtered[i + step];
+                if (words.Count <= step) continue;
 
-                if (!chain.TryGetValue(key, out var list))
+                var startKey = string.Join(" ", words.Take(step));
+                sentenceStarts.Add(startKey);
+
+                for (int i = 0; i < words.Count - step; i++)
                 {
-                    list = new List<string>();
-                    chain[key] = list;
-                }
+                    var key = string.Join(" ", words.Skip(i).Take(step));
+                    var value = words[i + step];
 
-                list.Add(value);
+                    if (!chain.TryGetValue(key, out var list))
+                    {
+                        list = new List<string>();
+                        chain[key] = list;
+                    }
+                    list.Add(value);
+                }
             }
 
-            return chain;
+            return (chain, sentenceStarts);
         }
 
-        private string GenerateMessage(Dictionary<string, List<string>> chain, int step, int wordCount)
+        private string GenerateMessage(
+            Dictionary<string, List<string>> chain,
+            List<string> sentenceStarts,
+            int step,
+            int wordCount)
         {
-            if (chain.Count == 0)
+            int sentenceCount = wordCount <= 5 ? 1 : wordCount <= 12 ? Random.Shared.Next(1, 3) : Random.Shared.Next(1, 4);
+            int baseWords = wordCount / sentenceCount;
+
+            var parts = new List<string>();
+            for (int s = 0; s < sentenceCount; s++)
+            {
+                int w = s == sentenceCount - 1 ? wordCount - baseWords * s : baseWords;
+                var sentence = GenerateSentence(chain, sentenceStarts, step, Math.Max(w, 3));
+                if (!string.IsNullOrWhiteSpace(sentence))
+                    parts.Add(sentence);
+            }
+
+            if (parts.Count == 0)
                 return string.Empty;
 
-            var result = new StringBuilder();
-            var temp = new List<string>
+            if (parts.Count > 1 && Random.Shared.NextDouble() < 0.25)
             {
-                chain.ElementAt(Random.Shared.Next(chain.Count)).Key
-            };
+                var funny = FunnyInterjections[Random.Shared.Next(FunnyInterjections.Length)];
+                parts.Insert(Random.Shared.Next(1, parts.Count), funny);
+            }
+
+            return string.Join(" ", parts);
+        }
+
+        private string GenerateSentence(
+            Dictionary<string, List<string>> chain,
+            List<string> sentenceStarts,
+            int step,
+            int wordCount)
+        {
+            var startKey = sentenceStarts.Count > 0
+                ? sentenceStarts[Random.Shared.Next(sentenceStarts.Count)]
+                : chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
+
+            if (!chain.ContainsKey(startKey))
+                startKey = chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
+
+            var temp = new List<string>(startKey.Split(' '));
+            var result = new StringBuilder();
+
+            foreach (var w in temp)
+                result.Append(result.Length == 0 ? w : $" {w}");
 
             for (int i = 0; i < wordCount; i++)
             {
-                var key = string.Join(" ", temp.Skip(i).Take(step));
+                var key = string.Join(" ", temp.Skip(Math.Max(0, temp.Count - step)).Take(step));
 
                 if (!chain.ContainsKey(key))
-                    key = chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
+                {
+                    bool found = false;
+                    for (int back = 1; back < step; back++)
+                    {
+                        var keyParts = key.Split(' ');
+                        if (keyParts.Length <= back) break;
+                        var shorter = string.Join(" ", keyParts.Skip(back));
+                        if (chain.ContainsKey(shorter)) { key = shorter; found = true; break; }
+                    }
+                    if (!found)
+                        key = chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
+                }
 
                 var values = chain[key];
                 var value = values[Random.Shared.Next(values.Count)];
-
-                while (result.Length == 0 && StartPunctuationRegex.IsMatch(value))
-                {
-                    key = chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
-                    values = chain[key];
-                    value = values[Random.Shared.Next(values.Count)];
-                }
-
                 temp.Add(value);
 
-                if (Random.Shared.NextDouble() < 0.05)
-                {
-                    var funny = FunnyInterjections[Random.Shared.Next(FunnyInterjections.Length)];
-                    result.Append(' ').Append(funny);
-                }
-
-                if (_govorilka.VerbalAbuseBySheff)
-                    result.Append(StartPunctuationRegex.IsMatch(value) ? value : $" {value} бля");
+                if (PunctRegex.IsMatch(value))
+                    result.Append(value);
+                else if (_govorilka.VerbalAbuseBySheff)
+                    result.Append($" {value} бля");
                 else
-                    result.Append(StartPunctuationRegex.IsMatch(value) ? value : $" {value} ");
+                    result.Append($" {value}");
+
+                if (value is "." or "!" or "?")
+                    break;
             }
 
             return result.ToString().Trim();

@@ -363,17 +363,28 @@ namespace sblngavnav5X.Core
                     return;
                 }
 
+                var cursorPath = Utils.messagesFilePath + ".cursor";
+                ulong? oldestId = null;
+                if (File.Exists(cursorPath) && ulong.TryParse(await File.ReadAllTextAsync(cursorPath), out var parsed))
+                    oldestId = parsed;
+
                 var existingLines = File.Exists(Utils.messagesFilePath)
-                    ? new HashSet<string>(await File.ReadAllLinesAsync(Utils.messagesFilePath))
+                    ? new HashSet<string>((await File.ReadAllLinesAsync(Utils.messagesFilePath))
+                        .Select(l => l.Trim()).Where(l => l.Length > 0))
                     : new HashSet<string>();
 
                 var newLines = new List<string>();
-                var messages = channel.GetMessagesAsync((int)_govorilka.Collection).Flatten();
+                ulong? newOldestId = null;
 
-                await foreach (var message in messages)
+                var query = oldestId.HasValue
+                    ? channel.GetMessagesAsync(oldestId.Value, Direction.Before, (int)_govorilka.Collection).Flatten()
+                    : channel.GetMessagesAsync((int)_govorilka.Collection).Flatten();
+
+                await foreach (var message in query)
                 {
                     if (message == null ||
                         string.IsNullOrWhiteSpace(message.Content) ||
+                        message.Author.IsBot ||
                         message.Attachments.Any() ||
                         message.Embeds.Any())
                     {
@@ -381,6 +392,15 @@ namespace sblngavnav5X.Core
                     }
 
                     var content = message.Content.Trim();
+
+                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase) ||
+                        content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase) ||
+                        content.Contains("https://", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    if (newOldestId == null || message.Id < newOldestId.Value)
+                        newOldestId = message.Id;
+
                     if (existingLines.Add(content))
                         newLines.Add(content);
                 }
@@ -388,8 +408,15 @@ namespace sblngavnav5X.Core
                 if (newLines.Count > 0)
                 {
                     await File.AppendAllLinesAsync(Utils.messagesFilePath, newLines);
-                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений в датасет: {newLines.Count}");
+                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений: {newLines.Count}, всего в датасете: {existingLines.Count}");
                 }
+                else
+                {
+                    await LoggingService.LogInformationAsync("GOVOR", "Новых сообщений нет — история исчерпана или канал пуст");
+                }
+
+                if (newOldestId.HasValue)
+                    await File.WriteAllTextAsync(cursorPath, newOldestId.Value.ToString());
             }
             catch (Exception ex)
             {

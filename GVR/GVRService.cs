@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using sblngavnav5X.Core;
@@ -12,96 +12,78 @@ namespace sblngavnav5X.GVR
         private readonly GovorConfig _govorilka;
         private readonly GuildConfig _guild;
 
+        private const string GovorAuthor = "sbln говорилка🎤📓";
+        private const string GovorFooter = "powered by GovorNGN";
+        private const string GovorIcon = "https://emojio.ru/images/apple-b/1f9e0.png";
+
+        private static EmbedBuilder GovorEmbed() =>
+            EmbedHandler.FieldsEmbed(GovorAuthor, Color.LighterGrey, GovorFooter);
+
         public GVRService(GovorConfig govor, GuildConfig guild)
         {
             _govorilka = govor;
             _guild = guild;
         }
+
         [Command("говорилка"), Alias("говор")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SendHelp()
         {
-            var builder = new EmbedBuilder()
-            .WithTitle("комманды для лютой нейросетки")
-            .WithColor(new Color(Color.DarkPurple))
-            .WithAuthor(author =>
-            {
-                author
-            .WithName("sbln говорилка🎤📓")
-            .WithIconUrl("https://emojio.ru/images/apple-b/1f9e0.png");
-            })
-            .WithFooter("powered by GovorNGN")
-            .AddField("доб+", "добавляет определенное кол-во сообщений, переписывая все что до этого было в бд")
-            .AddField("доб", "добавляет определенное кол-во сообщений в бд")
-            .AddField("чистись", "очищает все говно из бд")
-            .AddField("настройкиговора", "показывает настройки нейросетки")
-            .AddField("шаг рандома", "изменение шагов цепей рандома")
-            .AddField("числов", "число слов в сообщени на выдаче")
-            .AddField("шанс", "шанс что говорилка пропиздиться, роллится каждый раз, когда ты чето писюкаешь")
-            .AddField("сообщкол", "количество сообщений для подзагрузки")
-            .AddField("вр", "интервал через который произойдет подзагрузка сообщений")
-            .AddField("верни", "включает особый режим вербальной нищеты **(идея шефа)**")
-            .AddField("сброс", "сброс настроек на дефолт");
-            var embed = builder.Build();
+            var embed = EmbedHandler.FieldsEmbed(GovorAuthor, new Color(Color.DarkPurple), GovorFooter, authorIconUrl: GovorIcon)
+                .WithTitle("комманды для лютой нейросетки")
+                .AddField("доб+", "добавляет определенное кол-во сообщений, переписывая все что до этого было в бд")
+                .AddField("доб", "добавляет определенное кол-во сообщений в бд")
+                .AddField("чистись", "прогоняет базу через все фильтры и чистит дубли")
+                .AddField("настройкиговора", "показывает настройки нейросетки")
+                .AddField("шаг рандома", "изменение шагов цепей рандома")
+                .AddField("числов", "число слов в сообщени на выдаче")
+                .AddField("шанс", "шанс что говорилка пропиздиться, роллится каждый раз, когда ты чето писюкаешь")
+                .AddField("сообщкол", "количество сообщений для подзагрузки")
+                .AddField("вр", "интервал через который произойдет подзагрузка сообщений")
+                .AddField("верни", "включает особый режим вербальной нищеты **(идея шефа)**")
+                .AddField("сброс", "сброс настроек на дефолт")
+                .Build();
             await Context.Channel.SendMessageAsync(null, embed: embed).ConfigureAwait(false);
         }
+
         [Command("настройкиговора")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task GetSettings()
         {
-            string chips;
-            var cfg = _guild;
-            var user = Context.User as SocketGuildUser;
-            if (_govorilka.Rand == true)
-            {
-                chips = "рандом";        
-            }
-            else
-            {
-                chips = cfg.govorilka.Count.ToString();
-            }
-            var embed = new EmbedBuilder();
-            embed.WithAuthor("sbln говорилка/настройки🎤📓", "https://emojio.ru/images/apple-b/1f9e0.png");
-            embed.WithFooter("powered by GovorNGN");
-            embed.AddField("шаг рандома", $"**{cfg.govorilka.Step}**", true);
-            embed.AddField("число слов", $"**{chips}**", true);
-            embed.AddField("шанс ролла", $"**{cfg.govorilka.Chance}%**", true);
-            embed.AddField("кол-во сообщений подзагрузки", $"**{cfg.govorilka.Collection}**", true);
-            embed.AddField("время подзагрузки", $"**{Utils.govorUpdTime/1000} сек**", true);
-            embed.AddField("режим вербальной нищеты", $"**{Utils.govorVM}**", true);
-
-            await ReplyAsync("", false, embed.Build());
+            var chips = _govorilka.Rand ? "рандом" : _guild.govorilka.Count.ToString();
+            var embed = EmbedHandler.FieldsEmbed("sbln говорилка/настройки🎤📓", Color.LighterGrey, GovorFooter, authorIconUrl: GovorIcon)
+                .AddField("шаг рандома", $"**{_guild.govorilka.Step}**", true)
+                .AddField("число слов", $"**{chips}**", true)
+                .AddField("шанс ролла", $"**{_guild.govorilka.Chance}%**", true)
+                .AddField("кол-во сообщений подзагрузки", $"**{_guild.govorilka.Collection}**", true)
+                .AddField("время подзагрузки", $"**{Utils.govorUpdTime / 1000} сек**", true)
+                .AddField("режим вербальной нищеты", $"**{Utils.govorVM}**", true)
+                .Build();
+            await ReplyAsync(embed: embed);
         }
+
         [Command("добавить"), Alias("доб")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task AppendData(uint amount)
         {
             var messages = this.Context.Channel.GetMessagesAsync((int)amount).Flatten();
-            using (StreamWriter sw = new StreamWriter("messages.csv", append: true))
+            using (StreamWriter sw = new StreamWriter(Utils.messagesFilePath, append: true))
             {
                 await foreach (IMessage message in messages)
                 {
-                    if (!message.Content.StartsWith("x "))
-                    {
-                            sw.WriteLine(message.Content.ToString());
-                    }
+                    if (message.Author.IsBot) continue;
+                    var content = message.Content.Trim();
+                    if (string.IsNullOrWhiteSpace(content)) continue;
+                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (content.Contains("https://", StringComparison.OrdinalIgnoreCase)) continue;
+                    sw.WriteLine(content);
                 }
             }
             await RemoveDuplicates();
-            var m = new EmbedBuilder()
-            {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by GovorNGN"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln говорилка🎤📓",
-                },
-                Color = Color.LighterGrey
-            };
-            m.AddField($"добавлено", $"***{amount} сообщений***", true);
-            await ReplyAsync(embed: m.Build());
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("добавлено", $"***{amount} сообщений***", true)
+                .Build());
         }
 
         [Command("время"), Alias("вр")]
@@ -113,101 +95,80 @@ namespace sblngavnav5X.GVR
                 await ReplyAsync("Укажи значение больше 0.");
                 return;
             }
-
             CommandHandler.UpdateTimerInterval(amount);
-
-            var m = new EmbedBuilder()
-            {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by GovorNGN"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln говорилка🎤📓",
-                },
-                Color = Color.LighterGrey
-            };
-
-            m.AddField("время подзагрузки обновлено на", $"***{amount / 1000.0:0.##} секунд***", true);
-            await ReplyAsync(embed: m.Build());
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("время подзагрузки обновлено на", $"***{amount / 1000.0:0.##} секунд***", true)
+                .Build());
         }
 
         [Command("чистись"), Alias("чист")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task ClearFile()
         {
-            File.Create("messages.csv").Close();
-            var m = new EmbedBuilder()
+            int before = 0, after = 0;
+
+            if (File.Exists(Utils.messagesFilePath))
             {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by GovorNGN"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln говорилка🎤📓",
-                },
-                Color = Color.LighterGrey
-            };
-            m.AddField($"из бд очищено", $"***{File.Create("messages.csv").Length} говна***", true);
-            await ReplyAsync(embed: m.Build());
+                var lines = await File.ReadAllLinesAsync(Utils.messagesFilePath);
+                before = lines.Length;
+
+                var cleaned = lines
+                    .Select(l => l.Trim())
+                    .Where(l => !string.IsNullOrWhiteSpace(l))
+                    .Where(l => !l.Contains("https://", StringComparison.OrdinalIgnoreCase))
+                    .Where(l => !l.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase))
+                    .Where(l => !l.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase))
+                    .Distinct()
+                    .ToArray();
+
+                after = cleaned.Length;
+                await File.WriteAllLinesAsync(Utils.messagesFilePath, cleaned);
+            }
+
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("было строк", $"***{before}***", true)
+                .AddField("осталось", $"***{after}***", true)
+                .AddField("удалено говна", $"***{before - after}***", true)
+                .Build());
         }
+
         [Command("добавить+"), Alias("доб+")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SeedFile(uint amount)
         {
             var messages = this.Context.Channel.GetMessagesAsync((int)amount).Flatten();
-            using (StreamWriter sw = new StreamWriter("messages.csv"))
+            using (StreamWriter sw = new StreamWriter(Utils.messagesFilePath))
             {
                 await foreach (IMessage message in messages)
                 {
-                    if (!message.Content.Contains("x ") && !message.Content.Contains("https://"))
-                    sw.WriteLine(message.Content.ToString());
+                    if (message.Author.IsBot) continue;
+                    var content = message.Content.Trim();
+                    if (string.IsNullOrWhiteSpace(content)) continue;
+                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (content.Contains("https://", StringComparison.OrdinalIgnoreCase)) continue;
+                    sw.WriteLine(content);
                 }
             }
             await RemoveDuplicates();
-            var m = new EmbedBuilder()
-            {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by GovorNGN"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln говорилка🎤📓",
-                },
-                Color = Color.LighterGrey
-            };
-            m.AddField($"ебнуто старое говно и добавлено", $"***{amount} сообщений***", true);
-            await ReplyAsync(embed: m.Build());
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("ебнуто старое говно и добавлено", $"***{amount} сообщений***", true)
+                .Build());
         }
+
         [Command("шаг")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SetStep(uint step)
         {
             if (step < 1 || step > 15)
             {
-                await ReplyAsync($"в диапазоне от 1 до 15 чел");
+                await ReplyAsync("в диапазоне от 1 до 15 чел");
+                return;
             }
-            else
-            {
-                _govorilka.Step = step;
-                var m = new EmbedBuilder()
-                {
-                    Footer = new EmbedFooterBuilder()
-                    {
-                        Text = "powered by GovorNGN"
-                    },
-                    Author = new EmbedAuthorBuilder()
-                    {
-                        Name = "sbln говорилка🎤📓",
-                    },
-                    Color = Color.LighterGrey
-                };
-                m.AddField($"шаг установлен на", $"***{step}***", true);
-                await ReplyAsync(embed: m.Build());
-            }
+            _govorilka.Step = step;
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("шаг установлен на", $"***{step}***", true)
+                .Build());
         }
 
         [Command("числослов"), Alias("числов")]
@@ -217,72 +178,32 @@ namespace sblngavnav5X.GVR
             if (hui != null)
             {
                 _govorilka.Rand = true;
-                var m = new EmbedBuilder()
-                {
-                    Footer = new EmbedFooterBuilder()
-                    {
-                        Text = "powered by GovorNGN"
-                    },
-                    Author = new EmbedAuthorBuilder()
-                    {
-                        Name = "sbln говорилка🎤📓",
-                    },
-                    Color = Color.LighterGrey
-                };
-                m.AddField($"установлено рандомное значение слов", true);
-                await ReplyAsync(embed: m.Build());
+                await ReplyAsync(embed: GovorEmbed()
+                    .AddField("установлено рандомное значение слов", true)
+                    .Build());
                 return;
             }
-            else
             if (count < 3 || count > 50)
             {
-                await ReplyAsync($"в диапазоне от 3 до 50 чел");
+                await ReplyAsync("в диапазоне от 3 до 50 чел");
+                return;
             }
-            else
-            {
-                _govorilka.Rand = false;
-                _govorilka.Count = count;
-                var m = new EmbedBuilder()
-                {
-                    Footer = new EmbedFooterBuilder()
-                    {
-                        Text = "powered by GovorNGN"
-                    },
-                    Author = new EmbedAuthorBuilder()
-                    {
-                        Name = "sbln говорилка🎤📓",
-                    },
-                    Color = Color.LighterGrey
-                };
-                m.AddField($"число слов установлено на", $"***{count}***", true);
-                await ReplyAsync(embed: m.Build());
-            }
+            _govorilka.Rand = false;
+            _govorilka.Count = count;
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("число слов установлено на", $"***{count}***", true)
+                .Build());
         }
 
         [Command("шанс")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SetChance(uint chance)
         {
-            if (chance > 100)
-            {
-                chance = 100;
-            }
+            if (chance > 100) chance = 100;
             _govorilka.Chance = chance;
-            var m = new EmbedBuilder()
-            {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by GovorNGN"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln говорилка🎤📓",
-                },
-                Color = Color.LighterGrey
-            };
-            m.AddField($"шанс выдачи установлен на", $"***{chance}% ***", true);
-            await ReplyAsync(embed: m.Build());
-
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("шанс выдачи установлен на", $"***{chance}%***", true)
+                .Build());
         }
 
         [Command("вербальная нищета"), Alias("верни")]
@@ -291,60 +212,36 @@ namespace sblngavnav5X.GVR
         {
             try
             {
-                var clr = perekl switch
+                _govorilka.VerbalAbuseBySheff = perekl switch
                 {
-                    "вкл" => _govorilka.VerbalAbuseBySheff = true,
-                    "выкл" => _govorilka.VerbalAbuseBySheff = false,
-                    _ => _govorilka.VerbalAbuseBySheff = false
+                    "вкл" => true,
+                    "выкл" => false,
+                    _ => false
                 };
-                var m = new EmbedBuilder()
-                {
-                    Footer = new EmbedFooterBuilder()
-                    {
-                        Text = "powered by GovorNGN"
-                    },
-                    Author = new EmbedAuthorBuilder()
-                    {
-                        Name = "sbln говорилка🎤📓",
-                    },
-                    Color = Color.LighterGrey
-                };
-                m.AddField($"режим вербальной нищеты переведен в положение", $"***{perekl}***", true);
-                await ReplyAsync(embed: m.Build());
                 Utils.govorVM = perekl;
+                await ReplyAsync(embed: GovorEmbed()
+                    .AddField("режим вербальной нищеты переведен в положение", $"***{perekl}***", true)
+                    .Build());
             }
             catch
             {
-                await ReplyAsync($"только вкл/выкл чел");
+                await ReplyAsync("только вкл/выкл чел");
             }
-
         }
+
         [Command("сообщкол")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SetCollection(uint amount)
         {
             if (amount > 300)
             {
-                await ReplyAsync($"не больше 300 чел");
+                await ReplyAsync("не больше 300 чел");
+                return;
             }
-            else
-            {
-                _govorilka.Collection = amount;
-                var m = new EmbedBuilder()
-                {
-                    Footer = new EmbedFooterBuilder()
-                    {
-                        Text = "powered by GovorNGN"
-                    },
-                    Author = new EmbedAuthorBuilder()
-                    {
-                        Name = "sbln говорилка🎤📓",
-                    },
-                    Color = Color.LighterGrey
-                };
-                m.AddField($"количество слов подзагрузки", $"***{amount}***", true);
-                await ReplyAsync(embed: m.Build());
-            }
+            _govorilka.Collection = amount;
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("количество сообщений подзагрузки", $"***{amount}***", true)
+                .Build());
         }
 
         [Command("сброс")]
@@ -352,25 +249,19 @@ namespace sblngavnav5X.GVR
         public async Task Reset()
         {
             _guild.govorilka = new GovorConfig();
-            var m = new EmbedBuilder()
-            {
-                Footer = new EmbedFooterBuilder()
-                {
-                    Text = "powered by GovorNGN"
-                },
-                Author = new EmbedAuthorBuilder()
-                {
-                    Name = "sbln говорилка🎤📓",
-                },
-                Color = Color.LighterGrey
-            };
-            m.AddField($"сбросил все на дефолтыч", true);
-            await ReplyAsync(embed: m.Build());
+            await ReplyAsync(embed: GovorEmbed()
+                .AddField("сбросил все на дефолтыч", true)
+                .Build());
         }
+
         public async Task RemoveDuplicates()
         {
-            string[] lines = File.ReadAllLines("messages.csv");
-            await File.WriteAllLinesAsync("messages.csv", lines.Distinct().ToArray());
+            var lines = (await File.ReadAllLinesAsync(Utils.messagesFilePath))
+                .Select(l => l.Trim())
+                .Where(l => l.Length > 0)
+                .Distinct()
+                .ToArray();
+            await File.WriteAllLinesAsync(Utils.messagesFilePath, lines);
         }
     }
 }
