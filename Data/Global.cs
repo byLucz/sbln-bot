@@ -45,7 +45,7 @@ namespace sblngavnav5X.Data
 
         public const string messagesFilePath = "INSERT_HERE";
 
-        public static int govorUpdTime = 600000;
+        public static int govorUpdTime = 86400000;
 
         public static string govorVM = "выкл";
 

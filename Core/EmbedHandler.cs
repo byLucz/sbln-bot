@@ -82,10 +82,14 @@ namespace sblngavnav5X.Core
                     .WithIconUrl(byIconUrl))
                 .Build();
 
-        public static EmbedBuilder FieldsEmbed(string authorName, Color color, string footer, string? thumbnailUrl = null)
+        public static EmbedBuilder FieldsEmbed(string authorName, Color color, string footer, string? thumbnailUrl = null, string? authorIconUrl = null)
         {
+            var author = new EmbedAuthorBuilder().WithName(authorName);
+            if (!string.IsNullOrEmpty(authorIconUrl))
+                author.WithIconUrl(authorIconUrl);
+
             var b = new EmbedBuilder()
-                .WithAuthor(authorName)
+                .WithAuthor(author)
                 .WithColor(color)
                 .WithFooter(footer);
 
