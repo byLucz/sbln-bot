@@ -95,6 +95,9 @@ namespace sblngavnav5X.Data
             return (double)tmp / factor;
         }
 
+        public static string TrackLink(string? title, string? url) =>
+            string.IsNullOrEmpty(url) ? (title ?? "track") : $"[{title}]({url})";
+
         public static int RandomNumber(int min, int max)
         {
             Random random = new Random();

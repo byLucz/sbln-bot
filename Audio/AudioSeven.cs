@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using sblngavnav5X.Core;
+using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Runtime.InteropServices;
 using Victoria;
@@ -161,7 +162,7 @@ namespace sblngavnav5X.Audio
                     }
 
                     var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
-                        $"👀 Пропустили говно: [{player.Track?.Title}]({player.Track?.Url})\n🦻 Вместо это теперь: {nextTrack.Title}",
+                        $"👀 Пропустили говно: {Utils.TrackLink(player.Track?.Title, player.Track?.Url)}\n🦻 Вместо это теперь: {nextTrack.Title}",
                         Color.Green);
 
                     await ReplyAsync(embed: embed);
@@ -172,7 +173,7 @@ namespace sblngavnav5X.Audio
                 if (queue.TryDequeue(out var track) && track != null)
                 {
                     var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
-                        $"👀 Пропустили говно: [{player.Track?.Title}]({player.Track?.Url})\n🦻 Вместо это теперь: [{track.Title}]({track.Url})",
+                        $"👀 Пропустили говно: {Utils.TrackLink(player.Track?.Title, player.Track?.Url)}\n🦻 Вместо это теперь: {Utils.TrackLink(track.Title, track.Url)}",
                         Color.Green);
 
                     await ReplyAsync(embed: embed);
@@ -269,7 +270,7 @@ namespace sblngavnav5X.Audio
 
             await player.PauseAsync(lavaNode);
             await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, пауза",
-                $"поставил на паузу --- [{player.Track.Title}]({player.Track.Url}) ⏸️",
+                $"поставил на паузу --- {Utils.TrackLink(player.Track.Title, player.Track.Url)} ⏸️",
                 Color.Blue));
         }
 
@@ -295,7 +296,7 @@ namespace sblngavnav5X.Audio
 
             await player.ResumeAsync(lavaNode, player.Track);
             await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, продолжи",
-                $"продолжаю --- [{player.Track.Title}]({player.Track.Url}) ▶️",
+                $"продолжаю --- {Utils.TrackLink(player.Track.Title, player.Track.Url)} ▶️",
                 Color.Blue));
         }
 
@@ -461,7 +462,7 @@ namespace sblngavnav5X.Audio
 
             var qEmbed = await EmbedHandler.CreateCustomMusicEmbed(
                 "sbln muzik🎸🎧",
-                $"[{track.Title}]({track.Url}) **добавлен в очередь** 🤙", "🔼 - в начало листа",
+                $"{Utils.TrackLink(track.Title, track.Url)} **добавлен в очередь** 🤙", "🔼 - в начало листа",
                 Color.Orange);
 
             var msg = await Context.Channel.SendMessageAsync(embed: qEmbed);

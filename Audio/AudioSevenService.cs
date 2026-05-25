@@ -3,6 +3,7 @@ using Discord.WebSocket;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using sblngavnav5X.Core;
+using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
@@ -319,7 +320,7 @@ namespace sblngavnav5X.Audio
 
             var embed = await EmbedHandler.CreateCustomMusicEmbed(
                 "sbln muzik🎸🎧",
-                $"**👺 Трек:** [{track.Title}]({track.Url})\n" +
+                $"**👺 Трек:** {Utils.TrackLink(track.Title, track.Url)}\n" +
                 $"**👤 Автор:** {track.Author}\n" +
                 $"**⏳ Длительность:** {FormatTime(track.Duration)}\n" +
                 $"{loopLine}", "▶/🔁 - скип/луп трека",
@@ -478,7 +479,7 @@ namespace sblngavnav5X.Audio
                 {
                     var ok = await EmbedHandler.CreateMusicEmbed(
                         "sbln muzik🎸🎧, играй+",
-                        $"💎 Трек [{picked.Title}]({picked.Url}) добавлен в начало листа",
+                        $"💎 Трек {Utils.TrackLink(picked.Title, picked.Url)} добавлен в начало листа",
                         Color.Green);
                     await msg.ModifyAsync(m => m.Embed = ok);
 
@@ -528,7 +529,7 @@ namespace sblngavnav5X.Audio
 
                 var embed = await EmbedHandler.CreateCustomMusicEmbed(
                     "sbln muzik🎸🎧",
-                    $"**👺 Трек:** [{player.Track.Title}]({player.Track.Url})\n" +
+                    $"**👺 Трек:** {Utils.TrackLink(player.Track.Title, player.Track.Url)}\n" +
                     $"**👤 Автор:** {player.Track.Author}\n" +
                     $"**⏳ Длительность:** {FormatTime(player.Track.Duration)}\n" +
                     $"{loopLine}", "▶/🔁 - скип/луп трека",
@@ -594,7 +595,7 @@ namespace sblngavnav5X.Audio
             {
                 var ok = await EmbedHandler.CreateMusicEmbed(
                     "sbln muzik🎸🎧, лист+",
-                    $"💎 Выбран трек: [{picked.Title}]({picked.Url})",
+                    $"💎 Выбран трек: {Utils.TrackLink(picked.Title, picked.Url)}",
                     Color.Green);
 
                 await msg.ModifyAsync(m => m.Embed = ok);
@@ -704,7 +705,7 @@ namespace sblngavnav5X.Audio
             {
                 var num = i == 0 ? "1️⃣" : i == 1 ? "2️⃣" : "3️⃣";
                 var t = picks[i];
-                lines.Add($"{num} [{Truncate(t.Title ?? "track", 80)}]({t.Url}) - {Truncate(t.Author ?? "unknown", 40)} - {FormatTime(t.Duration)}");
+                lines.Add($"{num} {Utils.TrackLink(Truncate(t.Title ?? "track", 80), t.Url)} - {Truncate(t.Author ?? "unknown", 40)} - {FormatTime(t.Duration)}");
             }
 
             var desc =
@@ -1124,7 +1125,7 @@ namespace sblngavnav5X.Audio
             var remaining = total > current ? (total - current) : TimeSpan.Zero;
 
             var header = new StringBuilder();
-            header.AppendLine($"👺 **Трек:** [{player.Track!.Title}]({player.Track.Url})");
+            header.AppendLine($"👺 **Трек:** {Utils.TrackLink(player.Track!.Title, player.Track.Url)}");
             header.AppendLine($"👤 **Автор:** {player.Track.Author}");
             header.AppendLine($"📦 **В очереди:** {queueCount}");
             header.AppendLine($"🕓 **Длина очереди:** {FormatTime(queueDuration)}");
