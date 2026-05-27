@@ -82,8 +82,7 @@ namespace sblngavnav5X.Core
 
             try { await _client.LogoutAsync(); } catch { }
             try { await _client.StopAsync(); } catch { }
-
-            await _services.DisposeAsync();
+            try { await _services.DisposeAsync(); } catch { }
         }
 
         private void SubscribeDiscordEvents()
