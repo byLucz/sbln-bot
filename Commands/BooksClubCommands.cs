@@ -1,7 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
-using Newtonsoft.Json.Linq;
+using System.Text.Json.Nodes;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 
@@ -40,9 +40,9 @@ namespace sblngavnav5X.Commands
             }
 
             string jsonResponse = await response.Content.ReadAsStringAsync();
-            JObject json = JObject.Parse(jsonResponse);
+            JsonNode json = JsonNode.Parse(jsonResponse);
 
-            var firstBook = json["items"]?[0]?["volumeInfo"];
+            var firstBook = json?["items"]?[0]?["volumeInfo"];
             if (firstBook == null)
             {
                 await ReplyAsync("❌ Книга не найдена");
@@ -50,7 +50,7 @@ namespace sblngavnav5X.Commands
             }
 
             string bookTitle = firstBook["title"]?.ToString() ?? "Неизвестно";
-            string authors = firstBook["authors"] != null ? string.Join(", ", firstBook["authors"]) : "Автор неизвестен";
+            string authors = firstBook["authors"] != null ? string.Join(", ", firstBook["authors"].AsArray()) : "Автор неизвестен";
             string publishedDate = firstBook["publishedDate"]?.ToString() ?? "Неизвестно";
             string pageCount = firstBook["pageCount"]?.ToString() ?? "Не указано";
             string rating = firstBook["averageRating"]?.ToString() ?? "Нет оценок";
@@ -120,8 +120,8 @@ namespace sblngavnav5X.Commands
             }
 
             string json = await response.Content.ReadAsStringAsync();
-            var root = JObject.Parse(json);
-            var info = root["items"]?[0]?["volumeInfo"];
+            var root = JsonNode.Parse(json);
+            var info = root?["items"]?[0]?["volumeInfo"];
 
             if (info == null)
             {
@@ -130,7 +130,7 @@ namespace sblngavnav5X.Commands
             }
 
             string title = info["title"]?.ToString() ?? "Неизвестно";
-            string authors = info["authors"] != null ? string.Join(", ", info["authors"]) : "Автор неизвестен";
+            string authors = info["authors"] != null ? string.Join(", ", info["authors"].AsArray()) : "Автор неизвестен";
             string image = info["imageLinks"]?["thumbnail"]?.ToString() ?? "";
 
             DataBase.AddBook(title, authors, image, Context.User.Username);

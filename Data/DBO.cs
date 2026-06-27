@@ -501,8 +501,7 @@ namespace sblngavnav5X.Data
                 }
             }
 
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            string json = JsonSerializer.Serialize(books.Values.ToList(), options);
+            string json = JsonSerializer.Serialize(books.Values.ToList(), AppJsonContext.Default.ListBookExportDto);
 
             lock (_exportLock)
             {

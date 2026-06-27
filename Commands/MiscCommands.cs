@@ -1,10 +1,11 @@
 ﻿using Discord;
 using Discord.Commands;
-using Newtonsoft.Json;
 using sblngavnav5X.Core;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Data;
+using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using static sblngavnav5X.Data.DataRoots;
 
@@ -44,7 +45,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
             response.EnsureSuccessStatusCode();
 
             var content = await response.Content.ReadAsStringAsync();
-            var cats = JsonConvert.DeserializeObject<CatData[]>(content);
+            var cats = JsonSerializer.Deserialize(content, AppJsonContext.Default.CatDataArray);
 
             jsonData = cats?.FirstOrDefault();
 
@@ -125,7 +126,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
             }
 
             var content = await bfResponse.Content.ReadAsStringAsync();
-            var results = JsonConvert.DeserializeObject<List<List<object>>>(content);
+            var results = JsonSerializer.Deserialize(content, AppJsonContext.Default.ListListJsonElement);
 
             if (results == null || results.Count == 0)
             {
@@ -191,7 +192,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
             }
 
             var content = await response.Content.ReadAsStringAsync();
-            b = JsonConvert.DeserializeObject<Converter>(content);
+            b = JsonSerializer.Deserialize(content, AppJsonContext.Default.Converter);
 
             if (b?.rates == null)
             {
@@ -329,7 +330,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
         await ReplyAsync(embed: e.Build());
     }
 
-    private static List<BitfinexCoin> ConvertToBitfinexCoins(List<List<object>> obj)
+    private static List<BitfinexCoin> ConvertToBitfinexCoins(List<List<JsonElement>> obj)
     {
         var coins = new List<BitfinexCoin>();
 
@@ -342,17 +343,17 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
             {
                 coins.Add(new BitfinexCoin
                 {
-                    Symbol = Convert.ToString(coin[0]) ?? string.Empty,
-                    Bid = Convert.ToDecimal(coin[1]),
-                    BidSize = Convert.ToDecimal(coin[2]),
-                    Ask = Convert.ToDecimal(coin[3]),
-                    AskSize = Convert.ToDecimal(coin[4]),
-                    DailyChange = Convert.ToDecimal(coin[5]),
-                    DailyChangePercentage = Convert.ToDecimal(coin[6]) * 100,
-                    LastPrice = Convert.ToDecimal(coin[7]),
-                    Volume = Convert.ToDecimal(coin[8]),
-                    High = Convert.ToDecimal(coin[9]),
-                    Low = Convert.ToDecimal(coin[10])
+                    Symbol = Str(coin[0]),
+                    Bid = Dec(coin[1]),
+                    BidSize = Dec(coin[2]),
+                    Ask = Dec(coin[3]),
+                    AskSize = Dec(coin[4]),
+                    DailyChange = Dec(coin[5]),
+                    DailyChangePercentage = Dec(coin[6]) * 100,
+                    LastPrice = Dec(coin[7]),
+                    Volume = Dec(coin[8]),
+                    High = Dec(coin[9]),
+                    Low = Dec(coin[10])
                 });
             }
             catch
@@ -362,4 +363,12 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
 
         return coins;
     }
+
+    private static string Str(JsonElement e) =>
+        e.ValueKind == JsonValueKind.String ? e.GetString() ?? string.Empty : e.GetRawText();
+
+    private static decimal Dec(JsonElement e) =>
+        e.ValueKind == JsonValueKind.Number
+            ? e.GetDecimal()
+            : decimal.Parse(e.GetString() ?? "0", CultureInfo.InvariantCulture);
 }

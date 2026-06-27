@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using sblngavnav5X.Data;
 using static sblngavnav5X.Data.DataRoots;
 
 namespace sblngavnav5X.Commands
@@ -80,7 +81,7 @@ namespace sblngavnav5X.Commands
 
         private async Task<Meal?> GetRandomMealAsync()
         {
-            var resp = await _http.GetFromJsonAsync<MealResponse>(RandomMealUrl);
+            var resp = await _http.GetFromJsonAsync(RandomMealUrl, AppJsonContext.Default.MealResponse);
             return resp?.Meals?.FirstOrDefault();
         }
 
@@ -143,7 +144,7 @@ namespace sblngavnav5X.Commands
                         continue;
                     }
 
-                    var mm = await res.Content.ReadFromJsonAsync<MyMemoryResult>();
+                    var mm = await res.Content.ReadFromJsonAsync(AppJsonContext.Default.MyMemoryResult);
                     var translated = WebUtility.HtmlDecode(mm?.responseData?.translatedText ?? "");
 
                     translatedChunks.Add(string.IsNullOrWhiteSpace(translated) ? chunk : translated);

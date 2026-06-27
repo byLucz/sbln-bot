@@ -1,11 +1,11 @@
 ﻿using Discord;
 using Discord.Commands;
-using Newtonsoft.Json.Linq;
 using sblngavnav5X.Core;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 
 namespace sblngavnav5X.Commands
@@ -153,8 +153,8 @@ namespace sblngavnav5X.Commands
 
                     try
                     {
-                        var json = JObject.Parse(jsonString);
-                        jokeText = json["content"]?.ToString() ?? "";
+                        var json = JsonNode.Parse(jsonString);
+                        jokeText = json?["content"]?.ToString() ?? "";
                     }
                     catch
                     {
@@ -201,12 +201,12 @@ namespace sblngavnav5X.Commands
                 response.EnsureSuccessStatusCode();
 
                 var responseBody = await response.Content.ReadAsStringAsync();
-                var text = JObject.Parse(responseBody);
+                var text = JsonNode.Parse(responseBody);
 
-                toReturn = text["quoteText"]?.ToString() ?? "";
-                author = string.IsNullOrEmpty(text["quoteAuthor"]?.ToString())
+                toReturn = text?["quoteText"]?.ToString() ?? "";
+                author = string.IsNullOrEmpty(text?["quoteAuthor"]?.ToString())
                     ? "*без автора*"
-                    : text["quoteAuthor"]!.ToString();
+                    : text!["quoteAuthor"]!.ToString();
             }
             catch (Exception e)
             {

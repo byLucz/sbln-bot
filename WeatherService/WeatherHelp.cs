@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+using System.Net.Http.Json;
 using sblngavnav5X.Data;
 namespace sblngavnav5X.Commands
 
@@ -19,7 +19,7 @@ namespace sblngavnav5X.Commands
            {
                try
                {
-                WeatherApiBase b =  JsonConvert.DeserializeObject<WeatherApiBase>(await r.Content.ReadAsStringAsync());
+                WeatherApiBase b =  await r.Content.ReadFromJsonAsync(AppJsonContext.Default.WeatherApiBase);
                 return new WeatherSer(){main = b.main , weather = b.weather , windSc = b.windSc, sysSc = b.sysSc, isValid = true};
                }
                catch(Exception e)

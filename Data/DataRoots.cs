@@ -1,5 +1,4 @@
-﻿using Newtonsoft.Json;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace sblngavnav5X.Data
 {
@@ -64,7 +63,7 @@ namespace sblngavnav5X.Data
         }
         public class CatData
         {
-            [JsonProperty("url")] public Uri Url { get; set; }
+            [JsonPropertyName("url")] public Uri Url { get; set; }
         }
 
         public class BookWithRating
