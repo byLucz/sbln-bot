@@ -8,30 +8,30 @@ using sblngavnav5X.Services;
 
 namespace sblngavnav5X.Commands;
 
-public class RequirePgRoleAttribute : Discord.Commands.PreconditionAttribute
+public class RequireSQDRoleAttribute : Discord.Commands.PreconditionAttribute
 {
     public override Task<Discord.Commands.PreconditionResult> CheckPermissionsAsync(
         ICommandContext context, CommandInfo command, IServiceProvider services)
     {
-        if (Utils.pgApiRoleId == 0)
+        if (Utils.sqdRoleId == 0)
             return Task.FromResult(Discord.Commands.PreconditionResult.FromError("pgApiRoleId не задан в Utils"));
 
-        if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.pgApiRoleId))
+        if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.sqdRoleId))
             return Task.FromResult(Discord.Commands.PreconditionResult.FromError("Нет доступа к pgAPI"));
 
         return Task.FromResult(Discord.Commands.PreconditionResult.FromSuccess());
     }
 }
 
-public class RequirePgRoleInteractionAttribute : Discord.Interactions.PreconditionAttribute
+public class RequireSQDRoleInteractionAttribute : Discord.Interactions.PreconditionAttribute
 {
     public override Task<Discord.Interactions.PreconditionResult> CheckRequirementsAsync(
         IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
     {
-        if (Utils.pgApiRoleId == 0)
+        if (Utils.sqdRoleId == 0)
             return Task.FromResult(Discord.Interactions.PreconditionResult.FromError("pgApiRoleId не задан в Utils"));
 
-        if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.pgApiRoleId))
+        if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.sqdRoleId))
             return Task.FromResult(Discord.Interactions.PreconditionResult.FromError("Нет доступа к pgAPI"));
 
         return Task.FromResult(Discord.Interactions.PreconditionResult.FromSuccess());
@@ -96,7 +96,7 @@ public static class PgApiPanelBuilder
     }
 }
 
-[RequirePgRole]
+[RequireSQDRole]
 public class PgApiCommands : ModuleBase<SocketCommandContext>
 {
     private readonly PgApiService _pgApi;
@@ -132,7 +132,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         _pgApi = pgApi;
     }
 
-    [RequirePgRoleInteraction]
+    [RequireSQDRoleInteraction]
     [ComponentInteraction("pgapi_page:*")]
     public async Task ChangePage(string pageRaw)
     {
@@ -149,7 +149,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         });
     }
 
-    [RequirePgRoleInteraction]
+    [RequireSQDRoleInteraction]
     [ComponentInteraction("pgapi_action:*")]
     public async Task ExecuteAction(string action)
     {
