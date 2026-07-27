@@ -16,9 +16,6 @@ namespace sblngavnav5X.Audio
         private static readonly Regex SoundCloudPrefixRegex =
             new(@"^\s*(?:склауд|саундклауд)\s+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        private static readonly Regex YandexPrefixRegex =
-            new(@"^\s*(?:яндекс|санкции)\s+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
         public static string Normalize(string raw, out int playlistIndex)
         {
             playlistIndex = 0;
@@ -41,6 +38,13 @@ namespace sblngavnav5X.Audio
             if (searchQuery.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
                 searchQuery = searchQuery.Replace("youtu.be/", "youtube.com/watch?v=", StringComparison.OrdinalIgnoreCase);
 
+            if (searchQuery.Contains("youtu", StringComparison.OrdinalIgnoreCase))
+            {
+                int firstQ = searchQuery.IndexOf('?');
+                if (firstQ >= 0)
+                    searchQuery = searchQuery[..(firstQ + 1)] + searchQuery[(firstQ + 1)..].Replace('?', '&');
+            }
+
             if (Uri.TryCreate(searchQuery, UriKind.Absolute, out var uri) &&
                 (uri.Host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||
                  uri.Host.Contains("youtu.be", StringComparison.OrdinalIgnoreCase) ||
@@ -53,7 +57,11 @@ namespace sblngavnav5X.Audio
                     if (q.TryGetValue("index", out var idxStr) && int.TryParse(idxStr, out var parsed) && parsed > 0)
                         playlistIndex = parsed - 1;
 
-                    searchQuery = $"https://www.youtube.com/playlist?list={listId}";
+                    if (listId.StartsWith("RD", StringComparison.OrdinalIgnoreCase) &&
+                        q.TryGetValue("v", out var vid) && !string.IsNullOrWhiteSpace(vid))
+                        searchQuery = $"https://www.youtube.com/watch?v={vid}&list={listId}";
+                    else
+                        searchQuery = $"https://www.youtube.com/playlist?list={listId}";
                 }
             }
 
@@ -67,12 +75,6 @@ namespace sblngavnav5X.Audio
             {
                 var q = SoundCloudPrefixRegex.Replace(searchQuery, "").Trim();
                 searchQuery = "scsearch:" + q;
-            }
-
-            if (!Uri.TryCreate(searchQuery, UriKind.Absolute, out _) && YandexPrefixRegex.IsMatch(searchQuery))
-            {
-                var q = YandexPrefixRegex.Replace(searchQuery, "").Trim();
-                searchQuery = "ymsearch:" + q;
             }
 
             if (!Uri.TryCreate(searchQuery, UriKind.Absolute, out _) && !HasKnownSearchPrefix(searchQuery))
@@ -132,7 +134,6 @@ namespace sblngavnav5X.Audio
         {
             return q.StartsWith("ytsearch:", StringComparison.OrdinalIgnoreCase) ||
                    q.StartsWith("scsearch:", StringComparison.OrdinalIgnoreCase) ||
-                   q.StartsWith("ymsearch:", StringComparison.OrdinalIgnoreCase) ||
                    q.StartsWith("spsearch:", StringComparison.OrdinalIgnoreCase) ||
                    q.StartsWith("ftts:", StringComparison.OrdinalIgnoreCase);
         }
