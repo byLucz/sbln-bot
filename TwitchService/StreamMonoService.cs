@@ -331,7 +331,7 @@ namespace sblngavnav5X.TwitchService
                     _liveStreamMonitor.Stop();
             }
 
-            await GetProfImgUrlsAsync(StreamIdList);
+            StreamProfileImages = await GetProfImgUrlsAsync(StreamIdList);
             GetStreamerList();
         }
 
