@@ -11,7 +11,7 @@ namespace sblngavnav5X.Data
 
     public static class Utils
     {
-        public const string sblnver = "5.6.0";
+        public const string sblnver = "5.6.1";
 
         public const string token = "INSERT_HERE";
 
@@ -45,7 +45,7 @@ namespace sblngavnav5X.Data
 
         public const string messagesFilePath = "INSERT_HERE";
 
-        public static int govorUpdTime = 600000;
+        public static int govorUpdTime = 86400000;
 
         public static string govorVM = "выкл";
 
@@ -93,6 +93,32 @@ namespace sblngavnav5X.Data
             value = value * factor;
             long tmp = (long)Math.Round(value);
             return (double)tmp / factor;
+        }
+
+        public static string TrackLink(string? title, string? url)
+        {
+            var label = HasVisible(title) ? title.Trim() : "Без названия..";
+            label = label.Replace("[", "(").Replace("]", ")");
+
+            return HasVisible(url) ? $"[{label}]({url.Trim()})" : label;
+        }
+
+        private static bool HasVisible(string? s)
+        {
+            if (string.IsNullOrEmpty(s)) return false;
+            foreach (var ch in s)
+            {
+                if (char.IsWhiteSpace(ch) || char.IsControl(ch)) continue;
+                if (char.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.Format) continue;
+                switch (ch)
+                {
+                    case 'ㅤ': case '⠀': case 'ᅟ': case 'ᅠ':
+                    case 'ﾠ': case '　': case '᠎': case '⁠': case '﻿':
+                        continue;
+                }
+                return true;
+            }
+            return false;
         }
 
         public static int RandomNumber(int min, int max)

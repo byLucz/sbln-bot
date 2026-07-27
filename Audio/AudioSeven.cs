@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using sblngavnav5X.Core;
+using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Runtime.InteropServices;
 using Victoria;
@@ -63,7 +64,7 @@ namespace sblngavnav5X.Audio
                 player = await lavaNode.GetPlayerAsync(guildId);
             }
 
-            var normalized = AudioQueryNormalizer.Normalize(searchQuery, out var index);
+            var normalized = AudioQueryNormalizer.Normalize(searchQuery, out var index, out var fallback);
 
             try
             {
@@ -80,15 +81,34 @@ namespace sblngavnav5X.Audio
 
                 var trackCount = searchResponse?.Tracks?.Count ?? 0;
 
+                if ((trackCount == 0 || searchResponse?.Type == SearchType.Error) && !string.IsNullOrEmpty(fallback))
+                {
+                    try
+                    {
+                        var alt = await lavaNode.LoadTrackAsync(fallback);
+                        if ((alt?.Tracks?.Count ?? 0) > 0)
+                        {
+                            searchResponse = alt;
+                            index = 0;
+                            trackCount = alt.Tracks.Count;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        await LoggingService.LogErrorAsync("VI-KA", $"LoadTrackAsync fail: {fallback}", ex);
+                    }
+                }
+
                 if (trackCount == 0)
                 {
                     if (Context.Channel is ITextChannel tc)
                     {
-                        var handled = await audioService.TrySendSmartSearchPicksAsync(
+                        var handled = await audioService.TrySmartFallbackAsync(
                             guildId: guildId,
                             channel: tc,
                             requestedByUserId: Context.User.Id,
-                            normalizedQuery: normalized);
+                            normalizedQuery: normalized,
+                            initial: searchResponse);
 
                         if (handled)
                             return;
@@ -161,7 +181,7 @@ namespace sblngavnav5X.Audio
                     }
 
                     var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
-                        $"👀 Пропустили говно: [{player.Track?.Title}]({player.Track?.Url})\n🦻 Вместо это теперь: {nextTrack.Title}",
+                        $"👀 Пропустили говно: {Utils.TrackLink(player.Track?.Title, player.Track?.Url)}\n🦻 Вместо это теперь: {nextTrack.Title}",
                         Color.Green);
 
                     await ReplyAsync(embed: embed);
@@ -172,7 +192,7 @@ namespace sblngavnav5X.Audio
                 if (queue.TryDequeue(out var track) && track != null)
                 {
                     var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
-                        $"👀 Пропустили говно: [{player.Track?.Title}]({player.Track?.Url})\n🦻 Вместо это теперь: [{track.Title}]({track.Url})",
+                        $"👀 Пропустили говно: {Utils.TrackLink(player.Track?.Title, player.Track?.Url)}\n🦻 Вместо это теперь: {Utils.TrackLink(track.Title, track.Url)}",
                         Color.Green);
 
                     await ReplyAsync(embed: embed);
@@ -219,6 +239,13 @@ namespace sblngavnav5X.Audio
                 return;
             }
 
+            const int maxItems = 50;
+            if (items.Count > maxItems)
+            {
+                await ReplyAsync($"слишком много вариантов ({items.Count}), беру первые {maxItems}");
+                items = items.Take(maxItems).ToList();
+            }
+
             var guildId = Context.Guild.Id;
             if (await lavaNode.TryGetPlayerAsync(guildId) is null or { State.IsConnected: false })
                 await JoinAsync();
@@ -235,6 +262,27 @@ namespace sblngavnav5X.Audio
             http.DefaultRequestHeaders.UserAgent.ParseAdd("sblnokv5x");
 
             await audioService.RunVoteAsync(guildId, statusMsg, items, winner, http);
+        }
+
+        [Command("перемешай")]
+        [Alias("шафл", "перемешка")]
+        public async Task ShuffleAsync()
+        {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
+                return;
+
+            var count = await audioService.ShuffleQueueAsync(Context.Guild.Id);
+            if (count == 0)
+            {
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(
+                    "sbln muzik🎸🎧, шафл", "в очереди нечего мешать (нужно ≥2 трека)"));
+                return;
+            }
+
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
+                "sbln muzik🎸🎧, шафл",
+                $"🔀 **Очередь перемешана** ({count} треков)",
+                Color.DarkMagenta));
         }
 
         [Command("плейлист")]
@@ -269,7 +317,7 @@ namespace sblngavnav5X.Audio
 
             await player.PauseAsync(lavaNode);
             await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, пауза",
-                $"поставил на паузу --- [{player.Track.Title}]({player.Track.Url}) ⏸️",
+                $"поставил на паузу --- {Utils.TrackLink(player.Track.Title, player.Track.Url)} ⏸️",
                 Color.Blue));
         }
 
@@ -295,7 +343,7 @@ namespace sblngavnav5X.Audio
 
             await player.ResumeAsync(lavaNode, player.Track);
             await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, продолжи",
-                $"продолжаю --- [{player.Track.Title}]({player.Track.Url}) ▶️",
+                $"продолжаю --- {Utils.TrackLink(player.Track.Title, player.Track.Url)} ▶️",
                 Color.Blue));
         }
 
@@ -461,7 +509,7 @@ namespace sblngavnav5X.Audio
 
             var qEmbed = await EmbedHandler.CreateCustomMusicEmbed(
                 "sbln muzik🎸🎧",
-                $"[{track.Title}]({track.Url}) **добавлен в очередь** 🤙", "🔼 - в начало листа",
+                $"{Utils.TrackLink(track.Title, track.Url)} **добавлен в очередь** 🤙", "🔼 - в начало листа",
                 Color.Orange);
 
             var msg = await Context.Channel.SendMessageAsync(embed: qEmbed);

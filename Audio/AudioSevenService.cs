@@ -3,6 +3,7 @@ using Discord.WebSocket;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using sblngavnav5X.Core;
+using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
@@ -32,6 +33,8 @@ namespace sblngavnav5X.Audio
         private readonly ConcurrentDictionary<ulong, PaginatorState> _paginatorsByMessageId = new();
         private readonly ConcurrentDictionary<ulong, QueueInsertState> _queueInsertByMessageId = new();
         private readonly ConcurrentDictionary<ulong, SearchPickState> _searchPicksByMessageId = new();
+        private readonly ConcurrentDictionary<ulong, VoteSkipState> _voteSkipByMessageId = new();
+        private readonly ConcurrentDictionary<ulong, CancellationTokenSource> _autoLeaveCts = new();
 
         private readonly object _statsLock = new();
         private StatsEventArg? _lastStats;
@@ -51,6 +54,15 @@ namespace sblngavnav5X.Audio
 
             _client.ReactionAdded += OnReactionAddedAsync;
             _client.UserVoiceStateUpdated += OnUserVoiceStateUpdatedAsync;
+
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(5));
+                    CleanupStaleStates();
+                }
+            });
         }
 
         public void SetGuildChannels(ulong guildId, ulong voiceChannelId, ulong textChannelId)
@@ -85,6 +97,29 @@ namespace sblngavnav5X.Audio
 
         public void SetSilentMode(ulong guildId, bool silent) => _silentMode[guildId] = silent;
         public bool IsSilentMode(ulong guildId) => _silentMode.TryGetValue(guildId, out var v) && v;
+
+        private void CleanupStaleStates()
+        {
+            var now = DateTimeOffset.UtcNow;
+            var msgTtl = TimeSpan.FromMinutes(10);
+
+            foreach (var kv in _paginatorsByMessageId.ToArray())
+                if ((now - kv.Value.CreatedAtUtc) > msgTtl)
+                    _paginatorsByMessageId.TryRemove(kv.Key, out _);
+
+            foreach (var kv in _queueInsertByMessageId.ToArray())
+                if ((now - kv.Value.CreatedAtUtc) > msgTtl)
+                    _queueInsertByMessageId.TryRemove(kv.Key, out _);
+
+            foreach (var kv in _searchPicksByMessageId.ToArray())
+                if ((now - kv.Value.CreatedAtUtc) > msgTtl)
+                    _searchPicksByMessageId.TryRemove(kv.Key, out _);
+
+            var clickCutoff = DateTime.UtcNow.AddHours(-1);
+            foreach (var key in _lastClickTime.Keys.ToArray())
+                if (_lastClickTime.TryGetValue(key, out var t) && t < clickCutoff)
+                    _lastClickTime.TryRemove(key, out _);
+        }
 
         public async Task RunInGuildLockAsync(ulong guildId, Func<Task> action)
         {
@@ -193,14 +228,16 @@ namespace sblngavnav5X.Audio
 
                 var beforeTracked = before.VoiceChannel?.Id == trackedVcId;
                 var afterTracked = after.VoiceChannel?.Id == trackedVcId;
-                if (!beforeTracked && !afterTracked)
+
+                if (!beforeTracked || afterTracked)
                     return;
 
-                var vc = guild.GetVoiceChannel(trackedVcId);
-                if (vc is null) return;
+                if (_autoLeaveCts.TryRemove(guildId, out var prev))
+                    prev.Cancel();
 
-                if (!vc.ConnectedUsers.Any(u => !u.IsBot))
-                    _ = ScheduleAutoLeaveAsync(guildId, trackedVcId);
+                var cts = new CancellationTokenSource();
+                _autoLeaveCts[guildId] = cts;
+                _ = ScheduleAutoLeaveAsync(guildId, trackedVcId, cts.Token);
             }
             catch (Exception ex)
             {
@@ -208,11 +245,12 @@ namespace sblngavnav5X.Audio
             }
         }
 
-        private async Task ScheduleAutoLeaveAsync(ulong guildId, ulong trackedVcId)
+        private async Task ScheduleAutoLeaveAsync(ulong guildId, ulong trackedVcId, CancellationToken ct = default)
         {
             try
             {
-                await Task.Delay(1200);
+                await Task.Delay(1200, ct);
+                _autoLeaveCts.TryRemove(guildId, out _);
 
                 var guild = _client.GetGuild(guildId);
                 var vc = guild?.GetVoiceChannel(trackedVcId);
@@ -228,6 +266,7 @@ namespace sblngavnav5X.Audio
 
                 await ForceLeaveAsync(guildId);
             }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 await LoggingService.LogWarningAsync("VI-KA", $"ScheduleAutoLeave g={guildId}: {ex}");
@@ -271,6 +310,15 @@ namespace sblngavnav5X.Audio
                     if (kv.Value.GuildId == guildId)
                         _queueInsertByMessageId.TryRemove(kv.Key, out _);
                 }
+
+                foreach (var kv in _searchPicksByMessageId.ToArray())
+                {
+                    if (kv.Value.GuildId == guildId)
+                        _searchPicksByMessageId.TryRemove(kv.Key, out _);
+                }
+
+                if (_autoLeaveCts.TryRemove(guildId, out var cts))
+                    cts.Dispose();
 
                 _repeatEnabled[guildId] = false;
 
@@ -319,10 +367,10 @@ namespace sblngavnav5X.Audio
 
             var embed = await EmbedHandler.CreateCustomMusicEmbed(
                 "sbln muzik🎸🎧",
-                $"**👺 Трек:** [{track.Title}]({track.Url})\n" +
+                $"**👺 Трек:** {Utils.TrackLink(track.Title, track.Url)}\n" +
                 $"**👤 Автор:** {track.Author}\n" +
                 $"**⏳ Длительность:** {FormatTime(track.Duration)}\n" +
-                $"{loopLine}", "▶/🔁 - скип/луп трека",
+                $"{loopLine}", "▶/🔁 - скип/луп",
                 Color.Purple);
 
             var msg = await textChannel.SendMessageAsync(embed: embed);
@@ -414,6 +462,21 @@ namespace sblngavnav5X.Audio
                 return;
             }
 
+            if (_voteSkipByMessageId.TryGetValue(reaction.MessageId, out var voteSkip))
+            {
+                if (reaction.Emote.Name == "⏭️")
+                {
+                    await RunInGuildLockAsync(guildId, async () =>
+                    {
+                        var p = await _lavaNode.TryGetPlayerAsync(guildId);
+                        if (p?.Track != null)
+                            try { await p.SeekAsync(_lavaNode, voteSkip.AnnounceDuration); } catch { }
+                    });
+                    voteSkip.Skip.TrySetResult(true);
+                }
+                return;
+            }
+
             if (_lastNowPlayingId.TryGetValue(guildId, out var lastNpId) && reaction.MessageId == lastNpId)
             {
                 await HandleNowPlayingReactionAsync(guildChannel, message, reaction);
@@ -478,7 +541,7 @@ namespace sblngavnav5X.Audio
                 {
                     var ok = await EmbedHandler.CreateMusicEmbed(
                         "sbln muzik🎸🎧, играй+",
-                        $"💎 Трек [{picked.Title}]({picked.Url}) добавлен в начало листа",
+                        $"💎 Трек {Utils.TrackLink(picked.Title, picked.Url)} добавлен в начало листа",
                         Color.Green);
                     await msg.ModifyAsync(m => m.Embed = ok);
 
@@ -528,15 +591,16 @@ namespace sblngavnav5X.Audio
 
                 var embed = await EmbedHandler.CreateCustomMusicEmbed(
                     "sbln muzik🎸🎧",
-                    $"**👺 Трек:** [{player.Track.Title}]({player.Track.Url})\n" +
+                    $"**👺 Трек:** {Utils.TrackLink(player.Track.Title, player.Track.Url)}\n" +
                     $"**👤 Автор:** {player.Track.Author}\n" +
                     $"**⏳ Длительность:** {FormatTime(player.Track.Duration)}\n" +
-                    $"{loopLine}", "▶/🔁 - скип/луп трека",
+                    $"{loopLine}", "▶/🔁 - скип/луп",
                     Color.Purple);
 
                 await msg.ModifyAsync(m => m.Embed = embed);
                 return;
             }
+
         }
 
         private async Task HandleSearchPickReactionAsync(
@@ -594,7 +658,7 @@ namespace sblngavnav5X.Audio
             {
                 var ok = await EmbedHandler.CreateMusicEmbed(
                     "sbln muzik🎸🎧, лист+",
-                    $"💎 Выбран трек: [{picked.Title}]({picked.Url})",
+                    $"💎 Выбран трек: {Utils.TrackLink(picked.Title, picked.Url)}",
                     Color.Green);
 
                 await msg.ModifyAsync(m => m.Embed = ok);
@@ -653,63 +717,87 @@ namespace sblngavnav5X.Audio
             await msg.ModifyAsync(m => m.Embed = embed);
         }
 
-        public async Task<bool> TrySendSmartSearchPicksAsync(
-            ulong guildId,
-            ITextChannel channel,
-            ulong requestedByUserId,
-            string normalizedQuery)
+        private async Task CollectVariantPicksAsync(string rawText, List<LavaTrack> picks, HashSet<string> seen)
         {
-            if (!normalizedQuery.StartsWith("ytsearch:", StringComparison.OrdinalIgnoreCase))
-                return false;
+            foreach (var v in BuildSmartVariants(rawText))
+            {
+                if (picks.Count >= 3) break;
+                var t = await SafeFirstTrackAsync("ytsearch:" + v);
+                if (t != null && seen.Add(BuildTrackKey(t)))
+                    picks.Add(t);
+            }
+        }
 
-            var baseText = normalizedQuery["ytsearch:".Length..].Trim();
-            if (string.IsNullOrWhiteSpace(baseText))
-                return false;
+        private static readonly (string prefix, string name)[] AllSources =
+        {
+            ("ytsearch:", "YouTube"),
+            ("scsearch:", "SoundCloud"),
+            ("spsearch:", "Spotify"),
+        };
 
-            var variants = BuildSmartVariants(baseText);
+        public async Task<bool> TrySmartFallbackAsync(
+            ulong guildId, ITextChannel channel, ulong requestedByUserId,
+            string normalizedQuery, SearchResponse? initial)
+        {
+            var (srcName, isUrl) = DetectSource(normalizedQuery);
+
+            if (initial is { Type: SearchType.Error })
+            {
+                var exMsg = initial.Exception.Message;
+                await channel.SendMessageAsync(embed: await EmbedHandler.CreateErrorEmbed(
+                    $"sbln muzik🎸🎧, {srcName}",
+                    $"источник недоступен или ошибка загрузки:\n{Truncate(string.IsNullOrWhiteSpace(exMsg) ? "неизвестно" : exMsg, 300)}"));
+            }
+
+            if (isUrl)
+            {
+                if (initial is not { Type: SearchType.Error })
+                    await channel.SendMessageAsync(embed: await EmbedHandler.CreateErrorEmbed(
+                        "sbln muzik🎸🎧, играй",
+                        "по ссылке ничего не открылось (TOTAL)"));
+                return true;
+            }
+
+            var rawText = StripSearchPrefix(normalizedQuery);
+            if (string.IsNullOrWhiteSpace(rawText))
+                return initial is { Type: SearchType.Error };
 
             var picks = new List<LavaTrack>(capacity: 3);
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var v in variants)
+            foreach (var (prefix, _) in AllSources)
             {
                 if (picks.Count >= 3) break;
-
-                var q = "ytsearch:" + v;
-
-                SearchResponse resp;
-                try
-                {
-                    resp = await _lavaNode.LoadTrackAsync(q);
-                }
-                catch
-                {
-                    continue;
-                }
-
-                var t = await SafeFirstTrackAsync("ytsearch:" + v);
-                if (t is null)
-                    continue;
-
-                var key = BuildTrackKey(t);
-                if (seen.Add(key))
+                var t = await SafeFirstTrackAsync(prefix + rawText);
+                if (t != null && seen.Add(BuildTrackKey(t)))
                     picks.Add(t);
             }
 
+            if (picks.Count < 3)
+                await CollectVariantPicksAsync(rawText, picks, seen);
+
+            return await PresentPicksAsync(guildId, channel, requestedByUserId, picks,
+                "бро, там не нашел, но есть интересное здесь:");
+        }
+
+        private async Task<bool> PresentPicksAsync(
+            ulong guildId, ITextChannel channel, ulong requestedByUserId,
+            List<LavaTrack> picks, string header)
+        {
             if (picks.Count == 0)
                 return false;
+
+            if (picks.Count > 3)
+                picks = picks.Take(3).ToList();
 
             var lines = new List<string>();
             for (int i = 0; i < picks.Count; i++)
             {
                 var num = i == 0 ? "1️⃣" : i == 1 ? "2️⃣" : "3️⃣";
                 var t = picks[i];
-                lines.Add($"{num} [{Truncate(t.Title ?? "track", 80)}]({t.Url}) - {Truncate(t.Author ?? "unknown", 40)} - {FormatTime(t.Duration)}");
+                lines.Add($"{num} {Utils.TrackLink(Truncate(t.Title ?? "track", 80), t.Url)} - {Truncate(t.Author ?? "unknown", 40)} - {FormatTime(t.Duration)}");
             }
 
-            var desc =
-                "ты помоему перепутал, может это?\n\n" +
-                string.Join("\n", lines);
+            var desc = header + "\n\n" + string.Join("\n", lines);
 
             var embed = await EmbedHandler.CreateCustomMusicEmbed(
                 "sbln muzik🎸🎧, играй+",
@@ -736,6 +824,36 @@ namespace sblngavnav5X.Audio
                 CreatedAtUtc: DateTimeOffset.UtcNow);
 
             return true;
+        }
+        private static (string name, bool isUrl) DetectSource(string q)
+        {
+            if (q.StartsWith("ytsearch:", StringComparison.OrdinalIgnoreCase)) return ("YouTube", false);
+            if (q.StartsWith("scsearch:", StringComparison.OrdinalIgnoreCase)) return ("SoundCloud", false);
+            if (q.StartsWith("spsearch:", StringComparison.OrdinalIgnoreCase)) return ("Spotify", false);
+            if (q.StartsWith("ftts:", StringComparison.OrdinalIgnoreCase)) return ("TTS", true);
+
+            if (Uri.TryCreate(q, UriKind.Absolute, out var uri))
+            {
+                var h = uri.Host.ToLowerInvariant();
+                if (h.Contains("youtu")) return ("YouTube", true);
+                if (h.Contains("soundcloud")) return ("SoundCloud", true);
+                if (h.Contains("spotify")) return ("Spotify", true);
+                return ("ссылка", true);
+            }
+
+            return ("поиск", false);
+        }
+
+        private static string StripSearchPrefix(string q)
+        {
+            foreach (var (prefix, _) in AllSources)
+                if (q.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return q[prefix.Length..].Trim();
+
+            if (Uri.TryCreate(q, UriKind.Absolute, out _))
+                return string.Empty;
+
+            return q.Trim();
         }
 
         private Task OnStatsAsync(StatsEventArg arg)
@@ -801,6 +919,56 @@ namespace sblngavnav5X.Audio
                 .Build();
         }
 
+        public async Task<int> ShuffleQueueAsync(ulong guildId)
+        {
+            int count = 0;
+            await RunInGuildLockAsync(guildId, async () =>
+            {
+                var player = await _lavaNode.TryGetPlayerAsync(guildId);
+                if (player is null || !player.State.IsConnected) return;
+
+                var queue = player.GetQueue();
+                var list = queue.ToList();
+                if (list.Count < 2) return;
+
+                SmartShuffle(list);
+
+                queue.Clear();
+                foreach (var t in list) queue.Enqueue(t);
+                count = list.Count;
+            });
+            return count;
+        }
+
+        private static void SmartShuffle(List<LavaTrack> list)
+        {
+            for (int i = list.Count - 1; i > 0; i--)
+            {
+                int j = Random.Shared.Next(i + 1);
+                (list[i], list[j]) = (list[j], list[i]);
+            }
+
+            for (int i = 1; i < list.Count; i++)
+            {
+                if (!SameAuthor(list[i], list[i - 1])) continue;
+
+                for (int k = i + 1; k < list.Count; k++)
+                {
+                    bool okPrev = !SameAuthor(list[k], list[i - 1]);
+                    bool okNext = i + 1 >= list.Count || !SameAuthor(list[k], list[i + 1]);
+                    if (okPrev && okNext)
+                    {
+                        (list[i], list[k]) = (list[k], list[i]);
+                        break;
+                    }
+                }
+            }
+        }
+
+        private static bool SameAuthor(LavaTrack a, LavaTrack b)
+            => !string.IsNullOrWhiteSpace(a?.Author) &&
+               string.Equals(a.Author, b?.Author, StringComparison.OrdinalIgnoreCase);
+
         public async Task RunVoteAsync(ulong guildId, IUserMessage statusMsg, List<string> items, string winner, HttpClient http)
         {
             var player = await _lavaNode.TryGetPlayerAsync(guildId);
@@ -863,7 +1031,21 @@ namespace sblngavnav5X.Audio
                     .WithFooter("sbln ultra-выбератор🤔⚡")
                     .Build());
 
-                await Task.Delay(announceDuration);
+                var skipTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                bool skippable = announceDuration > TimeSpan.FromSeconds(8);
+                if (skippable)
+                {
+                    _voteSkipByMessageId[statusMsg.Id] = new VoteSkipState(guildId, announceDuration, skipTcs);
+                    try { await statusMsg.AddReactionAsync(new Emoji("⏭️")); } catch { }
+                }
+
+                await Task.WhenAny(Task.Delay(announceDuration), skipTcs.Task);
+
+                if (skippable)
+                {
+                    _voteSkipByMessageId.TryRemove(statusMsg.Id, out _);
+                    try { await statusMsg.RemoveAllReactionsAsync(); } catch { }
+                }
 
                 var cdSeconds = Math.Max(1, (int)cdDuration.TotalSeconds);
                 var cdDeadline = DateTimeOffset.UtcNow.AddSeconds(cdSeconds);
@@ -893,6 +1075,7 @@ namespace sblngavnav5X.Audio
             }
             finally
             {
+                _voteSkipByMessageId.TryRemove(statusMsg.Id, out _);
                 SetSilentMode(guildId, false);
 
                 if (!string.IsNullOrEmpty(savedTrackUrl))
@@ -1049,7 +1232,7 @@ namespace sblngavnav5X.Audio
             WriteAsPcm(MixWithBg(startSamples), writer);
             announceDuration += TimeSpan.FromSeconds((double)startSamples.Length / 2 / 44100);
 
-            int targetCdSeconds = 10 + Math.Max(0, items.Count - 2) * 3;
+            const int targetCdSeconds = 10;
             var cdDuration = TimeSpan.FromSeconds(targetCdSeconds);
 
             int targetCdSamples = targetCdSeconds * 44100 * 2;
@@ -1097,6 +1280,11 @@ namespace sblngavnav5X.Audio
             {
                 try { kv.Value.Dispose(); } catch { }
             }
+
+            foreach (var kv in _autoLeaveCts)
+            {
+                try { kv.Value.Dispose(); } catch { }
+            }
         }
 
         private static string BuildTrackKey(LavaTrack t)
@@ -1124,7 +1312,7 @@ namespace sblngavnav5X.Audio
             var remaining = total > current ? (total - current) : TimeSpan.Zero;
 
             var header = new StringBuilder();
-            header.AppendLine($"👺 **Трек:** [{player.Track!.Title}]({player.Track.Url})");
+            header.AppendLine($"👺 **Трек:** {Utils.TrackLink(player.Track!.Title, player.Track.Url)}");
             header.AppendLine($"👤 **Автор:** {player.Track.Author}");
             header.AppendLine($"📦 **В очереди:** {queueCount}");
             header.AppendLine($"🕓 **Длина очереди:** {FormatTime(queueDuration)}");
@@ -1393,5 +1581,10 @@ namespace sblngavnav5X.Audio
             ulong RequestedByUserId,
             List<LavaTrack> Picks,
             DateTimeOffset CreatedAtUtc);
+
+        private sealed record VoteSkipState(
+            ulong GuildId,
+            TimeSpan AnnounceDuration,
+            TaskCompletionSource<bool> Skip);
     }
 }
