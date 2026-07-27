@@ -64,7 +64,7 @@ namespace sblngavnav5X.Audio
                 player = await lavaNode.GetPlayerAsync(guildId);
             }
 
-            var normalized = AudioQueryNormalizer.Normalize(searchQuery, out var index);
+            var normalized = AudioQueryNormalizer.Normalize(searchQuery, out var index, out var fallback);
 
             try
             {
@@ -80,6 +80,24 @@ namespace sblngavnav5X.Audio
                 }
 
                 var trackCount = searchResponse?.Tracks?.Count ?? 0;
+
+                if ((trackCount == 0 || searchResponse?.Type == SearchType.Error) && !string.IsNullOrEmpty(fallback))
+                {
+                    try
+                    {
+                        var alt = await lavaNode.LoadTrackAsync(fallback);
+                        if ((alt?.Tracks?.Count ?? 0) > 0)
+                        {
+                            searchResponse = alt;
+                            index = 0;
+                            trackCount = alt.Tracks.Count;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        await LoggingService.LogErrorAsync("VI-KA", $"LoadTrackAsync fail: {fallback}", ex);
+                    }
+                }
 
                 if (trackCount == 0)
                 {

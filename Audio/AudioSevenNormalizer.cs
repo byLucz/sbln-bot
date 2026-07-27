@@ -16,9 +16,10 @@ namespace sblngavnav5X.Audio
         private static readonly Regex SoundCloudPrefixRegex =
             new(@"^\s*(?:склауд|саундклауд)\s+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        public static string Normalize(string raw, out int playlistIndex)
+        public static string Normalize(string raw, out int playlistIndex, out string? fallbackQuery)
         {
             playlistIndex = 0;
+            fallbackQuery = null;
 
             var searchQuery = raw;
 
@@ -57,11 +58,10 @@ namespace sblngavnav5X.Audio
                     if (q.TryGetValue("index", out var idxStr) && int.TryParse(idxStr, out var parsed) && parsed > 0)
                         playlistIndex = parsed - 1;
 
-                    if (listId.StartsWith("RD", StringComparison.OrdinalIgnoreCase) &&
-                        q.TryGetValue("v", out var vid) && !string.IsNullOrWhiteSpace(vid))
-                        searchQuery = $"https://www.youtube.com/watch?v={vid}&list={listId}";
-                    else
-                        searchQuery = $"https://www.youtube.com/playlist?list={listId}";
+                    if (q.TryGetValue("v", out var vid) && !string.IsNullOrWhiteSpace(vid))
+                        fallbackQuery = $"https://www.youtube.com/watch?v={vid}";
+
+                    searchQuery = $"https://www.youtube.com/playlist?list={listId}";
                 }
             }
 

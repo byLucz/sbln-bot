@@ -717,48 +717,15 @@ namespace sblngavnav5X.Audio
             await msg.ModifyAsync(m => m.Embed = embed);
         }
 
-        public async Task<bool> TrySendSmartSearchPicksAsync(
-            ulong guildId,
-            ITextChannel channel,
-            ulong requestedByUserId,
-            string normalizedQuery)
+        private async Task CollectVariantPicksAsync(string rawText, List<LavaTrack> picks, HashSet<string> seen)
         {
-            if (!normalizedQuery.StartsWith("ytsearch:", StringComparison.OrdinalIgnoreCase))
-                return false;
-
-            var baseText = normalizedQuery["ytsearch:".Length..].Trim();
-            if (string.IsNullOrWhiteSpace(baseText))
-                return false;
-
-            var variants = BuildSmartVariants(baseText);
-
-            var picks = new List<LavaTrack>(capacity: 3);
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var v in variants)
+            foreach (var v in BuildSmartVariants(rawText))
             {
                 if (picks.Count >= 3) break;
-
-                LavaTrack? t;
-                try
-                {
-                    var resp = await _lavaNode.LoadTrackAsync("ytsearch:" + v);
-                    t = resp?.Tracks?.FirstOrDefault();
-                }
-                catch
-                {
-                    continue;
-                }
-
-                if (t is null)
-                    continue;
-
-                var key = BuildTrackKey(t);
-                if (seen.Add(key))
+                var t = await SafeFirstTrackAsync("ytsearch:" + v);
+                if (t != null && seen.Add(BuildTrackKey(t)))
                     picks.Add(t);
             }
-
-            return await PresentPicksAsync(guildId, channel, requestedByUserId, picks, "ты помоему перепутал, может это?");
         }
 
         private static readonly (string prefix, string name)[] AllSources =
@@ -801,16 +768,15 @@ namespace sblngavnav5X.Audio
             {
                 if (picks.Count >= 3) break;
                 var t = await SafeFirstTrackAsync(prefix + rawText);
-                if (t is null) continue;
-                if (seen.Add(BuildTrackKey(t)))
+                if (t != null && seen.Add(BuildTrackKey(t)))
                     picks.Add(t);
             }
 
-            if (await PresentPicksAsync(guildId, channel, requestedByUserId, picks,
-                    $"бро, там не нашел, но есть интересное здесь:"))
-                return true;
+            if (picks.Count < 3)
+                await CollectVariantPicksAsync(rawText, picks, seen);
 
-            return await TrySendSmartSearchPicksAsync(guildId, channel, requestedByUserId, "ytsearch:" + rawText);
+            return await PresentPicksAsync(guildId, channel, requestedByUserId, picks,
+                "бро, там не нашел, но есть интересное здесь:");
         }
 
         private async Task<bool> PresentPicksAsync(
