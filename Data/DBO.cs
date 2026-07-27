@@ -517,10 +517,11 @@ namespace sblngavnav5X.Data
             var list = new List<string>();
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            using var cmd = new MySqlCommand("SELECT puk FROM streamersid WHERE is_online = 1", conn);
+            using var cmd = new MySqlCommand(
+                "SELECT SUBSTRING_INDEX(puk, ':', -1) AS sid FROM streamersid WHERE is_online = 1", conn);
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                list.Add(r.GetString("puk"));
+                list.Add(r.GetString("sid"));
             return list;
         }
 
@@ -528,7 +529,8 @@ namespace sblngavnav5X.Data
         {
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            using var cmd = new MySqlCommand("UPDATE streamersid SET is_online = 1 WHERE puk = @id", conn);
+            using var cmd = new MySqlCommand(
+                "UPDATE streamersid SET is_online = 1 WHERE SUBSTRING_INDEX(puk, ':', -1) = @id", conn);
             cmd.Parameters.AddWithValue("@id", streamId);
             cmd.ExecuteNonQuery();
         }
@@ -537,7 +539,8 @@ namespace sblngavnav5X.Data
         {
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            using var cmd = new MySqlCommand("UPDATE streamersid SET is_online = 0 WHERE puk = @id", conn);
+            using var cmd = new MySqlCommand(
+                "UPDATE streamersid SET is_online = 0 WHERE SUBSTRING_INDEX(puk, ':', -1) = @id", conn);
             cmd.Parameters.AddWithValue("@id", streamId);
             cmd.ExecuteNonQuery();
         }

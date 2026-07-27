@@ -11,7 +11,7 @@ namespace sblngavnav5X.Data
 
     public static class Utils
     {
-        public const string sblnver = "5.6.1-proto";
+        public const string sblnver = "5.6.1";
 
         public const string token = "INSERT_HERE";
 
@@ -95,8 +95,15 @@ namespace sblngavnav5X.Data
             return (double)tmp / factor;
         }
 
-        public static string TrackLink(string? title, string? url) =>
-            string.IsNullOrEmpty(url) ? (title ?? "track") : $"[{title}]({url})";
+        public static string TrackLink(string? title, string? url)
+        {
+            var label = !string.IsNullOrWhiteSpace(title) ? title.Trim()
+                      : !string.IsNullOrWhiteSpace(url) ? url
+                      : "трек";
+            label = label.Replace("[", "(").Replace("]", ")");
+
+            return string.IsNullOrWhiteSpace(url) ? label : $"[{label}]({url})";
+        }
 
         public static int RandomNumber(int min, int max)
         {
