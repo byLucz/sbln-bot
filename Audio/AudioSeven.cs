@@ -85,11 +85,12 @@ namespace sblngavnav5X.Audio
                 {
                     if (Context.Channel is ITextChannel tc)
                     {
-                        var handled = await audioService.TrySendSmartSearchPicksAsync(
+                        var handled = await audioService.TrySmartFallbackAsync(
                             guildId: guildId,
                             channel: tc,
                             requestedByUserId: Context.User.Id,
-                            normalizedQuery: normalized);
+                            normalizedQuery: normalized,
+                            initial: searchResponse);
 
                         if (handled)
                             return;
@@ -220,6 +221,13 @@ namespace sblngavnav5X.Audio
                 return;
             }
 
+            const int maxItems = 50;
+            if (items.Count > maxItems)
+            {
+                await ReplyAsync($"слишком много вариантов ({items.Count}), беру первые {maxItems}");
+                items = items.Take(maxItems).ToList();
+            }
+
             var guildId = Context.Guild.Id;
             if (await lavaNode.TryGetPlayerAsync(guildId) is null or { State.IsConnected: false })
                 await JoinAsync();
@@ -236,6 +244,27 @@ namespace sblngavnav5X.Audio
             http.DefaultRequestHeaders.UserAgent.ParseAdd("sblnokv5x");
 
             await audioService.RunVoteAsync(guildId, statusMsg, items, winner, http);
+        }
+
+        [Command("перемешай")]
+        [Alias("шафл", "перемешка")]
+        public async Task ShuffleAsync()
+        {
+            if (!await EnsureUserInVoiceAsync(requireSameAsBot: true) || !await BotInVoice())
+                return;
+
+            var count = await audioService.ShuffleQueueAsync(Context.Guild.Id);
+            if (count == 0)
+            {
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(
+                    "sbln muzik🎸🎧, шафл", "в очереди нечего мешать (нужно ≥2 трека)"));
+                return;
+            }
+
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
+                "sbln muzik🎸🎧, шафл",
+                $"🔀 **Очередь перемешана** ({count} треков)",
+                Color.DarkMagenta));
         }
 
         [Command("плейлист")]
