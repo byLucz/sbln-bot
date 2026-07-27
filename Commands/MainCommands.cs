@@ -30,11 +30,10 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                 $"{Format.Bold($"devlog ver {Utils.sblnver}")} — Финальный кумулятивный патч перед переездом на .NET 10\n" +
                 $"• AudioSeven: починка плейлистов/миксов, поиск по всем источникам + умные варианты, реакция шафл → команда {Format.Bold("перемешай")}\n" +
                 $"• Ограничение голосования до 50 вариантов, фикс-таймер, появилась возможность скипнуть перечисления\n" +
-                $"• Фикс флажка онлайна (без повторного спама) и кэша предпросмотра\n" +
                 $"• Говорилка обновлена до версии 1.7, фиксы core/edge-кейсов\n" +
-                $"• [Полный чендж-лог на сайте 🌀](https://lois.media/sbln/v5.6.1)")
+                $"• [Полный чендж-лог доступен на сайте 🌀](https://lois.media/sbln/v5.6.1)")
             .WithFooter(footer => footer
-                .WithText("part of Lois Media Group😋 · dev by lucz@lois.media🏃")
+                .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
                 .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x"))
             .Build();
         await ReplyAsync(embed: embed);
