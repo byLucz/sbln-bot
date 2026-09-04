@@ -131,6 +131,7 @@ namespace sblngavnav5X.Core
                 .AddSingleton<WeatherHelp>()
                 .AddSingleton<StreamMonoService>()
                 .AddSingleton<WelcomeService>()
+                .AddSingleton<PaginatorService>()
                 .AddSingleton<PgApiService>()
                 .AddSingleton<PpmServerService>()
                 .AddSingleton<PpmService>()

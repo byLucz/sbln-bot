@@ -23,6 +23,7 @@ namespace sblngavnav5X.Audio
     {
         private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
         private readonly DiscordSocketClient _client;
+        private readonly PaginatorService _pager;
 
         private readonly ConcurrentDictionary<ulong, ulong> _voiceChannelIds = new();
         private readonly ConcurrentDictionary<ulong, ulong> _textChannelIds = new();
@@ -34,7 +35,6 @@ namespace sblngavnav5X.Audio
         private readonly ConcurrentDictionary<ulong, DateTime> _lastClickTime = new();
         private readonly ConcurrentDictionary<ulong, bool> _silentMode = new();
         private readonly ConcurrentDictionary<ulong, TaskCompletionSource<bool>> _trackStartAwaiters = new();
-        private readonly ConcurrentDictionary<ulong, PaginatorState> _paginatorsByMessageId = new();
         private readonly ConcurrentDictionary<ulong, QueueInsertState> _queueInsertByMessageId = new();
         private readonly ConcurrentDictionary<ulong, SearchPickState> _searchPicksByMessageId = new();
         private readonly ConcurrentDictionary<ulong, VoteSkipState> _voteSkipByMessageId = new();
@@ -46,10 +46,12 @@ namespace sblngavnav5X.Audio
 
         public AudioSevenService(
             LavaNode<LavaPlayer<LavaTrack>, LavaTrack> lavaNode,
-            DiscordSocketClient client)
+            DiscordSocketClient client,
+            PaginatorService pager)
         {
             _lavaNode = lavaNode;
             _client = client;
+            _pager = pager;
 
             _lavaNode.OnWebSocketClosed += OnWebSocketClosedAsync;
             _lavaNode.OnStats += OnStatsAsync;
@@ -111,10 +113,6 @@ namespace sblngavnav5X.Audio
         {
             var now = DateTimeOffset.UtcNow;
             var msgTtl = TimeSpan.FromMinutes(10);
-
-            foreach (var kv in _paginatorsByMessageId.ToArray())
-                if ((now - kv.Value.CreatedAtUtc) > msgTtl)
-                    _paginatorsByMessageId.TryRemove(kv.Key, out _);
 
             foreach (var kv in _queueInsertByMessageId.ToArray())
                 if ((now - kv.Value.CreatedAtUtc) > msgTtl)
@@ -308,12 +306,6 @@ namespace sblngavnav5X.Audio
         {
             try
             {
-                foreach (var kv in _paginatorsByMessageId.ToArray())
-                {
-                    if (kv.Value.GuildId == guildId)
-                        _paginatorsByMessageId.TryRemove(kv.Key, out _);
-                }
-
                 foreach (var kv in _queueInsertByMessageId.ToArray())
                 {
                     if (kv.Value.GuildId == guildId)
@@ -410,28 +402,16 @@ namespace sblngavnav5X.Audio
 
                 var pages = BuildQueuePages(player, queueList, queueCount, queueDuration);
 
-                var msg = await channel.SendMessageAsync(embed: BuildPagedEmbed(
-                    title: $"{EmbedHandler.MusicFooter}, лист",
-                    pageLines: pages[0],
-                    pageIndex: 0,
-                    pageCount: pages.Count,
-                    footer: pages.Count > 1 ? "⬅️/➡️ переключение страниц" : ""));
+                var embeds = new List<Embed>(pages.Count);
+                for (int i = 0; i < pages.Count; i++)
+                    embeds.Add(BuildPagedEmbed(
+                        title: $"{EmbedHandler.MusicFooter}, лист",
+                        pageLines: pages[i],
+                        pageIndex: i,
+                        pageCount: pages.Count,
+                        footer: ""));
 
-                if (pages.Count <= 1) return;
-
-                var state = new PaginatorState(
-                    GuildId: guildId,
-                    ChannelId: channel.Id,
-                    MessageId: msg.Id,
-                    RequestedByUserId: requestedByUserId,
-                    Pages: pages,
-                    PageIndex: 0,
-                    CreatedAtUtc: DateTimeOffset.UtcNow);
-
-                _paginatorsByMessageId[msg.Id] = state;
-
-                await msg.AddReactionAsync(new Emoji("⬅️"));
-                await msg.AddReactionAsync(new Emoji("➡️"));
+                await _pager.SendAsync(channel, embeds, requestedByUserId);
             });
         }
 
@@ -490,11 +470,6 @@ namespace sblngavnav5X.Audio
                 return;
             }
 
-            if (_paginatorsByMessageId.TryGetValue(reaction.MessageId, out var state))
-            {
-                await HandlePaginatorReactionAsync(guildChannel, message, reaction, state);
-                return;
-            }
         }
 
         private async Task HandleQueueInsertReactionAsync(
@@ -670,54 +645,6 @@ namespace sblngavnav5X.Audio
             catch { }
 
             _searchPicksByMessageId.TryRemove(state.MessageId, out _);
-        }
-
-        private async Task HandlePaginatorReactionAsync(
-            SocketGuildChannel guildChannel,
-            Cacheable<IUserMessage, ulong> message,
-            SocketReaction reaction,
-            PaginatorState state)
-        {
-            if ((DateTimeOffset.UtcNow - state.CreatedAtUtc) > TimeSpan.FromMinutes(3))
-            {
-                _paginatorsByMessageId.TryRemove(state.MessageId, out _);
-                return;
-            }
-
-            if (reaction.UserId != state.RequestedByUserId)
-                return;
-
-            var msg = await message.GetOrDownloadAsync();
-            var user = guildChannel.Guild.GetUser(reaction.UserId);
-
-            if (user is not null)
-            {
-                try { await msg.RemoveReactionAsync(reaction.Emote, user); } catch { }
-            }
-
-            var pageIndex = state.PageIndex;
-
-            if (reaction.Emote.Name == "⬅️")
-                pageIndex = Math.Max(0, pageIndex - 1);
-            else if (reaction.Emote.Name == "➡️")
-                pageIndex = Math.Min(state.Pages.Count - 1, pageIndex + 1);
-            else
-                return;
-
-            if (pageIndex == state.PageIndex)
-                return;
-
-            state = state with { PageIndex = pageIndex };
-            _paginatorsByMessageId[state.MessageId] = state;
-
-            var embed = BuildPagedEmbed(
-                title: $"{EmbedHandler.MusicFooter}, лист",
-                pageLines: state.Pages[pageIndex],
-                pageIndex: pageIndex,
-                pageCount: state.Pages.Count,
-                footer: "⬅️/➡️ переключение страниц");
-
-            await msg.ModifyAsync(m => m.Embed = embed);
         }
 
         private async Task CollectVariantPicksAsync(string rawText, List<LavaTrack> picks, HashSet<string> seen)
@@ -1534,15 +1461,6 @@ namespace sblngavnav5X.Audio
             }
             return sb.ToString();
         }
-
-        private sealed record PaginatorState(
-            ulong GuildId,
-            ulong ChannelId,
-            ulong MessageId,
-            ulong RequestedByUserId,
-            List<string> Pages,
-            int PageIndex,
-            DateTimeOffset CreatedAtUtc);
 
         private sealed record QueueInsertState(
             ulong GuildId,

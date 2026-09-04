@@ -2,28 +2,22 @@
 using Discord.Commands;
 using Discord.WebSocket;
 using System.Text.Json.Nodes;
+using sblngavnav5X.Core;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
+using static sblngavnav5X.Common.CommonUtils.Text;
 
 namespace sblngavnav5X.Commands
 {
     public class BooksClubCommands : ModuleBase<SocketCommandContext>
     {
         private readonly HttpClient _http;
-        private readonly DiscordSocketClient _client;
+        private readonly PaginatorService _pager;
 
-        private static ulong _ratingMsgId;
-        private static List<Embed> _ratingPages = new();
-        private static int _ratingPage;
-        private static bool _ratingActive;
-        private static readonly Dictionary<ulong, DateTime> _ratingLastClick = new();
-
-        public BooksClubCommands(IHttpClientFactory httpClientFactory, DiscordSocketClient client)
+        public BooksClubCommands(IHttpClientFactory httpClientFactory, PaginatorService pager)
         {
             _http = httpClientFactory.CreateClient();
-            _client = client;
-            _client.ReactionAdded -= OnRatingReactionAdded;
-            _client.ReactionAdded += OnRatingReactionAdded;
+            _pager = pager;
         }
 
         [Command("книга")]
@@ -57,11 +51,7 @@ namespace sblngavnav5X.Commands
             string ratingCount = firstBook["ratingsCount"]?.ToString() ?? "0";
             string bookUrl = firstBook["infoLink"]?.ToString() ?? "Нет ссылки";
 
-            string description = firstBook["description"]?.ToString() ?? "Нет описания";
-            if (description.Length > 200)
-            {
-                description = description.Substring(0, 200) + "...";
-            }
+            string description = Truncate(firstBook["description"]?.ToString() ?? "Нет описания", 200);
 
             string imageUrl = firstBook["imageLinks"]?["thumbnail"]?.ToString() ?? "";
 
@@ -365,62 +355,15 @@ namespace sblngavnav5X.Commands
         [Command("рейтинг")]
         public async Task ShowSeasonRatingAsync(int? season = null)
         {
-            _ratingPages = BuildSeasonEmbeds();
-            if (_ratingPages.Count == 0)
-                _ratingPages = new() { new EmbedBuilder().WithTitle("---").WithColor(Color.DarkGrey).Build() };
+            var pages = BuildSeasonEmbeds();
+            if (pages.Count == 0)
+                pages = new() { new EmbedBuilder().WithTitle("---").WithColor(Color.DarkGrey).Build() };
 
-            int max = DataBase.GetMaxSeason();
-            _ratingPage = season.HasValue && season.Value >= 1
-                ? Math.Clamp(season.Value - 1, 0, _ratingPages.Count - 1)
+            int start = season.HasValue && season.Value >= 1
+                ? Math.Clamp(season.Value - 1, 0, pages.Count - 1)
                 : 0;
 
-            var msg = await ReplyAsync(embed: _ratingPages[_ratingPage]);
-            _ratingMsgId = msg.Id;
-            _ratingActive = true;
-
-            await msg.AddReactionAsync(new Emoji("◀"));
-            await msg.AddReactionAsync(new Emoji("▶"));
-        }
-
-        private async Task OnRatingReactionAdded(
-            Cacheable<IUserMessage, ulong> message,
-            Cacheable<IMessageChannel, ulong> channel,
-            SocketReaction reaction)
-        {
-            try
-            {
-                if (reaction.UserId == _client.CurrentUser.Id) return;
-                if (!_ratingActive) return;
-                if (reaction.MessageId != _ratingMsgId) return;
-
-                var now = DateTime.UtcNow;
-                if (_ratingLastClick.TryGetValue(reaction.UserId, out var prev) && (now - prev).TotalSeconds < 1)
-                    return;
-                _ratingLastClick[reaction.UserId] = now;
-
-                var msg = await message.GetOrDownloadAsync();
-                if (msg is null) return;
-
-                if (reaction.Emote.Name == "◀")
-                {
-                    if (_ratingPage > 0) _ratingPage--;
-                }
-                else if (reaction.Emote.Name == "▶")
-                {
-                    if (_ratingPage < _ratingPages.Count - 1) _ratingPage++;
-                }
-                else return;
-
-                await msg.ModifyAsync(m => m.Embed = _ratingPages[_ratingPage]);
-
-                var user = await msg.Channel.GetUserAsync(reaction.UserId);
-                if (user != null)
-                    try { await msg.RemoveReactionAsync(reaction.Emote, user); } catch { }
-            }
-            catch
-            {
-                await LoggingService.LogErrorAsync("knizhniy klub", "ошибка пагинации рейтинга");
-            }
+            await _pager.SendAsync(Context.Channel, pages, startPage: start);
         }
 
         private static List<Embed> BuildSeasonEmbeds()

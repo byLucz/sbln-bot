@@ -1,79 +1,18 @@
-﻿using Discord.Commands;
-using Discord.WebSocket;
-using Discord;
+using Discord.Commands;
+using sblngavnav5X.Core;
 
 public class HelpCommands : ModuleBase<SocketCommandContext>
 {
-    private static ulong _helpMessageId;
-    private static List<Embed> _pages;
-    private static int _currentPage = 0;
-    private static bool _paginationActive = false;
-    private readonly DiscordSocketClient _client;
+    private readonly PaginatorService _pager;
 
-    public HelpCommands(DiscordSocketClient client)
+    public HelpCommands(PaginatorService pager)
     {
-        _client = client;
-        _client.ReactionAdded += OnReactionAdded;
+        _pager = pager;
     }
 
     [Command("памаги")]
     public async Task HelpAll()
     {
-        _pages = HelpEmbedService.GetHelpPages();
-        _currentPage = 0;
-
-        var msg = await ReplyAsync(embed: _pages[_currentPage]);
-
-        _helpMessageId = msg.Id;
-        _paginationActive = true;
-
-        await msg.AddReactionAsync(new Emoji("◀"));
-        await msg.AddReactionAsync(new Emoji("▶"));
-    }
-
-    private static readonly Dictionary<ulong, DateTime> _lastClickTime
-    = new Dictionary<ulong, DateTime>();
-
-    private async Task OnReactionAdded(
-        Cacheable<IUserMessage, ulong> message,
-        Cacheable<IMessageChannel, ulong> channel,
-        SocketReaction reaction)
-    {
-        if (reaction.UserId == _client.CurrentUser.Id)
-            return;
-
-        var now = DateTime.UtcNow;
-        if (_lastClickTime.TryGetValue(reaction.UserId, out var prevTime))
-        {
-            if ((now - prevTime).TotalSeconds < 1)
-            {
-                return;
-            }
-        }
-        _lastClickTime[reaction.UserId] = now;
-
-        if (!_paginationActive) return;
-        if (reaction.MessageId != _helpMessageId) return;
-
-        var msg = await message.GetOrDownloadAsync();
-
-        if (reaction.Emote.Name == "◀")
-        {
-            if (_currentPage > 0) _currentPage--;
-        }
-        else if (reaction.Emote.Name == "▶")
-        {
-            if (_currentPage < _pages.Count - 1) _currentPage++;
-        }
-        else
-        {
-            return;
-        }
-
-        var user = await msg.Channel.GetUserAsync(reaction.UserId);
-        if (user is null) return;
-        await msg.RemoveReactionAsync(reaction.Emote, user);
-
-        await msg.ModifyAsync(m => m.Embed = _pages[_currentPage]);
+        await _pager.SendAsync(Context.Channel, HelpEmbedService.GetHelpPages());
     }
 }

@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Text.RegularExpressions;
 using sblngavnav5X.Data;
 using static sblngavnav5X.Data.DataRoots;
+using static sblngavnav5X.Common.CommonUtils.Text;
 
 namespace sblngavnav5X.Commands
 {
@@ -59,13 +60,13 @@ namespace sblngavnav5X.Commands
                 .WithImageUrl(meal.strMealThumb)
                 .WithThumbnailUrl("https://media.discordapp.net/attachments/500682551296393231/1405588340836794439/slyrChef.png?ex=689f5fa7&is=689e0e27&hm=132f3dd57fd685bea30cd4b8dc1e3ba235447f5798243dd96acbc0542269cb33&=&format=webp&quality=lossless&width=230&height=230")
                 .WithColor(new Color(139, 92, 246))
-                .WithDescription(Trunc(string.IsNullOrWhiteSpace(ruInstr) ? meal.strInstructions : ruInstr, 2000))
+                .WithDescription(Truncate(string.IsNullOrWhiteSpace(ruInstr) ? meal.strInstructions : ruInstr, 2000))
                 .WithFooter("sbln рецепты от шефчика👨‍🍳")
                 .AddField("Категория", string.IsNullOrWhiteSpace(ruCat) ? "—" : ruCat, true)
                 .AddField("Кухня", string.IsNullOrWhiteSpace(ruKitchen) ? "—" : ruKitchen, true);
 
             if (!string.IsNullOrWhiteSpace(ingredientsStr))
-                eb.AddField("Ингредиенты", Trunc(ingredientsStr, 1024), false);
+                eb.AddField("Ингредиенты", Truncate(ingredientsStr, 1024), false);
 
             if (!string.IsNullOrWhiteSpace(meal.strYoutube))
                 eb.AddField("YouTube", meal.strYoutube, false);
@@ -245,12 +246,6 @@ namespace sblngavnav5X.Commands
 
             FlushCurrent();
             return chunks;
-        }
-
-        private static string Trunc(string? s, int max)
-        {
-            s ??= string.Empty;
-            return s.Length <= max ? s : s[..max] + "…";
         }
     }
 }
