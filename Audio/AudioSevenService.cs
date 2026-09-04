@@ -3,6 +3,7 @@ using Discord.WebSocket;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 using sblngavnav5X.Core;
+using sblngavnav5X.Common;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using static sblngavnav5X.Common.CommonUtils.Text;
@@ -373,9 +374,7 @@ namespace sblngavnav5X.Audio
 
             var loopLine = IsRepeatEnabled(guildId) ? "\n🔁 **Луп включен**" : "";
 
-            var embed = await EmbedHandler.CreateCustomMusicEmbed(
-                "sbln muzik🎸🎧",
-                $"**👺 Трек:** {Utils.TrackLink(track.Title, track.Url)}\n" +
+            var embed = await EmbedHandler.MusicCustom(null, $"**👺 Трек:** {Utils.TrackLink(track.Title, track.Url)}\n" +
                 $"**👤 Автор:** {track.Author}\n" +
                 $"**⏳ Длительность:** {FormatTime(track.Duration)}\n" +
                 $"{loopLine}", "▶/🔁 - скип/луп",
@@ -400,7 +399,7 @@ namespace sblngavnav5X.Audio
                 var player = await _lavaNode.TryGetPlayerAsync(guildId);
                 if (player is null || !player.State.IsConnected || player.Track is null)
                 {
-                    var empty = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, лист", "очередь пуста");
+                    var empty = await EmbedHandler.MusicError("лист", "очередь пуста");
                     await channel.SendMessageAsync(embed: empty);
                     return;
                 }
@@ -412,7 +411,7 @@ namespace sblngavnav5X.Audio
                 var pages = BuildQueuePages(player, queueList, queueCount, queueDuration);
 
                 var msg = await channel.SendMessageAsync(embed: BuildPagedEmbed(
-                    title: "sbln muzik🎸🎧, лист",
+                    title: $"{EmbedHandler.MusicFooter}, лист",
                     pageLines: pages[0],
                     pageIndex: 0,
                     pageCount: pages.Count,
@@ -547,8 +546,7 @@ namespace sblngavnav5X.Audio
 
                 try
                 {
-                    var ok = await EmbedHandler.CreateMusicEmbed(
-                        "sbln muzik🎸🎧, играй+",
+                    var ok = await EmbedHandler.Music("играй+",
                         $"💎 Трек {Utils.TrackLink(picked.Title, picked.Url)} добавлен в начало листа",
                         Color.Green);
                     await msg.ModifyAsync(m => m.Embed = ok);
@@ -597,9 +595,7 @@ namespace sblngavnav5X.Audio
 
                 var loopLine = IsRepeatEnabled(guildId) ? "\n🔁 **Луп включен**" : "";
 
-                var embed = await EmbedHandler.CreateCustomMusicEmbed(
-                    "sbln muzik🎸🎧",
-                    $"**👺 Трек:** {Utils.TrackLink(player.Track.Title, player.Track.Url)}\n" +
+                var embed = await EmbedHandler.MusicCustom(null, $"**👺 Трек:** {Utils.TrackLink(player.Track.Title, player.Track.Url)}\n" +
                     $"**👤 Автор:** {player.Track.Author}\n" +
                     $"**⏳ Длительность:** {FormatTime(player.Track.Duration)}\n" +
                     $"{loopLine}", "▶/🔁 - скип/луп",
@@ -664,8 +660,7 @@ namespace sblngavnav5X.Audio
 
             try
             {
-                var ok = await EmbedHandler.CreateMusicEmbed(
-                    "sbln muzik🎸🎧, лист+",
+                var ok = await EmbedHandler.Music("лист+",
                     $"💎 Выбран трек: {Utils.TrackLink(picked.Title, picked.Url)}",
                     Color.Green);
 
@@ -716,7 +711,7 @@ namespace sblngavnav5X.Audio
             _paginatorsByMessageId[state.MessageId] = state;
 
             var embed = BuildPagedEmbed(
-                title: "sbln muzik🎸🎧, лист",
+                title: $"{EmbedHandler.MusicFooter}, лист",
                 pageLines: state.Pages[pageIndex],
                 pageIndex: pageIndex,
                 pageCount: state.Pages.Count,
@@ -752,16 +747,13 @@ namespace sblngavnav5X.Audio
             if (initial is { Type: SearchType.Error })
             {
                 var exMsg = initial.Exception.Message;
-                await channel.SendMessageAsync(embed: await EmbedHandler.CreateErrorEmbed(
-                    $"sbln muzik🎸🎧, {srcName}",
-                    $"источник недоступен или ошибка загрузки:\n{Truncate(string.IsNullOrWhiteSpace(exMsg) ? "неизвестно" : exMsg, 300)}"));
+                await channel.SendMessageAsync(embed: await EmbedHandler.MusicError(srcName, $"источник недоступен или ошибка загрузки:\n{Truncate(string.IsNullOrWhiteSpace(exMsg) ? "неизвестно" : exMsg, 300)}"));
             }
 
             if (isUrl)
             {
                 if (initial is not { Type: SearchType.Error })
-                    await channel.SendMessageAsync(embed: await EmbedHandler.CreateErrorEmbed(
-                        "sbln muzik🎸🎧, играй",
+                    await channel.SendMessageAsync(embed: await EmbedHandler.MusicError("играй",
                         "по ссылке ничего не открылось (TOTAL)"));
                 return true;
             }
@@ -807,8 +799,7 @@ namespace sblngavnav5X.Audio
 
             var desc = header + "\n\n" + string.Join("\n", lines);
 
-            var embed = await EmbedHandler.CreateCustomMusicEmbed(
-                "sbln muzik🎸🎧, играй+",
+            var embed = await EmbedHandler.MusicCustom("играй+",
                 desc,
                 "1️⃣/2️⃣/3️⃣ - выбрать",
                 Color.Purple);
@@ -922,7 +913,7 @@ namespace sblngavnav5X.Audio
                     $"Nulled: `{s.Frames.Nulled}`\n" +
                     $"Deficit: `{s.Frames.Deficit}`",
                     true)
-                .WithFooter("sbln muzik🎸🎧 & sbln статистикс🔭")
+                .WithFooter($"{EmbedHandler.MusicFooter} & sbln статистикс🔭")
                 .WithCurrentTimestamp()
                 .Build();
         }
@@ -999,7 +990,7 @@ namespace sblngavnav5X.Audio
                     .WithColor(Color.Red)
                     .WithTitle("ГОЛОСОВАНИЕ")
                     .WithDescription("❌ Ошибка при подготовке аудио")
-                    .WithFooter("sbln ultra-выбератор🤔⚡")
+                    .WithFooter(EmbedHandler.VoteFooter)
                     .Build());
                 return;
             }
@@ -1036,7 +1027,7 @@ namespace sblngavnav5X.Audio
                     .WithTitle("ГОЛОСОВАНИЕ")
                     .WithDescription("🎙️ Варианты дрипа...\n\n" +
                         string.Join("\n", items.Select((item, i) => $"`{i + 1}.` {item}")))
-                    .WithFooter("sbln ultra-выбератор🤔⚡")
+                    .WithFooter(EmbedHandler.VoteFooter)
                     .Build());
 
                 var skipTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1064,7 +1055,7 @@ namespace sblngavnav5X.Audio
                         .WithTitle("ГОЛОСОВАНИЕ")
                         .WithDescription($"⏳ ВАЙБИМ: **{i}**с.\n\n" +
                             string.Join("\n", items.Select((item, idx) => $"`{idx + 1}.` {item}")))
-                        .WithFooter("sbln ultra-выбератор🤔⚡")
+                        .WithFooter(EmbedHandler.VoteFooter)
                         .Build());
 
                     var nextTick = cdDeadline.AddSeconds(-(i - 1));
@@ -1076,7 +1067,7 @@ namespace sblngavnav5X.Audio
                     .WithColor(Color.Gold)
                     .WithTitle("ГОЛОСОВАНИЕ ЗАВЕРШЕНО")
                     .WithDescription($"**Я выбираю:** `{winner}`")
-                    .WithFooter("sbln ultra-выбератор🤔⚡")
+                    .WithFooter(EmbedHandler.VoteFooter)
                     .Build());
 
                 await Task.Delay(4000);

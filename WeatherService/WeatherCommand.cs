@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using sblngavnav5X.Core;
+using sblngavnav5X.Common;
 
 namespace sblngavnav5X.Commands
 {

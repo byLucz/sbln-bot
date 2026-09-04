@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using sblngavnav5X.Core;
+using sblngavnav5X.Common;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Runtime.InteropServices;
@@ -115,8 +116,7 @@ namespace sblngavnav5X.Audio
                             return;
                     }
 
-                    var embedErr = await EmbedHandler.CreateErrorEmbed(
-                        "sbln muzik🎸🎧, играй",
+                    var embedErr = await EmbedHandler.MusicError("играй",
                         "ничего не нашлось по запросу...");
                     await ReplyAsync(embed: embedErr);
                     return;
@@ -154,8 +154,7 @@ namespace sblngavnav5X.Audio
             if (string.IsNullOrWhiteSpace(src))
             {
                 var curName = SourceName(audioService.GetDefaultSourcePrefix(guildId));
-                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
-                    "sbln muzik🎸🎧, источник",
+                await ReplyAsync(embed: await EmbedHandler.Music("источник",
                     $"дефолтный источник для `x и`: **{curName}**\nсменить: `x источник ютуб | спотик | склауд`",
                     Color.DarkMagenta));
                 return;
@@ -171,14 +170,12 @@ namespace sblngavnav5X.Audio
 
             if (prefix is null)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(
-                    "sbln muzik🎸🎧, источник", "не знаю такой. доступно: **ютуб** / **спотик** / **склауд**"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("источник", "не знаю такой. доступно: **ютуб** / **спотик** / **склауд**"));
                 return;
             }
 
             audioService.SetDefaultSource(guildId, prefix);
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
-                "sbln muzik🎸🎧, источник",
+            await ReplyAsync(embed: await EmbedHandler.Music("источник",
                 $"🎚️ Дефолтный источник для `x и` теперь: **{SourceName(prefix)}**",
                 Color.DarkMagenta));
         }
@@ -210,7 +207,7 @@ namespace sblngavnav5X.Audio
 
                     if (n < 1 || queue.Count < n)
                     {
-                        var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"в очереди нет трека с номером {index}");
+                        var err = await EmbedHandler.MusicError("скип", $"в очереди нет трека с номером {index}");
                         await ReplyAsync(embed: err);
                         return;
                     }
@@ -221,12 +218,12 @@ namespace sblngavnav5X.Audio
                     queue.TryDequeue(out var nextTrack);
                     if (nextTrack is null)
                     {
-                        var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", $"в очереди нет трека с номером {index}");
+                        var err = await EmbedHandler.MusicError("скип", $"в очереди нет трека с номером {index}");
                         await ReplyAsync(embed: err);
                         return;
                     }
 
-                    var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
+                    var embed = await EmbedHandler.Music("скип",
                         $"👀 Пропустили говно: {Utils.TrackLink(player.Track?.Title, player.Track?.Url)}\n🦻 Вместо это теперь: {nextTrack.Title}",
                         Color.Green);
 
@@ -237,7 +234,7 @@ namespace sblngavnav5X.Audio
 
                 if (queue.TryDequeue(out var track) && track != null)
                 {
-                    var embed = await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, скип",
+                    var embed = await EmbedHandler.Music("скип",
                         $"👀 Пропустили говно: {Utils.TrackLink(player.Track?.Title, player.Track?.Url)}\n🦻 Вместо это теперь: {Utils.TrackLink(track.Title, track.Url)}",
                         Color.Green);
 
@@ -246,7 +243,7 @@ namespace sblngavnav5X.Audio
                 }
                 else
                 {
-                    var err = await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, скип", "в очереди больше ничего нет =(");
+                    var err = await EmbedHandler.MusicError("скип", "в очереди больше ничего нет =(");
                     await ReplyAsync(embed: err);
                 }
             });
@@ -301,7 +298,7 @@ namespace sblngavnav5X.Audio
                 .WithColor(Color.DarkBlue)
                 .WithTitle("ГОЛОСОВАНИЕ")
                 .WithDescription("⏳ Кукапим секвенции...")
-                .WithFooter("sbln ultra-выбератор🤔⚡")
+                .WithFooter(EmbedHandler.VoteFooter)
                 .Build());
 
             using var http = httpClientFactory.CreateClient();
@@ -320,13 +317,11 @@ namespace sblngavnav5X.Audio
             var count = await audioService.ShuffleQueueAsync(Context.Guild.Id);
             if (count == 0)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(
-                    "sbln muzik🎸🎧, шафл", "в очереди нечего мешать (нужно ≥2 трека)"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("шафл", "в очереди нечего мешать (нужно ≥2 трека)"));
                 return;
             }
 
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
-                "sbln muzik🎸🎧, шафл",
+            await ReplyAsync(embed: await EmbedHandler.Music("шафл",
                 $"🔀 **Очередь перемешана** ({count} треков)",
                 Color.DarkMagenta));
         }
@@ -351,18 +346,18 @@ namespace sblngavnav5X.Audio
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
             if (player?.Track is null)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, пауза", "так ничего не играет"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("пауза", "так ничего не играет"));
                 return;
             }
 
             if (player.IsPaused)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, пауза", "але, я уже на паузе"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("пауза", "але, я уже на паузе"));
                 return;
             }
 
             await player.PauseAsync(lavaNode);
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, пауза",
+            await ReplyAsync(embed: await EmbedHandler.Music("пауза",
                 $"поставил на паузу --- {Utils.TrackLink(player.Track.Title, player.Track.Url)} ⏸️",
                 Color.Blue));
         }
@@ -377,18 +372,18 @@ namespace sblngavnav5X.Audio
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
             if (player?.Track is null)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, продолжи", "так ничего не играет"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("продолжи", "так ничего не играет"));
                 return;
             }
 
             if (!player.IsPaused)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, продолжи", "я не на паузе!!"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("продолжи", "я не на паузе!!"));
                 return;
             }
 
             await player.ResumeAsync(lavaNode, player.Track);
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, продолжи",
+            await ReplyAsync(embed: await EmbedHandler.Music("продолжи",
                 $"продолжаю --- {Utils.TrackLink(player.Track.Title, player.Track.Url)} ▶️",
                 Color.Blue));
         }
@@ -410,8 +405,7 @@ namespace sblngavnav5X.Audio
 
                 try { await player.SeekAsync(lavaNode, player.Track?.Duration ?? TimeSpan.Zero); } catch { }
 
-                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
-                    "sbln muzik🎸🎧, стоп",
+                await ReplyAsync(embed: await EmbedHandler.Music("стоп",
                     "стопнулся и очистил плейлист ⛔",
                     Color.Blue));
             });
@@ -426,20 +420,19 @@ namespace sblngavnav5X.Audio
 
             if (volume > 500 || volume < 1)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, громкость", "только значения 1-500"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("громкость", "только значения 1-500"));
                 return;
             }
 
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
             if (player is null)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, громкость", "нет плеера.."));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("громкость", "нет плеера.."));
                 return;
             }
 
             await player.SetVolumeAsync(lavaNode, volume);
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
-                "sbln muzik🎸🎧, громкость",
+            await ReplyAsync(embed: await EmbedHandler.Music("громкость",
                 $"**Громкость --- {volume} 📶**",
                 Color.DarkMagenta));
         }
@@ -453,7 +446,7 @@ namespace sblngavnav5X.Audio
 
             var enabled = audioService.ToggleRepeat(Context.Guild.Id);
             var text = enabled ? "🔁 **Луп вкл**" : "⛔ **Луп выкл**";
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed("sbln muzik🎸🎧, луп", text, Color.DarkMagenta));
+            await ReplyAsync(embed: await EmbedHandler.Music("луп", text, Color.DarkMagenta));
         }
 
         [Command("перейти")]
@@ -466,13 +459,13 @@ namespace sblngavnav5X.Audio
             var player = await lavaNode.TryGetPlayerAsync(Context.Guild.Id);
             if (player?.Track is null)
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, перейти", "так ничего не играет"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("перейти", "так ничего не играет"));
                 return;
             }
 
             if (!TryParseTimecode(timecode, out var ts))
             {
-                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("sbln muzik🎸🎧, перейти", "формат `мм:сс` или `чч:мм:сс`"));
+                await ReplyAsync(embed: await EmbedHandler.MusicError("перейти", "формат `мм:сс` или `чч:мм:сс`"));
                 return;
             }
 
@@ -484,8 +477,7 @@ namespace sblngavnav5X.Audio
                 await player.SeekAsync(lavaNode, ts);
             });
 
-            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
-                "sbln muzik🎸🎧, перейти",
+            await ReplyAsync(embed: await EmbedHandler.Music("перейти",
                 $"⏩ Перемотал на **{ts:hh\\:mm\\:ss}**",
                 Color.Blue));
         }
@@ -519,9 +511,7 @@ namespace sblngavnav5X.Audio
                         player.GetQueue().Enqueue(t);
                 }
 
-                var playlistQEmbed = await EmbedHandler.CreateMusicEmbed(
-                    "sbln muzik🎸🎧",
-                    $"{searchResponse.Playlist.Name} --- плейлист **добавлен в очередь** 🤙",
+                var playlistQEmbed = await EmbedHandler.Music(null, $"{searchResponse.Playlist.Name} --- плейлист **добавлен в очередь** 🤙",
                     Color.Orange);
 
                 await Context.Channel.SendMessageAsync(embed: playlistQEmbed);
@@ -541,9 +531,7 @@ namespace sblngavnav5X.Audio
                 for (var i = index; i < tracks.Count; i++)
                     queue.Enqueue(tracks[i]);
 
-                var playlistQEmbed = await EmbedHandler.CreateMusicEmbed(
-                    "sbln muzik🎸🎧",
-                    $"{searchResponse.Playlist.Name} --- плейлист **добавлен в очередь** 🤙",
+                var playlistQEmbed = await EmbedHandler.Music(null, $"{searchResponse.Playlist.Name} --- плейлист **добавлен в очередь** 🤙",
                     Color.Orange);
 
                 await Context.Channel.SendMessageAsync(embed: playlistQEmbed);
@@ -553,9 +541,7 @@ namespace sblngavnav5X.Audio
             var track = tracks[index];
             queue.Enqueue(track);
 
-            var qEmbed = await EmbedHandler.CreateCustomMusicEmbed(
-                "sbln muzik🎸🎧",
-                $"{Utils.TrackLink(track.Title, track.Url)} **добавлен в очередь** 🤙", "🔼 - в начало листа",
+            var qEmbed = await EmbedHandler.MusicCustom(null, $"{Utils.TrackLink(track.Title, track.Url)} **добавлен в очередь** 🤙", "🔼 - в начало листа",
                 Color.Orange);
 
             var msg = await Context.Channel.SendMessageAsync(embed: qEmbed);

@@ -10,3 +10,4 @@ config/secrets.json
 appsettings.*.local.json
 
 messages.csv
+docs/

@@ -2,6 +2,7 @@
 using Discord.Commands;
 using Discord.WebSocket;
 using sblngavnav5X.Core;
+using sblngavnav5X.Common;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Diagnostics;

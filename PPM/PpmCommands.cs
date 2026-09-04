@@ -3,6 +3,7 @@ using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
 using sblngavnav5X.Core;
+using sblngavnav5X.Common;
 using sblngavnav5X.Data;
 using static sblngavnav5X.Common.CommonUtils.Text;
 using static sblngavnav5X.Common.CommonUtils.Time;
@@ -17,7 +18,7 @@ namespace sblngavnav5X.PPM
         public static Embed BuildRootEmbed(IReadOnlyList<PpmMailbox> boxes, int page)
         {
             int totalPages = Pagination.TotalPages(boxes.Count, PageSize);
-            var eb = EmbedHandler.FieldsEmbed("📮 PechkinPostManager", Color.Teal, "sbln PPM");
+            var eb = EmbedHandler.FieldsEmbed("📮 PechkinPostManager", Color.Teal, EmbedHandler.PpmFooter);
 
             if (boxes.Count == 0)
             {
@@ -69,7 +70,7 @@ namespace sblngavnav5X.PPM
                 ? "♾️ постоянный"
                 : box.ExpiresAt.HasValue ? $"⏳ удалится <t:{ToUnix(box.ExpiresAt.Value)}:R>" : "—";
 
-            var eb = EmbedHandler.FieldsEmbed($"📬 {box.Email}", Color.Teal, "sbln PPM")
+            var eb = EmbedHandler.FieldsEmbed($"📬 {box.Email}", Color.Teal, EmbedHandler.PpmFooter)
                 .WithDescription(msgs.Count == 0
                     ? $"{ttl}\n\nВходящих писем нет."
                     : $"{ttl}\n\nПоследние письма ({msgs.Count}):");
@@ -147,7 +148,7 @@ namespace sblngavnav5X.PPM
             {
                 await FollowupAsync(embed: EmbedHandler.Simple(
                     "❌ PPM", $"Не удалось создать ящик:\n```{Truncate(error, 500)}```",
-                    Color.DarkRed, "sbln PPM"), ephemeral: true);
+                    Color.DarkRed, EmbedHandler.PpmFooter), ephemeral: true);
                 return;
             }
 
@@ -157,7 +158,7 @@ namespace sblngavnav5X.PPM
 
             await FollowupAsync(embed: EmbedHandler.Simple(
                 "Временная почта", $"📬 **`{box.Email}`**\n\n{ttl}",
-                Color.Green, "sbln PPM"), ephemeral: true);
+                Color.Green, EmbedHandler.PpmFooter), ephemeral: true);
 
             await RepaintRoot();
         }
@@ -179,14 +180,14 @@ namespace sblngavnav5X.PPM
             var box = ResolveOwned(idRaw, out var deny);
             if (box == null)
             {
-                await FollowupAsync(embed: EmbedHandler.Simple("❌ PPM", deny, Color.DarkRed, "sbln PPM"), ephemeral: true);
+                await FollowupAsync(embed: EmbedHandler.Simple("❌ PPM", deny, Color.DarkRed, EmbedHandler.PpmFooter), ephemeral: true);
                 return;
             }
 
             var (ok, error) = await _ppm.DeleteAsync(box);
             await FollowupAsync(embed: ok
-                ? EmbedHandler.Simple("🗑️ PPM", $"Ящик `{box.Email}` удалён.", Color.Orange, "sbln PPM")
-                : EmbedHandler.Simple("❌ PPM", $"Не удалось удалить:\n```{Truncate(error, 500)}```", Color.DarkRed, "sbln PPM"),
+                ? EmbedHandler.Simple("🗑️ PPM", $"Ящик `{box.Email}` удалён.", Color.Orange, EmbedHandler.PpmFooter)
+                : EmbedHandler.Simple("❌ PPM", $"Не удалось удалить:\n```{Truncate(error, 500)}```", Color.DarkRed, EmbedHandler.PpmFooter),
                 ephemeral: true);
 
             if (ok)
@@ -200,7 +201,7 @@ namespace sblngavnav5X.PPM
             var box = ResolveOwned(idRaw, out var deny);
             if (box == null)
             {
-                await FollowupAsync(embed: EmbedHandler.Simple("❌ PPM", deny, Color.DarkRed, "sbln PPM"), ephemeral: true);
+                await FollowupAsync(embed: EmbedHandler.Simple("❌ PPM", deny, Color.DarkRed, EmbedHandler.PpmFooter), ephemeral: true);
                 return;
             }
 
@@ -211,7 +212,7 @@ namespace sblngavnav5X.PPM
             }
             catch (Exception ex)
             {
-                await FollowupAsync(embed: EmbedHandler.Simple("❌ PPM", $"Ошибка IMAP:\n```{Truncate(ex.Message, 500)}```", Color.DarkRed, "sbln PPM"), ephemeral: true);
+                await FollowupAsync(embed: EmbedHandler.Simple("❌ PPM", $"Ошибка IMAP:\n```{Truncate(ex.Message, 500)}```", Color.DarkRed, EmbedHandler.PpmFooter), ephemeral: true);
                 return;
             }
 

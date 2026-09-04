@@ -1,10 +1,31 @@
 using Discord;
 using System;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav5X.Common
 {
     public static class EmbedHandler
     {
+        public const string Brand = "sbln";
+        public const string MusicTag = "muzik🎸🎧";
+        public const string VoteTag = "ultra-выбератор🤔⚡";
+        public const string PpmTag = "PPM";
+
+        public static string MusicFooter => $"{Brand} {MusicTag}";
+        public static string VoteFooter => $"{Brand} {VoteTag}";
+        public static string PpmFooter => $"{Brand} {PpmTag}";
+
+        private static string Title(string tag, string sub)
+            => string.IsNullOrEmpty(sub) ? $"{Brand} {tag}" : $"{Brand} {tag}, {sub}";
+
+        public static Task<Embed> Music(string sub, string description, Color color)
+            => CreateMusicEmbed(Title(MusicTag, sub), description, color);
+
+        public static Task<Embed> MusicError(string sub, string error)
+            => CreateErrorEmbed(Title(MusicTag, sub), error);
+
+        public static Task<Embed> MusicCustom(string sub, string description, string footer, Color color)
+            => CreateCustomMusicEmbed(Title(MusicTag, sub), description, footer, color);
+
         public static async Task<Embed> CreateMusicEmbed(string title, string description, Color color)
         {
             return await Task.Run(() => new EmbedBuilder()
