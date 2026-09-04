@@ -64,7 +64,8 @@ namespace sblngavnav5X.Audio
                 player = await lavaNode.GetPlayerAsync(guildId);
             }
 
-            var normalized = AudioQueryNormalizer.Normalize(searchQuery, out var index, out var fallback);
+            var defaultPrefix = audioService.GetDefaultSourcePrefix(guildId);
+            var normalized = AudioQueryNormalizer.Normalize(searchQuery, out var index, out var fallback, defaultPrefix);
 
             try
             {
@@ -143,6 +144,51 @@ namespace sblngavnav5X.Audio
                 await ReplyAsync(embed: embedErr);
             }
         }
+
+        [Command("источник")]
+        [Alias("сорс", "деф")]
+        public async Task DefaultSourceAsync([Remainder] string src = null)
+        {
+            var guildId = Context.Guild.Id;
+
+            if (string.IsNullOrWhiteSpace(src))
+            {
+                var curName = SourceName(audioService.GetDefaultSourcePrefix(guildId));
+                await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
+                    "sbln muzik🎸🎧, источник",
+                    $"дефолтный источник для `x и`: **{curName}**\nсменить: `x источник ютуб | спотик | склауд`",
+                    Color.DarkMagenta));
+                return;
+            }
+
+            var prefix = src.Trim().ToLowerInvariant() switch
+            {
+                "ютуб" or "ют" or "yt" or "youtube" => "ytsearch:",
+                "спотик" or "спотифай" or "споти" or "sp" or "spotify" => "spsearch:",
+                "склауд" or "саундклауд" or "ск" or "sc" or "soundcloud" => "scsearch:",
+                _ => null
+            };
+
+            if (prefix is null)
+            {
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(
+                    "sbln muzik🎸🎧, источник", "не знаю такой. доступно: **ютуб** / **спотик** / **склауд**"));
+                return;
+            }
+
+            audioService.SetDefaultSource(guildId, prefix);
+            await ReplyAsync(embed: await EmbedHandler.CreateMusicEmbed(
+                "sbln muzik🎸🎧, источник",
+                $"🎚️ Дефолтный источник для `x и` теперь: **{SourceName(prefix)}**",
+                Color.DarkMagenta));
+        }
+
+        private static string SourceName(string prefix) => prefix switch
+        {
+            "spsearch:" => "Spotify",
+            "scsearch:" => "SoundCloud",
+            _ => "YouTube"
+        };
 
         [Command("скип")]
         [Alias("ск")]

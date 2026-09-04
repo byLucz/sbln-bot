@@ -16,7 +16,7 @@ namespace sblngavnav5X.Audio
         private static readonly Regex SoundCloudPrefixRegex =
             new(@"^\s*(?:склауд|саундклауд)\s+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        public static string Normalize(string raw, out int playlistIndex, out string? fallbackQuery)
+        public static string Normalize(string raw, out int playlistIndex, out string? fallbackQuery, string defaultPrefix = "ytsearch:")
         {
             playlistIndex = 0;
             fallbackQuery = null;
@@ -78,7 +78,7 @@ namespace sblngavnav5X.Audio
             }
 
             if (!Uri.TryCreate(searchQuery, UriKind.Absolute, out _) && !HasKnownSearchPrefix(searchQuery))
-                searchQuery = "ytsearch:" + searchQuery;
+                searchQuery = defaultPrefix + searchQuery;
 
             return searchQuery;
         }
