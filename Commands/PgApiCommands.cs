@@ -65,7 +65,7 @@ public static class PgApiPanelBuilder
     }
 }
 
-[RequireSQDRole]
+[RequireSuperuser]
 public class PgApiCommands : ModuleBase<SocketCommandContext>
 {
     private readonly PgApiService _pgApi;
@@ -101,7 +101,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         _pgApi = pgApi;
     }
 
-    [RequireSQDRoleInteraction]
+    [RequireSuperuserInteraction]
     [ComponentInteraction("pgapi_page:*")]
     public async Task ChangePage(string pageRaw)
     {
@@ -118,7 +118,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         });
     }
 
-    [RequireSQDRoleInteraction]
+    [RequireSuperuserInteraction]
     [ComponentInteraction("pgapi_action:*")]
     public async Task ExecuteAction(string action)
     {

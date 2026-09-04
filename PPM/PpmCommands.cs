@@ -93,7 +93,7 @@ namespace sblngavnav5X.PPM
 
     }
 
-    [RequireSQDRole]
+    [RequireSuperuser]
     public class PpmCommands : ModuleBase<SocketCommandContext>
     {
         [Command("печкин")]
@@ -116,7 +116,7 @@ namespace sblngavnav5X.PPM
             _ppm = ppm;
         }
 
-        [RequireSQDRoleInteraction]
+        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_list:*")]
         public async Task ChangePage(string pageRaw)
         {
@@ -135,7 +135,7 @@ namespace sblngavnav5X.PPM
             });
         }
 
-        [RequireSQDRoleInteraction]
+        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_new:*")]
         public async Task Create(string kind)
         {
@@ -163,15 +163,15 @@ namespace sblngavnav5X.PPM
             await RepaintRoot();
         }
 
-        [RequireSQDRoleInteraction]
+        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_open:*")]
         public Task Open(string idRaw) => ShowInbox(idRaw);
 
-        [RequireSQDRoleInteraction]
+        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_inbox:*")]
         public Task Refresh(string idRaw) => ShowInbox(idRaw);
 
-        [RequireSQDRoleInteraction]
+        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_del:*")]
         public async Task Delete(string idRaw)
         {

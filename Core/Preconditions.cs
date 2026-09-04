@@ -5,34 +5,57 @@ using sblngavnav5X.Data;
 
 namespace sblngavnav5X.Core
 {
-    // Общие precondition-атрибуты (доступ по роли SQD). Реюзают PgApi и PPM.
-    public class RequireSQDRoleAttribute : Discord.Commands.PreconditionAttribute
+    public class RequireSuperuserAttribute : Discord.Commands.PreconditionAttribute
     {
-        public override Task<Discord.Commands.PreconditionResult> CheckPermissionsAsync(
+        public override async Task<Discord.Commands.PreconditionResult> CheckPermissionsAsync(
             ICommandContext context, CommandInfo command, IServiceProvider services)
         {
-            if (Utils.sqdRoleId == 0)
-                return Task.FromResult(Discord.Commands.PreconditionResult.FromError("pgApiRoleId не задан в Utils"));
+            if (context.Guild is null || context.User is not IGuildUser gu)
+                return Discord.Commands.PreconditionResult.FromError("только на сервере");
 
-            if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.sqdRoleId))
-                return Task.FromResult(Discord.Commands.PreconditionResult.FromError("Нет доступа к pgAPI"));
+            if (await SuperuserGate.IsAllowedAsync(context.Client, context.Guild, gu))
+                return Discord.Commands.PreconditionResult.FromSuccess();
 
-            return Task.FromResult(Discord.Commands.PreconditionResult.FromSuccess());
+            return Discord.Commands.PreconditionResult.FromError("нужна роль суперюзера");
         }
     }
 
-    public class RequireSQDRoleInteractionAttribute : Discord.Interactions.PreconditionAttribute
+    public class RequireSuperuserInteractionAttribute : Discord.Interactions.PreconditionAttribute
     {
-        public override Task<Discord.Interactions.PreconditionResult> CheckRequirementsAsync(
+        public override async Task<Discord.Interactions.PreconditionResult> CheckRequirementsAsync(
             IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
         {
-            if (Utils.sqdRoleId == 0)
-                return Task.FromResult(Discord.Interactions.PreconditionResult.FromError("pgApiRoleId не задан в Utils"));
+            if (context.Guild is null || context.User is not IGuildUser gu)
+                return Discord.Interactions.PreconditionResult.FromError("только на сервере");
 
-            if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.sqdRoleId))
-                return Task.FromResult(Discord.Interactions.PreconditionResult.FromError("Нет доступа к pgAPI"));
+            if (await SuperuserGate.IsAllowedAsync(context.Client, context.Guild, gu))
+                return Discord.Interactions.PreconditionResult.FromSuccess();
 
-            return Task.FromResult(Discord.Interactions.PreconditionResult.FromSuccess());
+            return Discord.Interactions.PreconditionResult.FromError("нужна роль суперюзера");
+        }
+    }
+
+    public static class SuperuserGate
+    {
+        private static ulong _botOwnerId;
+
+        public static async Task<bool> IsAllowedAsync(IDiscordClient client, IGuild guild, IGuildUser user)
+        {
+            if (_botOwnerId == 0)
+            {
+                try
+                {
+                    var app = await client.GetApplicationInfoAsync();
+                    _botOwnerId = app.Owner?.Id ?? 0;
+                }
+                catch { }
+            }
+
+            if (_botOwnerId != 0 && user.Id == _botOwnerId)
+                return true;
+
+            var gs = DataBase.GetGuildSettings(guild.Id);
+            return gs.SuperuserRoleId is ulong role && user.RoleIds.Contains(role);
         }
     }
 }

@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using MySqlConnector;
+using System.Collections.Concurrent;
 using System.Text.Json;
 using static sblngavnav5X.Data.DataRoots;
 using static sblngavnav5X.Data.DataRoots.States;
@@ -14,6 +15,60 @@ namespace sblngavnav5X.Data
             var c = new MySqlConnection(Utils.connectionString);
             c.Open();
             return c;
+        }
+
+        private static readonly ConcurrentDictionary<ulong, GuildSettings> _guildCache = new();
+
+        public static GuildSettings GetGuildSettings(ulong guildId)
+        {
+            if (_guildCache.TryGetValue(guildId, out var cached)) return cached;
+            var gs = LoadGuildSettings(guildId) ?? new GuildSettings { GuildId = guildId };
+            _guildCache[guildId] = gs;
+            return gs;
+        }
+
+        private static GuildSettings LoadGuildSettings(ulong guildId)
+        {
+            using var conn = Db();
+            using var cmd = new MySqlCommand(
+                "SELECT superuser_role_id, welcome_channel_id, welcome_message, welcome_role_id FROM guild_settings WHERE guild_id=@g LIMIT 1", conn);
+            cmd.Parameters.AddWithValue("@g", guildId);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read()) return null;
+            return new GuildSettings
+            {
+                GuildId = guildId,
+                SuperuserRoleId = r.IsDBNull(0) ? null : r.GetUInt64(0),
+                WelcomeChannelId = r.IsDBNull(1) ? null : r.GetUInt64(1),
+                WelcomeMessage = r.IsDBNull(2) ? null : r.GetString(2),
+                WelcomeRoleId = r.IsDBNull(3) ? null : r.GetUInt64(3),
+            };
+        }
+
+        public static void SetSuperuserRole(ulong guildId, ulong? roleId)
+            => UpsertGuild(guildId, "superuser_role_id", roleId, s => s.SuperuserRoleId = roleId);
+
+        public static void SetWelcomeChannel(ulong guildId, ulong? channelId)
+            => UpsertGuild(guildId, "welcome_channel_id", channelId, s => s.WelcomeChannelId = channelId);
+
+        public static void SetWelcomeRole(ulong guildId, ulong? roleId)
+            => UpsertGuild(guildId, "welcome_role_id", roleId, s => s.WelcomeRoleId = roleId);
+
+        public static void SetWelcomeMessage(ulong guildId, string message)
+            => UpsertGuild(guildId, "welcome_message", message, s => s.WelcomeMessage = message);
+
+        private static void UpsertGuild(ulong guildId, string column, object value, Action<GuildSettings> apply)
+        {
+            using var conn = Db();
+            var sql = $"INSERT INTO guild_settings (guild_id, {column}) VALUES (@g, @v) ON DUPLICATE KEY UPDATE {column}=@v";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@g", guildId);
+            cmd.Parameters.AddWithValue("@v", value ?? DBNull.Value);
+            cmd.ExecuteNonQuery();
+
+            var gs = GetGuildSettings(guildId);
+            apply(gs);
+            _guildCache[guildId] = gs;
         }
 
         public static string GetRandomMeme(string columnName)

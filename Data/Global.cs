@@ -61,7 +61,6 @@ namespace sblngavnav5X.Data
 
         public static readonly string pgApiToken = Cfg("PgApiToken");
 
-        public static readonly ulong sqdRoleId = 11111111111;
 
         public const int streamUpdTime = 600;
 

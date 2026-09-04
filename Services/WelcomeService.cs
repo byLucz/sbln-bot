@@ -1,10 +1,13 @@
-﻿using Discord;
+using Discord;
 using Discord.WebSocket;
+using sblngavnav5X.Data;
 
 namespace sblngavnav5X.Services
 {
     public class WelcomeService
     {
+        private const string DefaultMessage = "Добро пожаловать!";
+
         private readonly DiscordSocketClient _client;
 
         public WelcomeService(DiscordSocketClient client)
@@ -15,20 +18,26 @@ namespace sblngavnav5X.Services
 
         private async Task OnUserJoined(SocketGuildUser user)
         {
+            var gs = DataBase.GetGuildSettings(user.Guild.Id);
 
-            var channel = user.Guild.TextChannels.FirstOrDefault(c => c.Name == "mainlobby");
+            var channel = gs.WelcomeChannelId is ulong chId
+                ? user.Guild.GetTextChannel(chId)
+                : user.Guild.SystemChannel ?? user.Guild.DefaultChannel;
             if (channel == null) return;
 
-            var newbieRole = user.Guild.Roles.FirstOrDefault(r => r.Name == "Челик");
-            if (newbieRole != null)
+            if (gs.WelcomeRoleId is ulong roleId)
             {
-                await user.AddRoleAsync(newbieRole);
+                var role = user.Guild.GetRole(roleId);
+                if (role != null)
+                    try { await user.AddRoleAsync(role); } catch { }
             }
+
+            var message = string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? DefaultMessage : gs.WelcomeMessage;
 
             var embed = new EmbedBuilder()
                 .WithColor(Color.Green)
                 .WithTitle($"Добро пожаловать, {user.Username}!")
-                .WithDescription("Я сын гавна, а это официальное представительсво Lois Media в мире Дискордии, устраивайся поудобнее, еп <:Lois:754018858431545375>")
+                .WithDescription(message)
                 .WithThumbnailUrl(user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl())
                 .Build();
 
