@@ -162,12 +162,12 @@ namespace sblngavnav5X.Data
 
         public static int RandomNumber(int min, int max)
         {
-            Random random = new Random();
+            Random random = Random.Shared;
             return random.Next(min, max);
         }
         public static T RandomList<T>(this IList<T> items)
         {
-            var random = new Random();
+            var random = Random.Shared;
 
             return items[random.Next(items.Count)];
         }

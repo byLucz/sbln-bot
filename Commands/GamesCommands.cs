@@ -74,7 +74,7 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
             return;
         }
 
-        Random random = new Random();
+        Random random = Random.Shared;
 
         string[] emojis = new string[Math.Min(5, parts.Length)];
         int[] progresses = new int[emojis.Length];
@@ -186,7 +186,7 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
 
         int[,] data = new int[size + 2, size + 2];
 
-        Random random = new Random();
+        Random random = Random.Shared;
 
         for (int iy = 1; iy <= size; iy++)
         {
@@ -245,7 +245,7 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
     [Alias("дуэль")]
     public async Task RandomApexSet(IUser opponent = null)
     {
-        var rand = new Random();
+        var rand = Random.Shared;
 
         var upgrades = new List<string>
         {

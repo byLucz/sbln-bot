@@ -32,7 +32,7 @@ namespace sblngavnav5X.Data
             if (items.Length == 0)
                 return null;
 
-            var rnd = new Random();
+            var rnd = Random.Shared;
             return items[rnd.Next(items.Length)];
         }
 
@@ -152,7 +152,7 @@ namespace sblngavnav5X.Data
             var all = GetAllEmotes();
             if (all.Count == 0)
                 return null;
-            var rnd = new Random();
+            var rnd = Random.Shared;
             return all[rnd.Next(all.Count)];
         }
 

@@ -4,11 +4,12 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using sblngavnav5X.Core;
 using sblngavnav5X.Data;
+using static sblngavnav5X.Common.CommonUtils.Text;
+using static sblngavnav5X.Common.CommonUtils.Time;
 using static sblngavnav5X.Data.DataRoots;
 
 namespace sblngavnav5X.PPM
 {
-    // Сборка эмбедов/кнопок панели PechkinPostManager. Без статического состояния — данные per-user.
     public static class PpmPanelBuilder
     {
         private const int PageSize = 5;
@@ -75,9 +76,9 @@ namespace sblngavnav5X.PPM
 
             foreach (var m in msgs)
             {
-                string header = $"✉️ {Trunc(m.Subject, 200)} — {m.Date:dd.MM HH:mm}";
-                string value = $"**От:** {Trunc(m.From, 200)}\n{Trunc(m.Body, 700)}";
-                eb.AddField(Trunc(header, 256), Trunc(value, 1024));
+                string header = $"✉️ {Truncate(m.Subject, 200)} — {m.Date:dd.MM HH:mm}";
+                string value = $"**От:** {Truncate(m.From, 200)}\n{Truncate(m.Body, 700)}";
+                eb.AddField(Truncate(header, 256), Truncate(value, 1024));
             }
 
             return eb.Build();
@@ -89,15 +90,6 @@ namespace sblngavnav5X.PPM
                 .WithButton("🗑️ Удалить", $"ppm_del:{box.Id}", ButtonStyle.Danger, row: 0)
                 .Build();
 
-        internal static long ToUnix(DateTime utc)
-            => new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeSeconds();
-
-        internal static string Trunc(string s, int max)
-        {
-            if (string.IsNullOrEmpty(s)) return s ?? "";
-            s = s.Replace("\r", "");
-            return s.Length <= max ? s : s.Substring(0, max - 1) + "…";
-        }
     }
 
     [RequireSQDRole]
@@ -154,14 +146,14 @@ namespace sblngavnav5X.PPM
             if (!ok)
             {
                 await FollowupAsync(embed: EmbedHandler.Simple(
-                    "❌ PPM", $"Не удалось создать ящик:\n```{PpmPanelBuilder.Trunc(error, 500)}```",
+                    "❌ PPM", $"Не удалось создать ящик:\n```{Truncate(error, 500)}```",
                     Color.DarkRed, "sbln PPM"), ephemeral: true);
                 return;
             }
 
             string ttl = permanent
                 ? "♾️ постоянный"
-                : $"⏳ удалится <t:{PpmPanelBuilder.ToUnix(box.ExpiresAt!.Value)}:R>";
+                : $"⏳ удалится <t:{ToUnix(box.ExpiresAt!.Value)}:R>";
 
             await FollowupAsync(embed: EmbedHandler.Simple(
                 "Временная почта", $"📬 **`{box.Email}`**\n\n{ttl}",
@@ -194,14 +186,13 @@ namespace sblngavnav5X.PPM
             var (ok, error) = await _ppm.DeleteAsync(box);
             await FollowupAsync(embed: ok
                 ? EmbedHandler.Simple("🗑️ PPM", $"Ящик `{box.Email}` удалён.", Color.Orange, "sbln PPM")
-                : EmbedHandler.Simple("❌ PPM", $"Не удалось удалить:\n```{PpmPanelBuilder.Trunc(error, 500)}```", Color.DarkRed, "sbln PPM"),
+                : EmbedHandler.Simple("❌ PPM", $"Не удалось удалить:\n```{Truncate(error, 500)}```", Color.DarkRed, "sbln PPM"),
                 ephemeral: true);
 
             if (ok)
                 await RepaintRoot();
         }
 
-        // Загружает инбокс ящика (с проверкой владельца) и отдаёт эфемерным сообщением с кнопками.
         private async Task ShowInbox(string idRaw)
         {
             await DeferAsync(ephemeral: true);
@@ -220,7 +211,7 @@ namespace sblngavnav5X.PPM
             }
             catch (Exception ex)
             {
-                await FollowupAsync(embed: EmbedHandler.Simple("❌ PPM", $"Ошибка IMAP:\n```{PpmPanelBuilder.Trunc(ex.Message, 500)}```", Color.DarkRed, "sbln PPM"), ephemeral: true);
+                await FollowupAsync(embed: EmbedHandler.Simple("❌ PPM", $"Ошибка IMAP:\n```{Truncate(ex.Message, 500)}```", Color.DarkRed, "sbln PPM"), ephemeral: true);
                 return;
             }
 
@@ -230,7 +221,6 @@ namespace sblngavnav5X.PPM
                 ephemeral: true);
         }
 
-        // Перерисовывает корневую панель (сообщение, на котором кликнули). owner = текущий юзер.
         private async Task RepaintRoot()
         {
             if (Context.Interaction is not SocketMessageComponent component)
@@ -245,7 +235,6 @@ namespace sblngavnav5X.PPM
             });
         }
 
-        // Ищет ящик по id и проверяет владельца. deny = причина отказа.
         private PpmMailbox ResolveOwned(string idRaw, out string deny)
         {
             deny = null;

@@ -5,6 +5,8 @@ using NAudio.Wave.SampleProviders;
 using sblngavnav5X.Core;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
+using static sblngavnav5X.Common.CommonUtils.Text;
+using static sblngavnav5X.Common.CommonUtils.Time;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
@@ -1302,13 +1304,6 @@ namespace sblngavnav5X.Audio
             return "t:" + (t.Title ?? "") + "|" + (t.Author ?? "");
         }
 
-        private static string FormatTime(TimeSpan time)
-        {
-            if (time.TotalDays >= 1)
-                return $"{(int)time.TotalDays}d {time:hh\\:mm\\:ss}";
-            return time.ToString(@"hh\:mm\:ss");
-        }
-
         private List<string> BuildQueuePages(LavaPlayer<LavaTrack> player, List<LavaTrack> queueList, int queueCount, TimeSpan queueDuration)
         {
             const int pageSize = 10;
@@ -1444,13 +1439,6 @@ namespace sblngavnav5X.Audio
                 list.Add(value);
         }
 
-        private static string CollapseSpaces(string s)
-        {
-            while (s.Contains("  ", StringComparison.Ordinal))
-                s = s.Replace("  ", " ");
-            return s.Trim();
-        }
-
         private static readonly Dictionary<char, char> RuToEn = new()
         {
             ['й'] = 'q',
@@ -1554,13 +1542,6 @@ namespace sblngavnav5X.Audio
                 });
             }
             return sb.ToString();
-        }
-
-        private static string Truncate(string s, int max)
-        {
-            if (string.IsNullOrEmpty(s)) return s;
-            if (s.Length <= max) return s;
-            return s.Substring(0, Math.Max(0, max - 1)) + "…";
         }
 
         private sealed record PaginatorState(
