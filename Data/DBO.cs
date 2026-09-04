@@ -9,10 +9,16 @@ namespace sblngavnav5X.Data
 {
     public static class DataBase
     {
+        private static MySqlConnection Db()
+        {
+            var c = new MySqlConnection(Utils.connectionString);
+            c.Open();
+            return c;
+        }
+
         public static string GetRandomMeme(string columnName)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
 
             var allowed = new HashSet<string> { "volk", "yaica", "pat", "fff", "hug", "kiss", "kus", "buhat", "ebalo" };
             if (!allowed.Contains(columnName))
@@ -38,8 +44,7 @@ namespace sblngavnav5X.Data
 
         public static void DownloadStreamers()
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
 
             const string sqlStrims = "SELECT strimaki FROM streamers";
             using (var cmd = new MySqlCommand(sqlStrims, conn))
@@ -62,8 +67,7 @@ namespace sblngavnav5X.Data
 
         public static void AddStreamer(string name, string id)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             using var tx = conn.BeginTransaction();
 
             var cmd1 = new MySqlCommand("INSERT INTO streamers (strimaki) VALUES (@name)", conn, tx);
@@ -79,8 +83,7 @@ namespace sblngavnav5X.Data
 
         public static void DeleteStreamer(string name, string id)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             using var tx = conn.BeginTransaction();
 
             var cmd1 = new MySqlCommand("DELETE FROM streamers WHERE strimaki = @name", conn, tx);
@@ -96,8 +99,7 @@ namespace sblngavnav5X.Data
 
         public static void AddStatus(string text, string pos, string linkStr, string type)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = 
                 @"INSERT INTO statusbar (StatusText, StatusPos, StatusLink, StatusType)
                 VALUES (@text, @pos, @link, @type)";
@@ -111,8 +113,7 @@ namespace sblngavnav5X.Data
 
         public static void PushStatus()
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = "SELECT StatusText, StatusPos, StatusLink, StatusType FROM statusbar";
             using var cmd = new MySqlCommand(sql, conn);
             using var reader = cmd.ExecuteReader();
@@ -134,8 +135,7 @@ namespace sblngavnav5X.Data
         public static List<string> GetAllEmotes()
         {
             var list = new List<string>();
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             using var cmd = new MySqlCommand("SELECT raw_line FROM emotes", conn);
             using var rdr = cmd.ExecuteReader();
             while (rdr.Read())
@@ -201,8 +201,7 @@ namespace sblngavnav5X.Data
 
         public static void AddBook(string title, string authors, string imageUrl, string user)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = 
                 @"INSERT INTO books (title, authors, image, selected_date, suggested_by, season)
                 VALUES (@t, @a, @i, @d, @u, @s)";
@@ -219,8 +218,7 @@ namespace sblngavnav5X.Data
 
         public static (int id, string title, string authors, string image, DateTime selectedDate, string suggestedBy) GetLastBook()
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = @"SELECT id, title, authors, image, selected_date, suggested_by FROM books ORDER BY selected_date DESC LIMIT 1";
             using var cmd = new MySqlCommand(sql, conn);
             using var r = cmd.ExecuteReader();
@@ -240,8 +238,7 @@ namespace sblngavnav5X.Data
 
         public static bool CanSelectNewBook()
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = "SELECT MAX(selected_date) FROM books";
             using var cmd = new MySqlCommand(sql, conn);
             var result = cmd.ExecuteScalar();
@@ -253,8 +250,7 @@ namespace sblngavnav5X.Data
 
         public static void RemoveLastBook()
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = @"DELETE FROM books WHERE id = (SELECT id FROM books ORDER BY selected_date DESC LIMIT 1)";
             using var cmd = new MySqlCommand(sql, conn);
             cmd.ExecuteNonQuery();
@@ -281,8 +277,7 @@ namespace sblngavnav5X.Data
 
         public static void SaveRating(string userId, int bookId, int[] s, double final)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = 
                 @"INSERT INTO booksRating 
                   (user_id, book_id, score_plot, score_style, score_characters, score_originality, score_vibe, final_score, rated_at)
@@ -304,8 +299,7 @@ namespace sblngavnav5X.Data
 
         public static bool UserHasRated(string userId, int bookId)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = "SELECT COUNT(*) FROM booksRating WHERE user_id = @u AND book_id = @b";
             using var cmd = new MySqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@u", userId);
@@ -317,8 +311,7 @@ namespace sblngavnav5X.Data
         public static List<BookWithRating> GetBooksWithRatings(int? season)
         {
             var list = new List<BookWithRating>();
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
 
             string sql =
                 @"SELECT b.id,
@@ -376,8 +369,7 @@ namespace sblngavnav5X.Data
 
         public static int GetMaxSeason()
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = "SELECT COALESCE(MAX(season), 0) FROM books";
             using var cmd = new MySqlCommand(sql, conn);
             var obj = cmd.ExecuteScalar();
@@ -387,8 +379,7 @@ namespace sblngavnav5X.Data
         public static Dictionary<int, string> GetBookSuggesters()
         {
             var dict = new Dictionary<int, string>();
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = "SELECT id, suggested_by FROM books";
             using var cmd = new MySqlCommand(sql, conn);
             using var r = cmd.ExecuteReader();
@@ -401,8 +392,7 @@ namespace sblngavnav5X.Data
         {
             var list = new List<VersionEntry>();
 
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
 
             const string sql = "SELECT `version`, `date` FROM `versions` ORDER BY `id`";
             using var cmd = new MySqlCommand(sql, conn);
@@ -424,8 +414,7 @@ namespace sblngavnav5X.Data
         {
             var list = new List<PackageVersionEntry>();
 
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
 
             const string sql = @"SELECT package_name, package_version, created_at
                                 FROM packageVersions
@@ -453,8 +442,7 @@ namespace sblngavnav5X.Data
         {
             var books = new Dictionary<int, BookExportDto>();
 
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = @"
                 SELECT b.id, b.title, b.authors, b.suggested_by, b.season,
                        r.user_id, r.score_plot, r.score_style, r.score_characters,
@@ -514,8 +502,7 @@ namespace sblngavnav5X.Data
         public static List<string> LoadStreamsOnline()
         {
             var list = new List<string>();
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             using var cmd = new MySqlCommand(
                 "SELECT SUBSTRING_INDEX(puk, ':', -1) AS sid FROM streamersid WHERE is_online = 1", conn);
             using var r = cmd.ExecuteReader();
@@ -526,8 +513,7 @@ namespace sblngavnav5X.Data
 
         public static void AddStreamOnline(string streamId)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             using var cmd = new MySqlCommand(
                 "UPDATE streamersid SET is_online = 1 WHERE SUBSTRING_INDEX(puk, ':', -1) = @id", conn);
             cmd.Parameters.AddWithValue("@id", streamId);
@@ -536,8 +522,7 @@ namespace sblngavnav5X.Data
 
         public static void RemoveStreamOnline(string streamId)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             using var cmd = new MySqlCommand(
                 "UPDATE streamersid SET is_online = 0 WHERE SUBSTRING_INDEX(puk, ':', -1) = @id", conn);
             cmd.Parameters.AddWithValue("@id", streamId);
@@ -546,8 +531,7 @@ namespace sblngavnav5X.Data
 
         public static int InsertPpmMailbox(string email, string password, string ownerId, DateTime? expiresAt, bool isPermanent)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql =
                 @"INSERT INTO temp_mailboxes (email, password, owner_id, created_at, expires_at, is_permanent, deleted)
                   VALUES (@e, @p, @o, @c, @x, @perm, 0);
@@ -565,8 +549,7 @@ namespace sblngavnav5X.Data
         public static List<(int id, string email)> GetExpiredPpmMailboxes()
         {
             var list = new List<(int, string)>();
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql =
                 @"SELECT id, email FROM temp_mailboxes
                   WHERE deleted = 0 AND is_permanent = 0
@@ -581,8 +564,7 @@ namespace sblngavnav5X.Data
 
         public static void MarkPpmMailboxDeleted(int id)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             using var cmd = new MySqlCommand("UPDATE temp_mailboxes SET deleted = 1 WHERE id = @id", conn);
             cmd.Parameters.AddWithValue("@id", id);
             cmd.ExecuteNonQuery();
@@ -590,8 +572,7 @@ namespace sblngavnav5X.Data
 
         public static PpmMailbox GetActivePpmMailbox(string email)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql =
                 @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
                   FROM temp_mailboxes WHERE email = @e AND deleted = 0 LIMIT 1";
@@ -605,8 +586,7 @@ namespace sblngavnav5X.Data
 
         public static PpmMailbox GetPpmMailboxById(int id)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql =
                 @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
                   FROM temp_mailboxes WHERE id = @id AND deleted = 0 LIMIT 1";
@@ -621,8 +601,7 @@ namespace sblngavnav5X.Data
         public static List<PpmMailbox> GetUserPpmMailboxes(string ownerId)
         {
             var list = new List<PpmMailbox>();
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql =
                 @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
                   FROM temp_mailboxes WHERE owner_id = @o AND deleted = 0 ORDER BY id DESC";
@@ -648,8 +627,7 @@ namespace sblngavnav5X.Data
         public static List<RatingEntry> GetAllRatings()
         {
             var list = new List<RatingEntry>();
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
+            using var conn = Db();
             const string sql = 
                 @"SELECT user_id, book_id,
                        score_plot, score_style, score_characters,
