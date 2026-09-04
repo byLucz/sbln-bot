@@ -6,6 +6,7 @@ using sblngavnav5X.Audio;
 using sblngavnav5X.Commands;
 using sblngavnav5X.Data;
 using sblngavnav5X.GVR;
+using sblngavnav5X.PPM;
 using sblngavnav5X.Services;
 using sblngavnav5X.TwitchService;
 using Victoria;
@@ -22,6 +23,7 @@ namespace sblngavnav5X.Core
         private readonly AudioSevenService _audioService;
         private readonly StreamMonoService _streams;
         private readonly WelcomeService _welcomeService;
+        private readonly PpmService _ppm;
 
         public DiscordService()
         {
@@ -33,6 +35,7 @@ namespace sblngavnav5X.Core
             _streams = _services.GetRequiredService<StreamMonoService>();
             _interHandler = _services.GetRequiredService<InteractionHandler>();
             _welcomeService = _services.GetRequiredService<WelcomeService>();
+            _ppm = _services.GetRequiredService<PpmService>();
 
             SubscribeDiscordEvents();
         }
@@ -51,6 +54,8 @@ namespace sblngavnav5X.Core
 
             await DataBase.ApplyLastStatusAsync(_client);
             DataBase.DownloadStreamers();
+
+            await _ppm.StartSweeperAsync();
 
             using var cts = new CancellationTokenSource();
 
@@ -127,11 +132,16 @@ namespace sblngavnav5X.Core
                 .AddSingleton<StreamMonoService>()
                 .AddSingleton<WelcomeService>()
                 .AddSingleton<PgApiService>()
+                .AddSingleton<PpmServerService>()
+                .AddSingleton<PpmService>()
                 .AddSingleton<GuildConfig>(_ => new GuildConfig())
                 .AddSingleton<GovorConfig>(_ => new GovorConfig())
                 .AddLavaNode(x =>
                 {
                     x.SelfDeaf = true;
+                    x.Hostname = Utils.lavaHost;
+                    x.Port = Utils.lavaPort;
+                    x.Authorization = Utils.lavaPass;
                 })
                 .AddHttpClient()
                 .BuildServiceProvider();

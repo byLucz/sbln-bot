@@ -1,0 +1,38 @@
+server:
+  port: 2333
+  address: 0.0.0.0
+plugins:
+  youtube:
+    enabled: true
+    allowSearch: true
+    clients:
+      - MUSIC
+      - ANDROID_VR
+      - WEB
+      - WEBEMBEDDED
+lavalink:
+  plugins:
+    - dependency: "dev.lavalink.youtube:youtube-plugin:1.13.0"
+      repository: "https://maven.lavalink.dev/releases"
+  server:
+    # ВАЖНО: пароль обязан совпадать с LAVA_PASS в config/bot.env
+    password: "youshallnotpass"
+    sources:
+      youtube: false   # отключаем встроенный, работаем через youtube-plugin
+      bandcamp: true
+      soundcloud: true
+      twitch: true
+      vimeo: true
+      http: true
+      local: false
+    bufferDurationMs: 400
+    frameBufferDurationMs: 5000
+    trackStuckThresholdMs: 10000
+    youtubePlaylistLoadLimit: 6
+    playerUpdateInterval: 5
+    youtubeSearchEnabled: true
+    soundcloudSearchEnabled: true
+logging:
+  level:
+    root: INFO
+    lavalink: INFO

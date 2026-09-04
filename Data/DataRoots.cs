@@ -174,6 +174,18 @@ namespace sblngavnav5X.Data
             public string? strMeasure20 { get; set; }
         }
 
+        // Почтовый ящик PechkinPostManager (строка таблицы temp_mailboxes).
+        public class PpmMailbox
+        {
+            public int Id { get; set; }
+            public string Email { get; set; }
+            public string Password { get; set; }
+            public string OwnerId { get; set; }
+            public DateTime CreatedAt { get; set; }
+            public DateTime? ExpiresAt { get; set; }
+            public bool IsPermanent { get; set; }
+        }
+
         public class MyMemoryResult
         {
             public MyMemoryData? responseData { get; set; }

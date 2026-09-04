@@ -8,36 +8,6 @@ using sblngavnav5X.Services;
 
 namespace sblngavnav5X.Commands;
 
-public class RequireSQDRoleAttribute : Discord.Commands.PreconditionAttribute
-{
-    public override Task<Discord.Commands.PreconditionResult> CheckPermissionsAsync(
-        ICommandContext context, CommandInfo command, IServiceProvider services)
-    {
-        if (Utils.sqdRoleId == 0)
-            return Task.FromResult(Discord.Commands.PreconditionResult.FromError("pgApiRoleId не задан в Utils"));
-
-        if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.sqdRoleId))
-            return Task.FromResult(Discord.Commands.PreconditionResult.FromError("Нет доступа к pgAPI"));
-
-        return Task.FromResult(Discord.Commands.PreconditionResult.FromSuccess());
-    }
-}
-
-public class RequireSQDRoleInteractionAttribute : Discord.Interactions.PreconditionAttribute
-{
-    public override Task<Discord.Interactions.PreconditionResult> CheckRequirementsAsync(
-        IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
-    {
-        if (Utils.sqdRoleId == 0)
-            return Task.FromResult(Discord.Interactions.PreconditionResult.FromError("pgApiRoleId не задан в Utils"));
-
-        if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.sqdRoleId))
-            return Task.FromResult(Discord.Interactions.PreconditionResult.FromError("Нет доступа к pgAPI"));
-
-        return Task.FromResult(Discord.Interactions.PreconditionResult.FromSuccess());
-    }
-}
-
 public static class PgApiPanelBuilder
 {
     public const string DefaultProject = "pg";
@@ -59,7 +29,7 @@ public static class PgApiPanelBuilder
     public static MessageComponent BuildPageComponents(int page)
     {
         const int pageSize = 5;
-        var totalPages = (int)Math.Ceiling(Actions.Length / (double)pageSize);
+        var totalPages = Pagination.TotalPages(Actions.Length, pageSize);
         page = Math.Clamp(page, 0, totalPages - 1);
 
         var builder = new ComponentBuilder();
@@ -73,9 +43,7 @@ public static class PgApiPanelBuilder
             builder.WithButton(item.Label, $"pgapi_action:{item.Key}", style, row: 0);
         }
 
-        builder.WithButton("◀️", $"pgapi_page:{Math.Max(page - 1, 0)}",          ButtonStyle.Secondary, disabled: page == 0,              row: 1);
-        builder.WithButton($"Стр. {page + 1}/{totalPages}", "pgapi_page:noop",   ButtonStyle.Secondary, disabled: true,                   row: 1);
-        builder.WithButton("▶️", $"pgapi_page:{Math.Min(page + 1, totalPages - 1)}", ButtonStyle.Secondary, disabled: page >= totalPages - 1, row: 1);
+        builder.AddPager(page, totalPages, "pgapi_page", row: 1);
 
         return builder.Build();
     }

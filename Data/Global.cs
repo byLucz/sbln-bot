@@ -1,4 +1,5 @@
 ﻿using Discord;
+using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -12,29 +13,55 @@ namespace sblngavnav5X.Data
     {
         public const string sblnver = "5.6.1";
 
-        public const string token = "INSERT_HERE";
+        // Единый файл секретов вне репо. Путь: env SBLN_SECRETS, иначе дефолт /opt/sbln/secrets.json.
+        // Туда же — хосты, зависящие от среды (LavaHost/MailImapHost). Абсолютный путь => не зависит от cwd.
+        private const string DefaultSecretsPath = "/opt/sbln/secrets.json";
+
+        private static readonly IConfiguration _config = BuildConfig();
+
+        private static IConfiguration BuildConfig()
+        {
+            var path = Environment.GetEnvironmentVariable("SBLN_SECRETS");
+            if (string.IsNullOrWhiteSpace(path))
+                path = DefaultSecretsPath;
+
+            var full = Path.GetFullPath(path);
+            return new ConfigurationBuilder()
+                .SetBasePath(Path.GetDirectoryName(full))
+                .AddJsonFile(Path.GetFileName(full), optional: false, reloadOnChange: false)
+                .Build();
+        }
+
+        // Значение из secrets.json. Пусто/нет ключа → fallback.
+        private static string Cfg(string key, string fallback = "")
+        {
+            var v = _config[key];
+            return string.IsNullOrWhiteSpace(v) ? fallback : v;
+        }
+
+        public static readonly string token = Cfg("BotToken");
 
         public const string pref1 = "x ";
 
         public const string pref2 = "х ";
 
-        public const string connectionString = "INSERT_HERE";
+        public static readonly string connectionString = Cfg("DbConnectionString");
 
-        public const string kumaConn = "INSERT_HERE";
+        public static readonly string kumaConn = Cfg("KumaConn");
 
-        public const string weatherApiKey = "INSERT_HERE";
+        public static readonly string weatherApiKey = Cfg("WeatherApiKey");
 
-        public const string streamCid = "INSERT_HERE";
+        public static readonly string streamCid = Cfg("StreamCid");
 
-        public const string streamAuth = "INSERT_HERE";
+        public static readonly string streamAuth = Cfg("StreamAuth");
 
-        public const string gBooksApi = "INSERT_HERE";
+        public static readonly string gBooksApi = Cfg("GBooksApi");
 
-        public const string pgApiBaseUrl = "INSERT_HERE";
+        public static readonly string pgApiBaseUrl = Cfg("PgApiBaseUrl");
 
-        public const string pgApiToken = "INSERT_HERE";
+        public static readonly string pgApiToken = Cfg("PgApiToken");
 
-        public static readonly ulong pgApiRoleId = 11111111111;
+        public static readonly ulong sqdRoleId = 11111111111;
 
         public const int streamUpdTime = 600;
 
@@ -51,6 +78,19 @@ namespace sblngavnav5X.Data
         public const int booksSeason = 2;
 
         public const string booksJsonPath = "INSERT_HERE";
+
+        // --- lavalink --- (host зависит от среды → secrets.json; остальное одинаково → const)
+        public static readonly string lavaHost = Cfg("LavaHost", "127.0.0.1");   // docker: "lavalink"
+        public const int lavaPort = 2333;
+        public static readonly string lavaPass = Cfg("LavaPass", "youshallnotpass");
+
+        // --- PechkinPostManager (temp mail) --- (host зависит от среды → secrets.json; остальное → const)
+        public const string ppmDomain = "lois.media";
+        public const string ppmContainer = "mailserver";                        // имя docker-контейнера docker-mailserver
+        public static readonly string ppmImapHost = Cfg("MailImapHost", "127.0.0.1");   // docker: "host.docker.internal"
+        public const int ppmImapPort = 993;
+        public const bool ppmImapAllowInvalidCert = true;
+        public const int ppmTtlMinutes = 15;
 
         public static string[] greetList = new[]
         {

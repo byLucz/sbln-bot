@@ -544,6 +544,107 @@ namespace sblngavnav5X.Data
             cmd.ExecuteNonQuery();
         }
 
+        public static int InsertPpmMailbox(string email, string password, string ownerId, DateTime? expiresAt, bool isPermanent)
+        {
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            const string sql =
+                @"INSERT INTO temp_mailboxes (email, password, owner_id, created_at, expires_at, is_permanent, deleted)
+                  VALUES (@e, @p, @o, @c, @x, @perm, 0);
+                  SELECT LAST_INSERT_ID();";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@e", email);
+            cmd.Parameters.AddWithValue("@p", password);
+            cmd.Parameters.AddWithValue("@o", ownerId);
+            cmd.Parameters.AddWithValue("@c", DateTime.UtcNow);
+            cmd.Parameters.AddWithValue("@x", (object)expiresAt ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("@perm", isPermanent ? 1 : 0);
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
+        public static List<(int id, string email)> GetExpiredPpmMailboxes()
+        {
+            var list = new List<(int, string)>();
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            const string sql =
+                @"SELECT id, email FROM temp_mailboxes
+                  WHERE deleted = 0 AND is_permanent = 0
+                        AND expires_at IS NOT NULL AND expires_at <= @now";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add((r.GetInt32("id"), r.GetString("email")));
+            return list;
+        }
+
+        public static void MarkPpmMailboxDeleted(int id)
+        {
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            using var cmd = new MySqlCommand("UPDATE temp_mailboxes SET deleted = 1 WHERE id = @id", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.ExecuteNonQuery();
+        }
+
+        public static PpmMailbox GetActivePpmMailbox(string email)
+        {
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            const string sql =
+                @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
+                  FROM temp_mailboxes WHERE email = @e AND deleted = 0 LIMIT 1";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@e", email);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read())
+                return null;
+            return ReadPpmMailbox(r);
+        }
+
+        public static PpmMailbox GetPpmMailboxById(int id)
+        {
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            const string sql =
+                @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
+                  FROM temp_mailboxes WHERE id = @id AND deleted = 0 LIMIT 1";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read())
+                return null;
+            return ReadPpmMailbox(r);
+        }
+
+        public static List<PpmMailbox> GetUserPpmMailboxes(string ownerId)
+        {
+            var list = new List<PpmMailbox>();
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            const string sql =
+                @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
+                  FROM temp_mailboxes WHERE owner_id = @o AND deleted = 0 ORDER BY id DESC";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@o", ownerId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(ReadPpmMailbox(r));
+            return list;
+        }
+
+        private static PpmMailbox ReadPpmMailbox(MySqlDataReader r) => new PpmMailbox
+        {
+            Id = r.GetInt32("id"),
+            Email = r.GetString("email"),
+            Password = r.GetString("password"),
+            OwnerId = r.GetString("owner_id"),
+            CreatedAt = r.GetDateTime("created_at"),
+            ExpiresAt = r.IsDBNull(r.GetOrdinal("expires_at")) ? null : r.GetDateTime("expires_at"),
+            IsPermanent = r.GetBoolean("is_permanent")
+        };
+
         public static List<RatingEntry> GetAllRatings()
         {
             var list = new List<RatingEntry>();

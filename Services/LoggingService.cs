@@ -274,6 +274,7 @@ namespace sblngavnav5X.Services
                 "comnd" => "COMND",
                 "govor" => "GOVOR",
                 "vi-ka" => "VI-KA",
+                "ppm" => "PPMGR",
                 _ => src.ToUpperInvariant()
             };
         }
