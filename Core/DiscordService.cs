@@ -52,8 +52,8 @@ namespace sblngavnav5X.Core
             await _commandHandler.InitializeAsync();
             await _interHandler.InitializeAsync();
 
-            await DataBase.ApplyLastStatusAsync(_client);
-            DataBase.DownloadStreamers();
+            try { await DataBase.ApplyLastStatusAsync(_client); } catch (Exception ex) { await LoggingService.LogErrorAsync("db", "ApplyLastStatus fail", ex); }
+            try { DataBase.DownloadStreamers(); } catch (Exception ex) { await LoggingService.LogErrorAsync("db", "DownloadStreamers fail", ex); }
 
             await _ppm.StartSweeperAsync();
 

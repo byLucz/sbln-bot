@@ -27,7 +27,7 @@ namespace sblngavnav5X.TwitchService
 
         public List<string> StreamIdList { get; protected set; }
 
-        public List<string> StreamsOnline { get; } = new List<string>();
+        public System.Collections.Concurrent.ConcurrentDictionary<string, byte> StreamsOnline { get; } = new();
 
         public Dictionary<string, string> StreamIds { get; protected set; }
 

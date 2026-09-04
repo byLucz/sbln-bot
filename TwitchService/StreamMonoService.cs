@@ -20,8 +20,7 @@ namespace sblngavnav5X.TwitchService
         private void LoadStreamOnlineState()
         {
             foreach (var id in DataBase.LoadStreamsOnline())
-                if (!StreamsOnline.Contains(id))
-                    StreamsOnline.Add(id);
+                StreamsOnline.TryAdd(id, 0);
         }
 
         public StreamMonoService(DiscordSocketClient discord)
@@ -131,48 +130,40 @@ namespace sblngavnav5X.TwitchService
 
         private async void OnStreamOnlineEventAsync(object sender, OnStreamOnlineArgs e)
         {
-            if (StreamsOnline.Contains(e.Stream.UserId))
+            if (!StreamsOnline.TryAdd(e.Stream.UserId, 0))
                 return;
-
-            var gameTemp = new List<string> { e.Stream.GameId };
-
-            GetGamesResponse getGamesResponse;
-            try
-            {
-                getGamesResponse = await TwitchApi.Helix.Games.GetGamesAsync(gameTemp);
-            }
-            catch (Exception ex)
-            {
-                await LoggingService.LogCriticalAsync("TTVLK", $"GameResponse: {ex.Message}");
-                return;
-            }
 
             try
             {
+                var getGamesResponse = await TwitchApi.Helix.Games.GetGamesAsync(new List<string> { e.Stream.GameId });
                 UpdateLiveStreamModelsAsync(e.Stream, getGamesResponse);
+
+                EmbedBuilder eb = CreateStreamerEmbed(StreamModels[e.Stream.UserId], e.Stream.ThumbnailUrl);
+                foreach (var x in StreamNotifChannels)
+                    await x.SendMessageAsync($"@everyone, {e.Stream.UserName} сейчас стримит!", false, eb.Build());
+
+                DataBase.AddStreamOnline(e.Stream.UserId);
+                await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} добавлен в лист отслеживания");
             }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("TTVLK", $"UpdateLiveStreams: {ex.Message}");
-                return;
+                StreamsOnline.TryRemove(e.Stream.UserId, out _);
+                await LoggingService.LogCriticalAsync("TTVLK", $"OnStreamOnline {e.Stream.UserName}: {ex.Message}");
             }
-
-            EmbedBuilder eb = CreateStreamerEmbed(StreamModels[e.Stream.UserId], e.Stream.ThumbnailUrl);
-
-            foreach (var x in StreamNotifChannels)
-                await x.SendMessageAsync($"@everyone, {e.Stream.UserName} сейчас стримит!", false, eb.Build());
-
-            StreamsOnline.Add(e.Stream.UserId);
-            DataBase.AddStreamOnline(e.Stream.UserId);
-
-            await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} добавлен в лист отслеживания");
         }
 
         private async void OnStreamOfflineEvent(object sender, OnStreamOfflineArgs e)
         {
-            StreamsOnline.Remove(e.Stream.UserId);
-            DataBase.RemoveStreamOnline(e.Stream.UserId);
-            await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} оффлайн, убран из листа");
+            try
+            {
+                StreamsOnline.TryRemove(e.Stream.UserId, out _);
+                DataBase.RemoveStreamOnline(e.Stream.UserId);
+                await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} оффлайн, убран из листа");
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogCriticalAsync("TTVLK", $"OnStreamOffline {e.Stream.UserName}: {ex.Message}");
+            }
         }
 
         private async void OnChannelsSetEvent(object sender, OnChannelsSetArgs e)

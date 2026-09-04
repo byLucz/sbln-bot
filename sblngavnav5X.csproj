@@ -13,7 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="audio\**">
+    <Content Include="Audio\countdown.mp3" Link="audio\countdown.mp3">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

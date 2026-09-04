@@ -5,17 +5,17 @@ namespace sblngavnav5X.Common
 {
     public static class EmbedHandler
     {
-        public const string Brand = "sbln";
+        public const string Name = "sbln";
         public const string MusicTag = "muzik🎸🎧";
         public const string VoteTag = "ultra-выбератор🤔⚡";
         public const string PpmTag = "PPM";
 
-        public static string MusicFooter => $"{Brand} {MusicTag}";
-        public static string VoteFooter => $"{Brand} {VoteTag}";
-        public static string PpmFooter => $"{Brand} {PpmTag}";
+        public static string MusicFooter => $"{Name} {MusicTag}";
+        public static string VoteFooter => $"{Name} {VoteTag}";
+        public static string PpmFooter => $"{Name} {PpmTag}";
 
         private static string Title(string tag, string sub)
-            => string.IsNullOrEmpty(sub) ? $"{Brand} {tag}" : $"{Brand} {tag}, {sub}";
+            => string.IsNullOrEmpty(sub) ? $"{Name} {tag}" : $"{Name} {tag}, {sub}";
 
         public static Task<Embed> Music(string sub, string description, Color color)
             => CreateMusicEmbed(Title(MusicTag, sub), description, color);
