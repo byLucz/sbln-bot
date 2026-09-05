@@ -26,42 +26,36 @@ namespace sblngavnav5X.Common
         public static Task<Embed> MusicCustom(string sub, string description, string footer, Color color)
             => CreateCustomMusicEmbed(Title(MusicTag, sub), description, footer, color);
 
-        public static async Task<Embed> CreateMusicEmbed(string title, string description, Color color)
-        {
-            return await Task.Run(() => new EmbedBuilder()
+        public static Task<Embed> CreateMusicEmbed(string title, string description, Color color)
+            => Task.FromResult(new EmbedBuilder()
                 .WithTitle(title)
                 .WithDescription(description)
                 .WithColor(color)
                 .WithFooter("powered by AudioSeven")
                 .Build());
-        }
 
-        public static async Task<Embed> CreateCustomMusicEmbed(string title, string description, string footer, Color color)
-        {
-            return await Task.Run(() => new EmbedBuilder()
+        public static Task<Embed> CreateCustomMusicEmbed(string title, string description, string footer, Color color)
+            => Task.FromResult(new EmbedBuilder()
                 .WithTitle(title)
                 .WithDescription(description)
                 .WithColor(color)
                 .WithFooter(footer + " • powered by AudioSeven")
                 .Build());
-        }
 
-        public static async Task<Embed> CreateErrorEmbed(string source, string error)
-        {
-            return await Task.Run(() => new EmbedBuilder()
+        public static Task<Embed> CreateErrorEmbed(string source, string error)
+            => Task.FromResult(new EmbedBuilder()
                 .WithTitle($"ОШИБКА ПОСТУПИЛА ИЗ - {source}")
                 .WithDescription($"**детали**: \n{error}")
                 .WithColor(Color.DarkRed)
                 .WithCurrentTimestamp()
                 .Build());
-        }
 
-        public static async Task<Embed> CreateFImgEmbed(string description, string url)
+        public static Task<Embed> CreateFImgEmbed(string description, string url)
         {
             if (string.IsNullOrEmpty(url))
                 throw new ArgumentException("URL пустое", nameof(url));
 
-            return await Task.Run(() => new EmbedBuilder()
+            return Task.FromResult(new EmbedBuilder()
                 .WithAuthor("sbln милашки\U0001f97a👉🏻👈🏻")
                 .WithDescription(description)
                 .WithColor(new Color(255, 166, 207))
