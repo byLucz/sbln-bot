@@ -2,13 +2,11 @@ using Discord;
 
 namespace sblngavnav5X.Core
 {
-    // Общий помощник пагинации панелей на кнопках. Реюзают PgApi и PPM.
     public static class Pagination
     {
         public static int TotalPages(int count, int pageSize)
             => Math.Max(1, (int)Math.Ceiling(count / (double)pageSize));
 
-        // Добавляет ряд навигации: ◀️ [Стр. N/T] ▶️. custom-id: "{idPrefix}:{page}" + "{idPrefix}:noop".
         public static ComponentBuilder AddPager(this ComponentBuilder builder, int page, int totalPages, string idPrefix, int row)
         {
             page = Math.Clamp(page, 0, totalPages - 1);

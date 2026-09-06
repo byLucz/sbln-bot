@@ -7,7 +7,12 @@ namespace sblngavnav5X.Core
 {
     public sealed class PaginatorService
     {
-        private readonly record struct View(IReadOnlyList<Embed> Pages, int Page, ulong? OwnerId, DateTimeOffset At);
+        private readonly record struct View(
+            IReadOnlyList<Embed> Pages,
+            int Page,
+            ulong? OwnerId,
+            DateTimeOffset At,
+            Action<ComponentBuilder, int> Decorate);
 
         private readonly ConcurrentDictionary<ulong, View> _views = new();
 
@@ -26,17 +31,22 @@ namespace sblngavnav5X.Core
             });
         }
 
-        public async Task<IUserMessage> SendAsync(IMessageChannel channel, IReadOnlyList<Embed> pages, ulong? ownerId = null, int startPage = 0)
+        public async Task<IUserMessage> SendAsync(
+            IMessageChannel channel,
+            IReadOnlyList<Embed> pages,
+            ulong? ownerId = null,
+            int startPage = 0,
+            Action<ComponentBuilder, int> decorate = null)
         {
             var single = pages.Count <= 1;
             startPage = Math.Clamp(startPage, 0, pages.Count - 1);
 
-            var msg = await channel.SendMessageAsync(
-                embed: pages[startPage],
-                components: single ? null : Build(startPage, pages.Count));
+            var components = (single && decorate == null) ? null : Build(startPage, pages.Count, decorate);
 
-            if (!single)
-                _views[msg.Id] = new View(pages, startPage, ownerId, DateTimeOffset.UtcNow);
+            var msg = await channel.SendMessageAsync(embed: pages[startPage], components: components);
+
+            if (!single || decorate != null)
+                _views[msg.Id] = new View(pages, startPage, ownerId, DateTimeOffset.UtcNow, decorate);
 
             return msg;
         }
@@ -57,12 +67,18 @@ namespace sblngavnav5X.Core
 
             _views[messageId] = v with { Page = target, At = DateTimeOffset.UtcNow };
             embed = v.Pages[target];
-            components = Build(target, v.Pages.Count);
+            components = Build(target, v.Pages.Count, v.Decorate);
             return true;
         }
 
-        private static MessageComponent Build(int page, int total)
-            => new ComponentBuilder().AddPager(page, total, "pgr_page", 0).Build();
+        private static MessageComponent Build(int page, int total, Action<ComponentBuilder, int> decorate)
+        {
+            var b = new ComponentBuilder();
+            decorate?.Invoke(b, page);
+            if (total > 1)
+                b.AddPager(page, total, "pgr_page", 0);
+            return b.Build();
+        }
     }
 
     public class PaginatorInteractions : InteractionModuleBase<SocketInteractionContext>

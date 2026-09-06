@@ -29,7 +29,7 @@ namespace sblngavnav5X.Audio
         private readonly ConcurrentDictionary<ulong, ulong> _textChannelIds = new();
         private readonly ConcurrentDictionary<ulong, SemaphoreSlim> _guildLocks = new();
         private readonly ConcurrentDictionary<ulong, bool> _repeatEnabled = new();
-        private readonly ConcurrentDictionary<ulong, string> _defaultSource = new();   // guild -> "ytsearch:"/"spsearch:"/"scsearch:"
+        private readonly ConcurrentDictionary<ulong, string> _defaultSource = new();
         private readonly ConcurrentDictionary<ulong, ulong> _lastNowPlayingId = new();
         private readonly ConcurrentDictionary<ulong, (string trackKey, DateTimeOffset at)> _lastNowPlayingTrack = new();
         private readonly ConcurrentDictionary<ulong, DateTime> _lastClickTime = new();
@@ -104,7 +104,6 @@ namespace sblngavnav5X.Audio
         public void SetSilentMode(ulong guildId, bool silent) => _silentMode[guildId] = silent;
         public bool IsSilentMode(ulong guildId) => _silentMode.TryGetValue(guildId, out var v) && v;
 
-        // Дефолтный источник для `x и` без префикса/ссылки. По умолчанию ютуб.
         public string GetDefaultSourcePrefix(ulong guildId)
             => _defaultSource.TryGetValue(guildId, out var p) ? p : "ytsearch:";
         public void SetDefaultSource(ulong guildId, string prefix) => _defaultSource[guildId] = prefix;
@@ -411,7 +410,7 @@ namespace sblngavnav5X.Audio
                         pageCount: pages.Count,
                         footer: ""));
 
-                await _pager.SendAsync(channel, embeds, requestedByUserId);
+                await _pager.SendAsync(channel, embeds);
             });
         }
 

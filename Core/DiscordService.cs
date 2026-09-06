@@ -44,6 +44,12 @@ namespace sblngavnav5X.Core
         {
             string token = Global.Vars.Cfg.token;
 
+            if (!DataBase.CanConnect())
+            {
+                await LoggingService.LogCriticalAsync("db", "Старт без БД невозможен");
+                return;
+            }
+
             if (Global.Vars.Cfg.streamsEnabled)
                 _client.Ready += _streams.CreateStreamMonoAsync;
 

@@ -4,7 +4,6 @@ using sblngavnav5X.Data;
 
 namespace sblngavnav5X.PPM
 {
-    // Обёртка docker-mailserver: docker exec <container> setup email add/del.
     public sealed class PpmServerService
     {
         public Task<(bool ok, string output)> AddAsync(string email, string password)
@@ -24,7 +23,7 @@ namespace sblngavnav5X.PPM
                 CreateNoWindow = true
             };
             psi.ArgumentList.Add("exec");
-            psi.ArgumentList.Add(Utils.ppmContainer);
+            psi.ArgumentList.Add(Global.Vars.Cfg.ppmContainer);
             psi.ArgumentList.Add("setup");
             foreach (var a in setupArgs)
                 psi.ArgumentList.Add(a);

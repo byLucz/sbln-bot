@@ -17,7 +17,6 @@ namespace sblngavnav5X.PPM
         public string Body { get; set; }
     }
 
-    // Оркестратор PechkinPostManager: генерация кредов, IMAP-чтение, фоновый sweeper.
     public sealed class PpmService
     {
         private readonly PpmServerService _mail;
@@ -27,19 +26,17 @@ namespace sblngavnav5X.PPM
             _mail = mail;
         }
 
-        // Создаёт ящик (random local-part), вызывает docker exec, пишет в БД.
-        // Возвращает (ok, mailbox|null, error).
         public async Task<(bool ok, PpmMailbox box, string error)> CreateAsync(string ownerId, bool permanent)
         {
             string local = RandomLocalPart();
-            string email = $"{local}@{Utils.ppmDomain}";
+            string email = $"{local}@{Global.Vars.Cfg.ppmDomain}";
             string password = RandomPassword();
 
             var (ok, output) = await _mail.AddAsync(email, password);
             if (!ok)
                 return (false, null, output);
 
-            DateTime? expiresAt = permanent ? null : DateTime.UtcNow.AddMinutes(Utils.ppmTtlMinutes);
+            DateTime? expiresAt = permanent ? null : DateTime.UtcNow.AddMinutes(Global.Vars.Cfg.ppmTtlMinutes);
             int id = DataBase.InsertPpmMailbox(email, password, ownerId, expiresAt, permanent);
 
             return (true, new PpmMailbox
@@ -54,7 +51,6 @@ namespace sblngavnav5X.PPM
             }, null);
         }
 
-        // Ручное удаление: docker exec del + пометка в БД.
         public async Task<(bool ok, string error)> DeleteAsync(PpmMailbox box)
         {
             var (ok, output) = await _mail.DelAsync(box.Email);
@@ -69,10 +65,10 @@ namespace sblngavnav5X.PPM
             var result = new List<PpmMessageView>();
             using var client = new ImapClient();
 
-            if (Utils.ppmImapAllowInvalidCert)
+            if (Global.Vars.Cfg.ppmImapAllowInvalidCert)
                 client.ServerCertificateValidationCallback = (_, _, _, _) => true;
 
-            await client.ConnectAsync(Utils.ppmImapHost, Utils.ppmImapPort, SecureSocketOptions.SslOnConnect);
+            await client.ConnectAsync(Global.Vars.Cfg.ppmImapHost, Global.Vars.Cfg.ppmImapPort, SecureSocketOptions.SslOnConnect);
             await client.AuthenticateAsync(box.Email, box.Password);
 
             var inbox = client.Inbox;
@@ -95,7 +91,6 @@ namespace sblngavnav5X.PPM
             return result;
         }
 
-        // Фоновый цикл: удаляет протухшие ящики. Переживает рестарт (состояние в БД).
         public Task StartSweeperAsync()
         {
             _ = Task.Run(SweepLoopAsync);

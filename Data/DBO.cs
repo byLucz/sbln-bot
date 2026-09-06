@@ -17,6 +17,19 @@ namespace sblngavnav5X.Data
             return c;
         }
 
+        public static bool CanConnect()
+        {
+            try
+            {
+                using var c = Db();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static readonly ConcurrentDictionary<ulong, GuildSettings> _guildCache = new();
 
         public static GuildSettings GetGuildSettings(ulong guildId)
