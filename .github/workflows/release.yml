@@ -7,6 +7,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -14,13 +18,49 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
 
-      - name: read version
+      - name: test versioning
+        run: python3 scripts/test-release-version.py
+
+      - name: compute version
         id: ver
         run: |
-          VER=$(grep -oP 'sblnver\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' Data/Global.cs)
-          if [ -z "$VER" ]; then echo "version not found"; exit 1; fi
-          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          PROPS=Directory.Build.props
+          PVER=$(grep -oP '<SblnVersion>\K[0-9]+\.[0-9]+\.[0-9]+' "$PROPS")
+          MJU=$(sed -nE 's/.*<MJU>(true|false)<\/MJU>.*/\1/p' "$PROPS")
+          [[ "$MJU" = true || "$MJU" = false ]] || { echo "invalid MJU"; exit 1; }
+          [[ "$PVER" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || { echo "invalid SblnVersion"; exit 1; }
+          LAST=$(git tag --merged HEAD -l 'v*' | sed -nE 's/^v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$/\1/p' | sort -V | tail -1)
+          CURRENT=$(git tag --points-at HEAD -l 'v*' | sed -nE 's/^v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$/\1/p' | sort -V | tail -1)
+          if [ -n "$CURRENT" ]; then
+            LAST=$(git tag --merged HEAD -l 'v*' | sed -nE 's/^v((0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*))$/\1/p' | awk -v current="$CURRENT" '$0 != current' | sort -V | tail -1)
+          fi
+
+          ver_gt() { [ "$1" = "$2" ] && return 1; [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]; }
+
+          if [ -n "$CURRENT" ]; then
+            REL="$CURRENT"
+          elif [ -z "$LAST" ]; then
+            REL="$PVER"
+          elif ver_gt "$PVER" "$LAST"; then
+            REL="$PVER"
+          else
+            IFS=. read -r M m p <<< "$LAST"
+            if [ "$MJU" = "true" ]; then REL="$M.$((m+1)).0"; else REL="$M.$m.$((p+1))"; fi
+          fi
+
+          if [ -z "$LAST" ]; then
+            TYPE=MJU
+          else
+            IFS=. read -r nM nm np <<< "$REL"
+            IFS=. read -r pM pm pp <<< "$LAST"
+            if [ "$nM" != "$pM" ] || [ "$nm" != "$pm" ]; then TYPE=MJU; else TYPE=SFU; fi
+          fi
+
+          echo "version=$REL" >> "$GITHUB_OUTPUT"
+          echo "type=$TYPE" >> "$GITHUB_OUTPUT"
+          echo ">> release v$REL ($TYPE), last=${LAST:-none}, mju=$MJU"
 
       - name: check existing release
         id: exists
@@ -41,24 +81,15 @@ jobs:
 
       - name: build
         if: steps.exists.outputs.skip == 'false'
-        run: dotnet build sblngavnav5X.csproj -c Release --nologo
+        run: dotnet build sblngavnav5X.csproj -c Release --nologo -p:SblnVersion=${{ steps.ver.outputs.version }} -p:SblnChannel= -p:SourceRevisionId=$GITHUB_SHA
 
       - name: build number
         if: steps.exists.outputs.skip == 'false'
         id: bn
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VER=${{ steps.ver.outputs.version }}
-          IFS=. read -r nMaj nMin nPat <<< "$VER"
-          PREV=$(gh release list -L 1 --json tagName -q '.[0].tagName' 2>/dev/null | sed 's/^v//')
-          TYPE=SFU
-          if [ -n "$PREV" ]; then
-            IFS=. read -r pMaj pMin pPat <<< "$PREV"
-            if [ "$nMaj" != "$pMaj" ] || [ "$nMin" != "$pMin" ]; then TYPE=MJU; fi
-          fi
-          RAND=$(tr -dc 'a-z' </dev/urandom | head -c2)
-          echo "num=S${nMaj}${nMin}${nPat}${TYPE}${RAND}" >> "$GITHUB_OUTPUT"
+          IFS=. read -r nMaj nMin nPat <<< "${{ steps.ver.outputs.version }}"
+          RAND=$(python3 -c 'import secrets, string; print("".join(secrets.choice(string.ascii_lowercase) for _ in range(2)))')
+          echo "num=S${nMaj}${nMin}${nPat}${{ steps.ver.outputs.type }}${RAND}" >> "$GITHUB_OUTPUT"
 
       - name: create release
         if: steps.exists.outputs.skip == 'false'
@@ -68,5 +99,5 @@ jobs:
           VER=${{ steps.ver.outputs.version }}
           gh release create "v$VER" \
             --title "v$VER" \
-            --target master \
+            --target "$GITHUB_SHA" \
             --notes "build number: ${{ steps.bn.outputs.num }} // [Changelog](https://lois.media/sbln/v$VER)"
