@@ -1,0 +1,72 @@
+name: release
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: read version
+        id: ver
+        run: |
+          VER=$(grep -oP 'sblnver\s*=\s*"\K[0-9]+\.[0-9]+\.[0-9]+' Data/Global.cs)
+          if [ -z "$VER" ]; then echo "version not found"; exit 1; fi
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
+      - name: check existing release
+        id: exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "v${{ steps.ver.outputs.version }}" >/dev/null 2>&1; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: setup dotnet
+        if: steps.exists.outputs.skip == 'false'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: build
+        if: steps.exists.outputs.skip == 'false'
+        run: dotnet build sblngavnav5X.csproj -c Release --nologo
+
+      - name: build number
+        if: steps.exists.outputs.skip == 'false'
+        id: bn
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=${{ steps.ver.outputs.version }}
+          IFS=. read -r nMaj nMin nPat <<< "$VER"
+          PREV=$(gh release list -L 1 --json tagName -q '.[0].tagName' 2>/dev/null | sed 's/^v//')
+          TYPE=SFU
+          if [ -n "$PREV" ]; then
+            IFS=. read -r pMaj pMin pPat <<< "$PREV"
+            if [ "$nMaj" != "$pMaj" ] || [ "$nMin" != "$pMin" ]; then TYPE=MJU; fi
+          fi
+          RAND=$(tr -dc 'a-z' </dev/urandom | head -c2)
+          echo "num=S${nMaj}${nMin}${nPat}${TYPE}${RAND}" >> "$GITHUB_OUTPUT"
+
+      - name: create release
+        if: steps.exists.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VER=${{ steps.ver.outputs.version }}
+          gh release create "v$VER" \
+            --title "v$VER" \
+            --target master \
+            --notes "build number: ${{ steps.bn.outputs.num }} // [Changelog](https://lois.media/sbln/v$VER)"
