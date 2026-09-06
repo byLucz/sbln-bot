@@ -10,6 +10,7 @@ using sblngavnav5X.PPM;
 using sblngavnav5X.Services;
 using sblngavnav5X.TwitchService;
 using Victoria;
+using System.Runtime.InteropServices;
 using CommandService = Discord.Commands.CommandService;
 
 namespace sblngavnav5X.Core
@@ -43,28 +44,57 @@ namespace sblngavnav5X.Core
         public async Task InitializeAsync()
         {
             string token = Global.Vars.Cfg.token;
+            var readyFile = Environment.GetEnvironmentVariable("SBLN_READY_FILE");
+            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            var started = false;
+            void SetReady(bool value)
+            {
+                if (string.IsNullOrWhiteSpace(readyFile)) return;
+                if (value) File.WriteAllText(readyFile, "ready");
+                else File.Delete(readyFile);
+            }
+            SetReady(false);
+            _client.Ready += () =>
+            {
+                ready.TrySetResult();
+                if (started) SetReady(true);
+                return Task.CompletedTask;
+            };
+            _client.Disconnected += _ => { SetReady(false); return Task.CompletedTask; };
+            foreach (var path in new[] { Global.Vars.Cfg.messagesFilePath, Global.Vars.Cfg.booksJsonPath })
+                if (!string.IsNullOrWhiteSpace(path)) Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
 
             if (!DataBase.CanConnect())
             {
+                Environment.ExitCode = 1;
                 await LoggingService.LogCriticalAsync("db", "Старт без БД невозможен");
+                await _services.DisposeAsync();
                 return;
             }
 
+            await _commandHandler.InitializeAsync();
+            await _interHandler.InitializeAsync();
+            if (Global.Vars.Cfg.streamsEnabled) DataBase.DownloadStreamers();
             if (Global.Vars.Cfg.streamsEnabled)
                 _client.Ready += _streams.CreateStreamMonoAsync;
 
             await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
 
-            await _commandHandler.InitializeAsync();
-            await _interHandler.InitializeAsync();
+            await ready.Task.WaitAsync(TimeSpan.FromSeconds(90));
 
             try { await DataBase.ApplyLastStatusAsync(_client); } catch (Exception ex) { await LoggingService.LogErrorAsync("db", "ApplyLastStatus fail", ex); }
-            try { DataBase.DownloadStreamers(); } catch (Exception ex) { await LoggingService.LogErrorAsync("db", "DownloadStreamers fail", ex); }
 
             await _ppm.StartSweeperAsync();
+            started = true;
+            SetReady(_client.ConnectionState == ConnectionState.Connected);
 
             using var cts = new CancellationTokenSource();
+            using var sigterm = OperatingSystem.IsWindows() ? null : PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+            {
+                context.Cancel = true;
+                cts.Cancel();
+            });
 
             Console.CancelKeyPress += (_, e) =>
             {
@@ -80,7 +110,9 @@ namespace sblngavnav5X.Core
             }
             catch (TaskCanceledException) { }
 
-            await ShutdownAsync();
+            started = false;
+            SetReady(false);
+            await ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(20));
         }
 
         private async Task ShutdownAsync()

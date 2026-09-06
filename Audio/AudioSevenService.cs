@@ -921,15 +921,7 @@ namespace sblngavnav5X.Audio
                 return;
             }
 
-            await RunInGuildLockAsync(guildId, async () =>
-            {
-                SetRepeat(guildId, false);
-                player.GetQueue().Clear();
-                try { await player.SeekAsync(_lavaNode, player.Track?.Duration ?? TimeSpan.Zero); }
-                catch (Exception ex) { await LoggingService.LogWarningAsync("VI-KA", $"SeekAsync (stop) fail: {ex.Message}"); }
-            });
-
-            SetSilentMode(guildId, true);
+            var playbackInterrupted = false;
 
             try
             {
@@ -941,6 +933,17 @@ namespace sblngavnav5X.Audio
                     searchResp = await _lavaNode.LoadTrackAsync(fileUri);
 
                 var voteTrack = searchResp?.Tracks?.FirstOrDefault();
+                if (voteTrack is null)
+                    throw new InvalidOperationException("Lavalink не видит WAV голосования. Подключи общий каталог /opt/sbln/audio и включи local source.");
+                await RunInGuildLockAsync(guildId, async () =>
+                {
+                    playbackInterrupted = true;
+                    SetSilentMode(guildId, true);
+                    SetRepeat(guildId, false);
+                    player.GetQueue().Clear();
+                    try { await player.SeekAsync(_lavaNode, player.Track?.Duration ?? TimeSpan.Zero); }
+                    catch (Exception ex) { await LoggingService.LogWarningAsync("VI-KA", $"SeekAsync (stop) fail: {ex.Message}"); }
+                });
                 if (voteTrack != null)
                 {
                     var trackStarted = WaitForTrackStartAsync(guildId, TimeSpan.FromSeconds(10));
@@ -1001,9 +1004,9 @@ namespace sblngavnav5X.Audio
             finally
             {
                 _voteSkipByMessageId.TryRemove(statusMsg.Id, out _);
-                SetSilentMode(guildId, false);
+                if (playbackInterrupted) SetSilentMode(guildId, false);
 
-                if (!string.IsNullOrEmpty(savedTrackUrl))
+                if (playbackInterrupted && !string.IsNullOrEmpty(savedTrackUrl))
                 {
                     try
                     {
@@ -1041,7 +1044,7 @@ namespace sblngavnav5X.Audio
             List<string> items, string winner, HttpClient http)
         {
             var targetFormat = new WaveFormat(44100, 16, 2);
-            var audioDir = Path.Combine(AppContext.BaseDirectory, "audio");
+            var audioDir = Environment.GetEnvironmentVariable("SBLN_AUDIO_DIR") ?? Path.Combine(AppContext.BaseDirectory, "audio");
             Directory.CreateDirectory(audioDir);
 
             foreach (var stale in Directory.GetFiles(audioDir, "vote_*.wav"))
@@ -1112,7 +1115,7 @@ namespace sblngavnav5X.Audio
                 w.Write(pcm, 0, pcm.Length);
             }
 
-            var cdPath = FindCountdownMp3(audioDir);
+            var cdPath = FindCountdownMp3(Path.Combine(AppContext.BaseDirectory, "audio"));
             float[] bgSamples = [];
             if (cdPath != null)
             {

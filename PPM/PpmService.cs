@@ -28,6 +28,7 @@ namespace sblngavnav5X.PPM
 
         public async Task<(bool ok, PpmMailbox box, string error)> CreateAsync(string ownerId, bool permanent)
         {
+            if (!Global.Vars.Cfg.ppmEnabled) return (false, null, "PPM отключён в конфигурации");
             string local = RandomLocalPart();
             string email = $"{local}@{Global.Vars.Cfg.ppmDomain}";
             string password = RandomPassword();
@@ -53,6 +54,7 @@ namespace sblngavnav5X.PPM
 
         public async Task<(bool ok, string error)> DeleteAsync(PpmMailbox box)
         {
+            if (!Global.Vars.Cfg.ppmEnabled) return (false, "PPM отключён в конфигурации");
             var (ok, output) = await _mail.DelAsync(box.Email);
             if (!ok)
                 return (false, output);
@@ -62,6 +64,7 @@ namespace sblngavnav5X.PPM
 
         public async Task<List<PpmMessageView>> ReadInboxAsync(PpmMailbox box, int max = 5)
         {
+            if (!Global.Vars.Cfg.ppmEnabled) throw new InvalidOperationException("PPM отключён в конфигурации");
             var result = new List<PpmMessageView>();
             using var client = new ImapClient();
 
@@ -93,6 +96,7 @@ namespace sblngavnav5X.PPM
 
         public Task StartSweeperAsync()
         {
+            if (!Global.Vars.Cfg.ppmEnabled) return Task.CompletedTask;
             _ = Task.Run(SweepLoopAsync);
             return Task.CompletedTask;
         }

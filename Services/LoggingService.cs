@@ -8,7 +8,7 @@ namespace sblngavnav5X.Services
     {
         private static readonly SemaphoreSlim _sync = new(1, 1);
         private static readonly string _logsDirectory =
-            Path.Combine(AppContext.BaseDirectory, "logs");
+            Environment.GetEnvironmentVariable("SBLN_LOG_DIR") ?? Path.Combine(AppContext.BaseDirectory, "logs");
 
         private const int LogRetentionDays = 14;
         private static DateTime _lastCleanupDateUtc = DateTime.MinValue;

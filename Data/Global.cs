@@ -46,6 +46,7 @@ namespace sblngavnav5X.Data
                 public static readonly string pref2 = Str("System:Prefix2", "х ");
                 public static readonly ulong slashScopeGuild = UL("System:SlashScopeGuild", 0);
                 public static readonly bool streamsEnabled = Bool("System:StreamsEnabled", true);
+                public static readonly bool ppmEnabled = Bool("System:PpmEnabled", true);
                 public static readonly ulong messageSourceChannelId = UL("System:MessageSourceChannelId", 0);
                 public static readonly string messagesFilePath = Str("System:MessagesFilePath");
 
