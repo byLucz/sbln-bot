@@ -17,6 +17,7 @@ services:
       SBLN_AUDIO_DIR: /opt/sbln/audio/${SBLN_INSTANCE:-stable}
       SBLN_LOG_DIR: /opt/sbln/logs
     volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
       - type: bind
         source: ${SBLN_CONFIG_FILE:?Config file is required}
         target: /opt/sbln/config.json
