@@ -42,9 +42,10 @@ namespace sblngavnav5X.Core
 
         public async Task InitializeAsync()
         {
-            string token = Utils.token;
+            string token = Global.Vars.Cfg.token;
 
-            _client.Ready += _streams.CreateStreamMonoAsync;
+            if (Global.Vars.Cfg.streamsEnabled)
+                _client.Ready += _streams.CreateStreamMonoAsync;
 
             await _client.LoginAsync(TokenType.Bot, token);
             await _client.StartAsync();
@@ -140,9 +141,9 @@ namespace sblngavnav5X.Core
                 .AddLavaNode(x =>
                 {
                     x.SelfDeaf = true;
-                    x.Hostname = Utils.lavaHost;
-                    x.Port = Utils.lavaPort;
-                    x.Authorization = Utils.lavaPass;
+                    x.Hostname = Global.Vars.Cfg.lavaHost;
+                    x.Port = Global.Vars.Cfg.lavaPort;
+                    x.Authorization = Global.Vars.Cfg.lavaPass;
                 })
                 .AddHttpClient()
                 .BuildServiceProvider();

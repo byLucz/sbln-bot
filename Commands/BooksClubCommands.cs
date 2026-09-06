@@ -1,4 +1,5 @@
 ﻿using Discord;
+using sblngavnav5X.Common;
 using Discord.Commands;
 using Discord.WebSocket;
 using System.Text.Json.Nodes;
@@ -23,7 +24,7 @@ namespace sblngavnav5X.Commands
         [Command("книга")]
         public async Task FindBookAsync([Remainder] string title)
         {
-            string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru&key={Utils.gBooksApi}";
+            string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru&key={Global.Vars.Cfg.gBooksApi}";
 
             HttpResponseMessage response = await _http.GetAsync(url);
 
@@ -162,7 +163,7 @@ namespace sblngavnav5X.Commands
             double multiplier = 1 + (scores[4] - 1) * 0.06747;
             double finalScore = Math.Round(baseScore * multiplier, 0);
 
-            string scoreEmoji = Utils.GetScoreEmoji(finalScore);
+            string scoreEmoji = CommonUtils.GetScoreEmoji(finalScore);
             DataBase.SaveRating(Context.User.Id.ToString(), book.id, scores, finalScore);
             TriggerBooksExport();
 
@@ -321,12 +322,12 @@ namespace sblngavnav5X.Commands
 
         private void TriggerBooksExport()
         {
-            if (string.IsNullOrWhiteSpace(Utils.booksJsonPath)) return;
+            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath)) return;
             var userNames = Context.Guild.Users
                 .ToDictionary(u => u.Id.ToString(), u => u.Username);
             Task.Run(() =>
             {
-                try { DataBase.ExportBooksJson(Utils.booksJsonPath, userNames); }
+                try { DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames); }
                 catch (Exception ex) { _ = LoggingService.LogWarningAsync("BOOKS", $"JSON export fail: {ex.Message}"); }
             });
         }
@@ -334,7 +335,7 @@ namespace sblngavnav5X.Commands
         [Command("книжныйэкспорт")]
         public async Task ManualExportAsync()
         {
-            if (string.IsNullOrWhiteSpace(Utils.booksJsonPath))
+            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath))
             {
                 await ReplyAsync("❌ `booksJsonPath` не задан в Utils");
                 return;
@@ -343,7 +344,7 @@ namespace sblngavnav5X.Commands
             {
                 var userNames = Context.Guild.Users
                     .ToDictionary(u => u.Id.ToString(), u => u.Username);
-                DataBase.ExportBooksJson(Utils.booksJsonPath, userNames);
+                DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames);
                 await ReplyAsync("✅ `books_data.json` обновлён");
             }
             catch (Exception ex)
@@ -400,7 +401,7 @@ namespace sblngavnav5X.Commands
 
             foreach (var b in books)
             {
-                var emoji = Utils.GetScoreEmoji(b.AvgScore);
+                var emoji = CommonUtils.GetScoreEmoji(b.AvgScore);
                 eb.AddField(
                     $"📖 {b.Title} ({b.Authors})",
                     $"👤 {b.SuggestedBy}\n⭐ Средняя оценка: {b.AvgScore:F1} // {emoji} ({b.Votes} голосов)",

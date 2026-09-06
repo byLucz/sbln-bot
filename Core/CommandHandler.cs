@@ -23,7 +23,7 @@ namespace sblngavnav5X.Core
         private readonly SemaphoreSlim _lavaReconnectLock = new(1, 1);
         private static readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
 
-        private static readonly Timer _timer = new(Utils.govorUpdTime)
+        private static readonly Timer _timer = new(Global.Vars.BuiltIn.govorUpdTime)
         {
             AutoReset = true,
             Enabled = false
@@ -59,7 +59,7 @@ namespace sblngavnav5X.Core
             lock (_timerLock)
             {
                 _timer.Interval = amount;
-                Utils.govorUpdTime = (int)amount;
+                Global.Vars.BuiltIn.govorUpdTime = (int)amount;
             }
         }
 
@@ -135,8 +135,8 @@ namespace sblngavnav5X.Core
 
             int characterPos = 0;
             var hasPrefix =
-                message.HasStringPrefix(Utils.pref1, ref characterPos) ||
-                message.HasStringPrefix(Utils.pref2, ref characterPos);
+                message.HasStringPrefix(Global.Vars.Cfg.pref1, ref characterPos) ||
+                message.HasStringPrefix(Global.Vars.Cfg.pref2, ref characterPos);
 
             if (hasPrefix)
             {
@@ -251,7 +251,7 @@ namespace sblngavnav5X.Core
                 return p.IsOptional ? $"[{label}]" : $"<{label}>";
             }));
 
-            var prefix = Utils.pref1;
+            var prefix = Global.Vars.Cfg.pref1;
             var aliases = cmd.Aliases.Count > 0 ? $" ({string.Join("/", cmd.Aliases)})" : "";
             return $"Использование: `{prefix} {cmd.Name}{aliases} {paramStr}`";
         }
@@ -356,20 +356,20 @@ namespace sblngavnav5X.Core
         {
             try
             {
-                var channel = _client.GetChannel(Utils.messageSourceChannelId) as IMessageChannel;
+                var channel = _client.GetChannel(Global.Vars.Cfg.messageSourceChannelId) as IMessageChannel;
                 if (channel == null)
                 {
-                    await LoggingService.LogInformationAsync("GOVOR", $"Не удалось получить канал с ID {Utils.messageSourceChannelId}");
+                    await LoggingService.LogInformationAsync("GOVOR", $"Не удалось получить канал с ID {Global.Vars.Cfg.messageSourceChannelId}");
                     return;
                 }
 
-                var cursorPath = Utils.messagesFilePath + ".cursor";
+                var cursorPath = Global.Vars.Cfg.messagesFilePath + ".cursor";
                 ulong? oldestId = null;
                 if (File.Exists(cursorPath) && ulong.TryParse(await File.ReadAllTextAsync(cursorPath), out var parsed))
                     oldestId = parsed;
 
-                var existingLines = File.Exists(Utils.messagesFilePath)
-                    ? new HashSet<string>((await File.ReadAllLinesAsync(Utils.messagesFilePath))
+                var existingLines = File.Exists(Global.Vars.Cfg.messagesFilePath)
+                    ? new HashSet<string>((await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath))
                         .Select(l => l.Trim()).Where(l => l.Length > 0))
                     : new HashSet<string>();
 
@@ -393,8 +393,8 @@ namespace sblngavnav5X.Core
 
                     var content = message.Content.Trim();
 
-                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase) ||
-                        content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase) ||
+                    if (content.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase) ||
+                        content.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase) ||
                         content.Contains("https://", StringComparison.OrdinalIgnoreCase))
                         continue;
 
@@ -407,7 +407,7 @@ namespace sblngavnav5X.Core
 
                 if (newLines.Count > 0)
                 {
-                    await File.AppendAllLinesAsync(Utils.messagesFilePath, newLines);
+                    await File.AppendAllLinesAsync(Global.Vars.Cfg.messagesFilePath, newLines);
                     await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений: {newLines.Count}, всего в датасете: {existingLines.Count}");
                 }
                 else

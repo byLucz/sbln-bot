@@ -1,3 +1,4 @@
+using sblngavnav5X.Common;
 using Discord.Commands;
 using sblngavnav5X.Data;
 using sblngavnav5X.GVR;
@@ -28,9 +29,9 @@ namespace sblngavnav5X.Core
         public async Task TrySendGeneratedMessageAsync(SocketCommandContext context)
         {
             if (_govorilka.Rand)
-                _govorilka.Count = Utils.RandomNumber(3, 20);
+                _govorilka.Count = CommonUtils.RandomNumber(3, 20);
 
-            if (Utils.RandomNumber(1, 101) > _govorilka.Chance)
+            if (CommonUtils.RandomNumber(1, 101) > _govorilka.Chance)
                 return;
 
             using (context.Channel.EnterTypingState())
@@ -44,13 +45,13 @@ namespace sblngavnav5X.Core
             if (step <= 0 || wordCount <= 0)
                 return;
 
-            if (!File.Exists(Utils.messagesFilePath))
+            if (!File.Exists(Global.Vars.Cfg.messagesFilePath))
             {
-                await LoggingService.LogInformationAsync("GOVOR", $"Файл {Utils.messagesFilePath} не найден, генерация ответа пропущена");
+                await LoggingService.LogInformationAsync("GOVOR", $"Файл {Global.Vars.Cfg.messagesFilePath} не найден, генерация ответа пропущена");
                 return;
             }
 
-            var rawLines = await File.ReadAllLinesAsync(Utils.messagesFilePath);
+            var rawLines = await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath);
             if (rawLines.Length == 0)
                 return;
 

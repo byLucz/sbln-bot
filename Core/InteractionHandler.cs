@@ -35,8 +35,15 @@ namespace sblngavnav5X.Core
 
             try
             {
-                await _interactions.RegisterCommandsGloballyAsync();
-                await _interactions.RegisterCommandsToGuildAsync(500673210463813632);
+                if (Data.Global.Vars.Cfg.slashScopeGuild != 0)
+                {
+                    await _interactions.RegisterCommandsToGuildAsync(Data.Global.Vars.Cfg.slashScopeGuild);
+                }
+                else
+                {
+                    await _interactions.RegisterCommandsGloballyAsync();
+                    await _interactions.RegisterCommandsToGuildAsync(500673210463813632);
+                }
                 _commandsRegistered = true;
             }
             catch (Exception ex)

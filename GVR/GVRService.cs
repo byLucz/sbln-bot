@@ -57,8 +57,8 @@ namespace sblngavnav5X.GVR
                 .AddField("число слов", $"**{chips}**", true)
                 .AddField("шанс ролла", $"**{_guild.govorilka.Chance}%**", true)
                 .AddField("кол-во сообщений подзагрузки", $"**{_guild.govorilka.Collection}**", true)
-                .AddField("время подзагрузки", $"**{Utils.govorUpdTime / 1000} сек**", true)
-                .AddField("режим вербальной нищеты", $"**{Utils.govorVM}**", true)
+                .AddField("время подзагрузки", $"**{Global.Vars.BuiltIn.govorUpdTime / 1000} сек**", true)
+                .AddField("режим вербальной нищеты", $"**{Global.Vars.BuiltIn.govorVM}**", true)
                 .Build();
             await ReplyAsync(embed: embed);
         }
@@ -68,15 +68,15 @@ namespace sblngavnav5X.GVR
         public async Task AppendData(uint amount)
         {
             var messages = this.Context.Channel.GetMessagesAsync((int)amount).Flatten();
-            using (StreamWriter sw = new StreamWriter(Utils.messagesFilePath, append: true))
+            using (StreamWriter sw = new StreamWriter(Global.Vars.Cfg.messagesFilePath, append: true))
             {
                 await foreach (IMessage message in messages)
                 {
                     if (message.Author.IsBot) continue;
                     var content = message.Content.Trim();
                     if (string.IsNullOrWhiteSpace(content)) continue;
-                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (content.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (content.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase)) continue;
                     if (content.Contains("https://", StringComparison.OrdinalIgnoreCase)) continue;
                     sw.WriteLine(content);
                 }
@@ -108,22 +108,22 @@ namespace sblngavnav5X.GVR
         {
             int before = 0, after = 0;
 
-            if (File.Exists(Utils.messagesFilePath))
+            if (File.Exists(Global.Vars.Cfg.messagesFilePath))
             {
-                var lines = await File.ReadAllLinesAsync(Utils.messagesFilePath);
+                var lines = await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath);
                 before = lines.Length;
 
                 var cleaned = lines
                     .Select(l => l.Trim())
                     .Where(l => !string.IsNullOrWhiteSpace(l))
                     .Where(l => !l.Contains("https://", StringComparison.OrdinalIgnoreCase))
-                    .Where(l => !l.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase))
-                    .Where(l => !l.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase))
+                    .Where(l => !l.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase))
+                    .Where(l => !l.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase))
                     .Distinct()
                     .ToArray();
 
                 after = cleaned.Length;
-                await File.WriteAllLinesAsync(Utils.messagesFilePath, cleaned);
+                await File.WriteAllLinesAsync(Global.Vars.Cfg.messagesFilePath, cleaned);
             }
 
             await ReplyAsync(embed: GovorEmbed()
@@ -138,15 +138,15 @@ namespace sblngavnav5X.GVR
         public async Task SeedFile(uint amount)
         {
             var messages = this.Context.Channel.GetMessagesAsync((int)amount).Flatten();
-            using (StreamWriter sw = new StreamWriter(Utils.messagesFilePath))
+            using (StreamWriter sw = new StreamWriter(Global.Vars.Cfg.messagesFilePath))
             {
                 await foreach (IMessage message in messages)
                 {
                     if (message.Author.IsBot) continue;
                     var content = message.Content.Trim();
                     if (string.IsNullOrWhiteSpace(content)) continue;
-                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (content.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (content.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase)) continue;
                     if (content.Contains("https://", StringComparison.OrdinalIgnoreCase)) continue;
                     sw.WriteLine(content);
                 }
@@ -219,7 +219,7 @@ namespace sblngavnav5X.GVR
                     "выкл" => false,
                     _ => false
                 };
-                Utils.govorVM = perekl;
+                Global.Vars.BuiltIn.govorVM = perekl;
                 await ReplyAsync(embed: GovorEmbed()
                     .AddField("режим вербальной нищеты переведен в положение", $"***{perekl}***", true)
                     .Build());
@@ -257,12 +257,12 @@ namespace sblngavnav5X.GVR
 
         public async Task RemoveDuplicates()
         {
-            var lines = (await File.ReadAllLinesAsync(Utils.messagesFilePath))
+            var lines = (await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath))
                 .Select(l => l.Trim())
                 .Where(l => l.Length > 0)
                 .Distinct()
                 .ToArray();
-            await File.WriteAllLinesAsync(Utils.messagesFilePath, lines);
+            await File.WriteAllLinesAsync(Global.Vars.Cfg.messagesFilePath, lines);
         }
     }
 }

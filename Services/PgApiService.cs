@@ -48,11 +48,11 @@ public sealed class PgApiService
 
     private async Task<string> SendAsync(HttpMethod method, string route, bool authRequired = true)
     {
-        if (string.IsNullOrWhiteSpace(Utils.pgApiBaseUrl))
+        if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.pgApiBaseUrl))
             return "❌ PG API URL не задан";
 
-        if (!Uri.TryCreate(Utils.pgApiBaseUrl, UriKind.Absolute, out var baseUri))
-            return $"❌ PG API URL невалидный: {Utils.pgApiBaseUrl}";
+        if (!Uri.TryCreate(Global.Vars.Cfg.pgApiBaseUrl, UriKind.Absolute, out var baseUri))
+            return $"❌ PG API URL невалидный: {Global.Vars.Cfg.pgApiBaseUrl}";
 
         var client = _httpClientFactory.CreateClient(nameof(PgApiService));
         client.BaseAddress = baseUri;
@@ -61,10 +61,10 @@ public sealed class PgApiService
 
         if (authRequired)
         {
-            if (string.IsNullOrWhiteSpace(Utils.pgApiToken))
+            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.pgApiToken))
                 return "❌ Токен не задан или протух";
 
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Utils.pgApiToken);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Global.Vars.Cfg.pgApiToken);
         }
 
         using var response = await client.SendAsync(request);

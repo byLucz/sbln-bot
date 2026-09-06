@@ -31,7 +31,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
         if (min > max)
             (min, max) = (max, min);
 
-        await Context.Channel.SendMessageAsync("Твое число - " + $@"{Utils.RandomNumber(min, max)}");
+        await Context.Channel.SendMessageAsync("Твое число - " + $@"{CommonUtils.RandomNumber(min, max)}");
     }
 
     [Command("кит")]
@@ -222,15 +222,15 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
             "powered by CENTROBANK OF RUSSIA🏦🇷🇺",
             "https://upload.wikimedia.org/wikipedia/commons/1/18/Russia-Coin-1-2009-a.png");
 
-        z.AddField("USD", $"{Utils.Round(b.rates.USD, 2)}₽", true);
-        z.AddField("EUR", $"{Utils.Round(b.rates.EUR, 2)}₽", true);
-        z.AddField("TRY", $"{Utils.Round(b.rates.TRY, 2)}₽", true);
-        z.AddField("PLN", $"{Utils.Round(b.rates.PLN, 2)}₽", true);
-        z.AddField("CNY", $"{Utils.Round(b.rates.CNY, 2)}₽", true);
-        z.AddField("BYN", $"{Utils.Round(b.rates.BYN, 2)}₽", true);
-        z.AddField("JPY", $"{Utils.Round(b.rates.JPY, 2)}₽", true);
-        z.AddField("HKD", $"{Utils.Round(b.rates.HKD, 2)}₽", true);
-        z.AddField("KZT", $"{Utils.Round(b.rates.KZT, 2)}₽", true);
+        z.AddField("USD", $"{CommonUtils.Round(b.rates.USD, 2)}₽", true);
+        z.AddField("EUR", $"{CommonUtils.Round(b.rates.EUR, 2)}₽", true);
+        z.AddField("TRY", $"{CommonUtils.Round(b.rates.TRY, 2)}₽", true);
+        z.AddField("PLN", $"{CommonUtils.Round(b.rates.PLN, 2)}₽", true);
+        z.AddField("CNY", $"{CommonUtils.Round(b.rates.CNY, 2)}₽", true);
+        z.AddField("BYN", $"{CommonUtils.Round(b.rates.BYN, 2)}₽", true);
+        z.AddField("JPY", $"{CommonUtils.Round(b.rates.JPY, 2)}₽", true);
+        z.AddField("HKD", $"{CommonUtils.Round(b.rates.HKD, 2)}₽", true);
+        z.AddField("KZT", $"{CommonUtils.Round(b.rates.KZT, 2)}₽", true);
 
         await ReplyAsync(embed: z.Build());
     }

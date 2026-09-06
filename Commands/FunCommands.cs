@@ -249,7 +249,7 @@ namespace sblngavnav5X.Commands
         {
             user ??= (IGuildUser)Context.User;
 
-            int percentage = Utils.RandomNumber(0, 101);
+            int percentage = CommonUtils.RandomNumber(0, 101);
 
             await Context.Channel.SendMessageAsync(
                 $"**{user.Mention}** уровень гейства - {(percentage > 100 ? "***больше 9000!***" : $"**{percentage}%**")}. " +

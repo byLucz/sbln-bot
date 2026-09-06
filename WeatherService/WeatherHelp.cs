@@ -13,7 +13,7 @@ namespace sblngavnav5X.Commands
        }
        public async Task<WeatherSer> GetCityWeather(string City)
        {
-           string Url = WeatherUrl.GetCityWeatherUrl(City,Utils.weatherApiKey);
+           string Url = WeatherUrl.GetCityWeatherUrl(City,Global.Vars.Cfg.weatherApiKey);
            var  r = await _Client.GetAsync(Url);
            if(r.StatusCode == System.Net.HttpStatusCode.OK)
            {

@@ -27,12 +27,12 @@ namespace sblngavnav5X.TwitchService
         {
             _discord = discord;
 
-            UpdInt = Utils.streamUpdTime;
-            NotifChannelName = Utils.streamNotifCh;
+            UpdInt = Global.Vars.BuiltIn.streamUpdTime;
+            NotifChannelName = Global.Vars.BuiltIn.streamNotifCh;
 
             TwitchAPI api = new TwitchAPI();
-            api.Settings.ClientId = Utils.streamCid;
-            api.Settings.AccessToken = Utils.streamAuth;
+            api.Settings.ClientId = Global.Vars.Cfg.streamCid;
+            api.Settings.AccessToken = Global.Vars.Cfg.streamAuth;
             TwitchApi = api;
         }
 
@@ -53,7 +53,11 @@ namespace sblngavnav5X.TwitchService
             {
                 await LoggingService.LogInformationAsync("TTVLK", $"Сервера: {guild.Name}");
 
-                var channel = guild.TextChannels.FirstOrDefault(x => x.Name.Contains(NotifChannelName));
+                var gs = DataBase.GetGuildSettings(guild.Id);
+                if (gs.StreamNotifChannelId is not ulong chId)
+                    continue;
+
+                var channel = guild.GetTextChannel(chId);
                 if (channel != null)
                     notifChannels.Add(channel);
             }

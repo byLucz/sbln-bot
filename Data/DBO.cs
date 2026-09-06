@@ -12,7 +12,7 @@ namespace sblngavnav5X.Data
     {
         private static MySqlConnection Db()
         {
-            var c = new MySqlConnection(Utils.connectionString);
+            var c = new MySqlConnection(Global.Vars.Cfg.connectionString);
             c.Open();
             return c;
         }
@@ -31,7 +31,7 @@ namespace sblngavnav5X.Data
         {
             using var conn = Db();
             using var cmd = new MySqlCommand(
-                "SELECT superuser_role_id, welcome_channel_id, welcome_message, welcome_role_id FROM guild_settings WHERE guild_id=@g LIMIT 1", conn);
+                "SELECT superuser_role_id, welcome_channel_id, welcome_message, welcome_role_id, stream_notif_channel_id FROM guild_settings WHERE guild_id=@g LIMIT 1", conn);
             cmd.Parameters.AddWithValue("@g", guildId);
             using var r = cmd.ExecuteReader();
             if (!r.Read()) return null;
@@ -42,6 +42,7 @@ namespace sblngavnav5X.Data
                 WelcomeChannelId = r.IsDBNull(1) ? null : r.GetUInt64(1),
                 WelcomeMessage = r.IsDBNull(2) ? null : r.GetString(2),
                 WelcomeRoleId = r.IsDBNull(3) ? null : r.GetUInt64(3),
+                StreamNotifChannelId = r.IsDBNull(4) ? null : r.GetUInt64(4),
             };
         }
 
@@ -56,6 +57,9 @@ namespace sblngavnav5X.Data
 
         public static void SetWelcomeMessage(ulong guildId, string message)
             => UpsertGuild(guildId, "welcome_message", message, s => s.WelcomeMessage = message);
+
+        public static void SetStreamNotifChannel(ulong guildId, ulong? channelId)
+            => UpsertGuild(guildId, "stream_notif_channel_id", channelId, s => s.StreamNotifChannelId = channelId);
 
         private static void UpsertGuild(ulong guildId, string column, object value, Action<GuildSettings> apply)
         {
@@ -213,7 +217,7 @@ namespace sblngavnav5X.Data
 
         public static async Task ApplyLastStatusAsync(DiscordSocketClient client)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
+            using var conn = new MySqlConnection(Global.Vars.Cfg.connectionString);
             await conn.OpenAsync();
 
             const string sql = 
@@ -267,7 +271,7 @@ namespace sblngavnav5X.Data
             cmd.Parameters.AddWithValue("@i", imageUrl);
             cmd.Parameters.AddWithValue("@d", DateTime.UtcNow.ToString("yyyy-MM-dd"));
             cmd.Parameters.AddWithValue("@u", user);
-            cmd.Parameters.AddWithValue("@s", Utils.booksSeason);
+            cmd.Parameters.AddWithValue("@s", Global.Vars.Cfg.booksSeason);
             cmd.ExecuteNonQuery();
         }
 

@@ -1,4 +1,5 @@
 ﻿using Discord;
+using sblngavnav5X.Common;
 using Discord.Commands;
 using Discord.Interactions;
 using sblngavnav5X.Data;
@@ -14,7 +15,7 @@ namespace sblngavnav5X.Commands
 
             IUserMessage message = null;
 
-            foreach (var rot in Utils.rotatingNumbers)
+            foreach (var rot in Global.Vars.BuiltIn.rotatingNumbers)
             {
                 var embedAnim = new EmbedBuilder()
                     .WithColor(Color.Orange)
@@ -34,11 +35,11 @@ namespace sblngavnav5X.Commands
                 await Task.Delay(TimeSpan.FromSeconds(2.5));
             }
 
-            int greetings = Utils.RandomNumber(0, 2);
+            int greetings = CommonUtils.RandomNumber(0, 2);
 
             var finalEmbed = new EmbedBuilder()
                 .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты :game_die: {DataBase.GetRandomEmote()}\n{Utils.greetList[greetings]}")
+                .WithDescription($"сегодня ты :game_die: {DataBase.GetRandomEmote()}\n{Global.Vars.BuiltIn.greetList[greetings]}")
                 .WithFooter("sbln шефчик🧑‍🍳")
                 .Build();
 
@@ -85,7 +86,7 @@ namespace sblngavnav5X.Commands
         {
             IUserMessage message = null;
 
-            foreach (var rot in Utils.rotatingNumbers)
+            foreach (var rot in Global.Vars.BuiltIn.rotatingNumbers)
             {
                 var embedAnim = new EmbedBuilder()
                     .WithColor(Color.Orange)
@@ -105,11 +106,11 @@ namespace sblngavnav5X.Commands
                 }
             }
 
-            int greetings = Utils.RandomNumber(0, 2);
+            int greetings = CommonUtils.RandomNumber(0, 2);
 
             var finalEmbed = new EmbedBuilder()
                 .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты :game_die: {DataBase.GetRandomEmote()}\n{Utils.greetList[greetings]}")
+                .WithDescription($"сегодня ты :game_die: {DataBase.GetRandomEmote()}\n{Global.Vars.BuiltIn.greetList[greetings]}")
                 .WithFooter("sbln шефчик🧑‍🍳")
                 .Build();
 
