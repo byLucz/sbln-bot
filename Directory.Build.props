@@ -1,0 +1,17 @@
+<Project>
+
+  <PropertyGroup>
+    <SblnVersion>6.0.0</SblnVersion>
+    <SblnChannel>proto</SblnChannel>
+    <MJU>true</MJU>
+
+    <Version>$(SblnVersion)</Version>
+    <InformationalVersion>$(SblnVersion) $(SblnChannel)</InformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyMetadata Include="SblnVersion" Value="$(SblnVersion)" />
+    <AssemblyMetadata Include="SblnChannel" Value="$(SblnChannel)" />
+  </ItemGroup>
+
+</Project>

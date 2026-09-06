@@ -6,7 +6,8 @@ obj/
 
 .env
 .env.*
-config/secrets.json
+config/config.json
+config/config-proto.json
 appsettings.*.local.json
 
 messages.csv

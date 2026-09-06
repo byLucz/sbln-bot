@@ -1,39 +1,35 @@
 services:
-  lavalink:
-    image: ghcr.io/lavalink-devs/lavalink:4
-    container_name: sbln-lavalink
-    restart: unless-stopped
-    environment:
-      _JAVA_OPTIONS: -Xmx512m
-    volumes:
-      # Конфиг лавы вынесен — правь без пересборки.
-      - ./config/lavalink/application.yml:/opt/Lavalink/application.yml:ro
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS -H \"Authorization: $${LAVA_PASS:-youshallnotpass}\" http://localhost:2333/version || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-
   bot:
-    build: .
-    container_name: sbln-bot
+    image: ${SBLN_IMAGE:?Run install.sh first}
+    build:
+      context: ${SBLN_SOURCE:?Run install.sh first}
+      args:
+        SBLN_VERSION: ${SBLN_VERSION:?Version is required}
+        SBLN_CHANNEL: ${SBLN_CHANNEL-}
+        SBLN_COMMIT: ${SBLN_COMMIT:?Commit is required}
+    container_name: ${SBLN_CONTAINER:-sbln-bot}
     restart: unless-stopped
-    depends_on:
-      lavalink:
-        condition: service_healthy
+    init: true
+    stop_grace_period: 30s
+    environment:
+      SBLN_CONFIG: /opt/sbln/config.json
+      SBLN_READY_FILE: /tmp/sbln-ready
+      SBLN_AUDIO_DIR: /opt/sbln/audio/${SBLN_INSTANCE:-stable}
+      SBLN_LOG_DIR: /opt/sbln/logs
     volumes:
-      # Секреты вне репо. Хост ${SBLN_SECRETS_DIR:-/opt/sbln} -> дефолтный путь бота /opt/sbln/secrets.json.
-      # Хосты внутри файла: LavaHost=lavalink, MailImapHost=host.docker.internal.
-      - ${SBLN_SECRETS_DIR:-/opt/sbln}/secrets.json:/opt/sbln/secrets.json:ro
-      # docker-out-of-docker: бот делает `docker exec mailserver setup ...` через демон хоста.
-      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ${SBLN_CONFIG_FILE:?Config file is required}
+        target: /opt/sbln/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${SBLN_DATA_DIR:?Data directory is required}:/opt/sbln/data
+      - ${SBLN_LOG_DIR:?Log directory is required}:/opt/sbln/logs
+      - ${SBLN_AUDIO_ROOT:?Audio directory is required}:/opt/sbln/audio
     extra_hosts:
-      # host.docker.internal → IP хоста (для MySQL и IMAP, опубликованных на хосте). Linux требует явно.
       - "host.docker.internal:host-gateway"
-
-# Альтернатива host-gateway для IMAP: подключить бота в сеть mailserver-а и ходить по имени сервиса.
-# Тогда MAIL_IMAP_HOST=mailserver и добавить обоим сервисам networks: [mailnet]
-# networks:
-#   mailnet:
-#     external: true
-#     name: <имя_сети_mailserver>
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
