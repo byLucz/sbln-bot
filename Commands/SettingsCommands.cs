@@ -22,7 +22,8 @@ namespace sblngavnav5X.Commands
                 $"👑 **Суперюзер-роль:** {Role(gs.SuperuserRoleId)}\n" +
                 $"👋 **Welcome-канал:** {Chan(gs.WelcomeChannelId)}\n" +
                 $"🎭 **Welcome-роль:** {Role(gs.WelcomeRoleId)}\n" +
-                $"💬 **Welcome-текст:** {(string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? "по умолчанию" : gs.WelcomeMessage)}";
+                $"💬 **Welcome-текст:** {(string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? "по умолчанию" : gs.WelcomeMessage)}\n" +
+                $"📺 **Стрим-канал:** {Chan(gs.StreamNotifChannelId)}";
 
             await ReplyAsync(embed: EmbedHandler.Simple("⚙️ Настройки сервера", desc, Color.Teal, "sbln настройки"));
         }
@@ -53,6 +54,13 @@ namespace sblngavnav5X.Commands
         {
             DataBase.SetWelcomeMessage(Context.Guild.Id, message);
             await Ack(string.IsNullOrWhiteSpace(message) ? "Welcome-текст сброшен на дефолт" : "Welcome-текст обновлён");
+        }
+
+        [Command("стрим-канал")]
+        public async Task SetStreamChannel(ITextChannel channel = null)
+        {
+            DataBase.SetStreamNotifChannel(Context.Guild.Id, channel?.Id);
+            await Ack(channel == null ? "Стрим-канал сброшен на дефолт (по имени twitch)" : $"Стрим-уведомления в: {channel.Mention}");
         }
 
         private Task Ack(string text)

@@ -7,5 +7,6 @@ namespace sblngavnav5X.Data
         public ulong? WelcomeChannelId { get; set; }
         public string WelcomeMessage { get; set; }
         public ulong? WelcomeRoleId { get; set; }
+        public ulong? StreamNotifChannelId { get; set; }
     }
 }

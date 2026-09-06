@@ -14,12 +14,14 @@ namespace sblngavnav5X.Commands;
 public class MainCommands : ModuleBase<SocketCommandContext>
 {
     private DiscordSocketClient _client;
+    private readonly PaginatorService _pager;
 
     public IGuildUser User { get; private set; }
 
-    public MainCommands(DiscordSocketClient client, CommandService commands)
+    public MainCommands(DiscordSocketClient client, CommandService commands, PaginatorService pager)
     {
         _client = client;
+        _pager = pager;
     }
 
     [Command("111")]
@@ -28,7 +30,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     {
         var embed = new EmbedBuilder()
             .WithDescription(
-                $"{Format.Bold($"devlog ver {Utils.sblnver}")} — Финальный кумулятивный патч перед переездом на .NET 10\n" +
+                $"{Format.Bold($"devlog {Versioning.Full}")} — Финальный кумулятивный патч перед переездом на .NET 10\n" +
                 $"• AudioSeven: починка плейлистов/миксов, поиск по всем источникам + умные варианты, реакция шафл → команда {Format.Bold("перемешай")}\n" +
                 $"• Ограничение голосования до 50 вариантов, фикс-таймер, появилась возможность скипнуть перечисления\n" +
                 $"• Говорилка обновлена до версии 1.7, фиксы core/edge-кейсов\n" +
@@ -191,42 +193,43 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("инфа")]
     public async Task Info()
     {
-        string dopchik;
-        if (Context.Guild.Description == "")
-        {
-            dopchik = "описания нет =(";
-        }
-        else
-        {
-            dopchik = (Context.Guild.Description);
-        }
-        static string GetHeapSize() => Math.Round(GC.GetTotalMemory(true) / (1024.0 * 1024.0), 2).ToString(CultureInfo.CurrentCulture);
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("Основная информация о сервере 🤖")
-            .WithDescription(
-            $"🔹Название: ***`{Context.Guild.Name}`***\n" +
-            $"🔹Описание: {dopchik} \n" +
-            $"🔹Имя Бати: {Context.Guild.Owner.Username}#{Context.Guild.Owner.Discriminator} \n" +
-            $"🔹ДР сервера: {Context.Guild.CreatedAt.UtcDateTime} \n" +
-            $"🔹2FA: {Context.Guild.MfaLevel} \n" +
-            $"🔹Размер кучки: {GetHeapSize()} мб\n" +
-            $"🔹Уровень NSFW: {Context.Guild.NsfwLevel} \n" +
-            $"🔹Скики ролей: {Context.Guild.Roles.Count} \n" +
-            $"🔹Скики cмайликов: {Context.Guild.Emotes.Count} \n" +
-            $"🔹Афк таймаут: {Context.Guild.AFKTimeout} сек \n" +
-            $"🔹Бустеры: {Context.Guild.PremiumSubscriptionCount} \n" +
-            $"🔹ГС каналы: {Context.Guild.VoiceChannels.Count}\n" +
-            $"🔹Техтовые каналы: {Context.Guild.TextChannels.Count} \n" +
-            $"🔹Челибасики: {Context.Guild.MemberCount}\n" +
-            $"")
-            .WithThumbnailUrl(Context.Guild.IconUrl)
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText("sbln статистикс🔭");
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        var g = Context.Guild;
+        string desc = string.IsNullOrWhiteSpace(g.Description) ? "—" : g.Description;
+        var gs = DataBase.GetGuildSettings(g.Id);
+
+        string Chan(ulong? id) => id is ulong c ? MentionUtils.MentionChannel(c) : "`выкл`";
+        string Role(ulong? id) => id is ulong r ? MentionUtils.MentionRole(r) : "`не задано`";
+
+        var overview = EmbedHandler.FieldsEmbed($"ℹ️ {g.Name}", Color.Blue, "sbln инфа🔭 · 1/2", g.IconUrl)
+            .WithDescription(desc)
+            .AddField("📅 Основное",
+                $"Владелец: {g.Owner.Mention}\n" +
+                $"Создан: <t:{g.CreatedAt.ToUnixTimeSeconds()}:D>\n" +
+                $"Участников: **{g.MemberCount}**", inline: true)
+            .AddField("💬 Структура",
+                $"Текстовых: **{g.TextChannels.Count}**\n" +
+                $"Голосовых: **{g.VoiceChannels.Count}**\n" +
+                $"Ролей: **{g.Roles.Count}** · Эмодзи: **{g.Emotes.Count}**", inline: true)
+            .AddField("🛡️ Прочее",
+                $"Бустов: **{g.PremiumSubscriptionCount}**\n" +
+                $"2FA: {g.MfaLevel} · NSFW: {g.NsfwLevel}\n" +
+                $"AFK: {g.AFKTimeout}с", inline: true)
+            .Build();
+
+        var config = EmbedHandler.FieldsEmbed($"⚙️ Конфиг — {g.Name}", Color.Teal, "sbln инфа🔭 · 2/2", g.IconUrl)
+            .AddField("👑 Доступ", $"Superuser-роль: {Role(gs.SuperuserRoleId)}")
+            .AddField("👋 Welcome",
+                $"Канал: {Chan(gs.WelcomeChannelId)}\n" +
+                $"Роль: {Role(gs.WelcomeRoleId)}\n" +
+                $"Текст: {(string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? "`по умолчанию`" : gs.WelcomeMessage)}")
+            .AddField("📺 Стримы", $"Канал уведомлений: {Chan(gs.StreamNotifChannelId)}")
+            .Build();
+
+        await _pager.SendAsync(
+            Context.Channel,
+            new[] { overview, config },
+            ownerId: null,
+            decorate: (b, _) => b.WithButton("⚙️ Настройки сервера", "setopen", ButtonStyle.Secondary, row: 1));
     }
 
     [Command("анонс", RunMode = RunMode.Async)]
@@ -390,7 +393,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         var packages = DataBase.GetAllPackageVersions();
 
         var botzname = new EmbedAuthorBuilder()
-            .WithName($"sblngavna ver {Utils.sblnver}");
+            .WithName($"sblngavna {Versioning.Full}");
 
         var copy = new EmbedFooterBuilder()
             .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
