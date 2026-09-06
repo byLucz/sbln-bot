@@ -1,0 +1,39 @@
+{
+  "System": {
+    "BotToken": "",
+    "DbConnectionString": "Server=host.docker.internal;Port=3306;Database=sbln;Uid=USER;Pwd=PASS;",
+    "Prefix1": "x ",
+    "Prefix2": "х ",
+    "SlashScopeGuild": "0",
+    "StreamsEnabled": "true",
+    "PpmEnabled": "false",
+    "MessageSourceChannelId": "0",
+    "MessagesFilePath": "/opt/sbln/data/messages.csv"
+  },
+  "Api": {
+    "KumaConn": "",
+    "WeatherApiKey": "",
+    "StreamCid": "",
+    "StreamAuth": "",
+    "GBooksApi": "",
+    "PgApiBaseUrl": "",
+    "PgApiToken": ""
+  },
+  "Lava": {
+    "LavaHost": "host.docker.internal",
+    "LavaPort": "2333",
+    "LavaPass": "youshallnotpass"
+  },
+  "Mail": {
+    "MailImapHost": "host.docker.internal",
+    "MailImapPort": "993",
+    "MailImapAllowInvalidCert": "true",
+    "MailDomain": "example.com",
+    "MailContainer": "CONTAINER_NAME",
+    "MailTtlMinutes": "15"
+  },
+  "Books": {
+    "BooksSeason": "2",
+    "BooksJsonPath": "/opt/sbln/data/books.json"
+  }
+}
