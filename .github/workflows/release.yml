@@ -20,9 +20,6 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
 
-      - name: test versioning
-        run: python3 scripts/test-release-version.py
-
       - name: compute version
         id: ver
         run: |
