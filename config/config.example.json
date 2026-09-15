@@ -35,5 +35,11 @@
   "Books": {
     "BooksSeason": "2",
     "BooksJsonPath": "/opt/sbln/data/books.json"
+  },
+  "Telegram": {
+    "Token": "",
+    "DefaultGuild": "0",
+    "ChatGuild": "",
+    "UserLink": ""
   }
 }

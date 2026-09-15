@@ -11,6 +11,7 @@ using sblngavnav5X.Services;
 using sblngavnav5X.TwitchService;
 using Victoria;
 using System.Runtime.InteropServices;
+using DiscordTelegramFrontier;
 using CommandService = Discord.Commands.CommandService;
 
 namespace sblngavnav5X.Core
@@ -25,6 +26,7 @@ namespace sblngavnav5X.Core
         private readonly StreamMonoService _streams;
         private readonly WelcomeService _welcomeService;
         private readonly PpmService _ppm;
+        private readonly FrontierService _frontier;
 
         public DiscordService()
         {
@@ -37,6 +39,7 @@ namespace sblngavnav5X.Core
             _interHandler = _services.GetRequiredService<InteractionHandler>();
             _welcomeService = _services.GetRequiredService<WelcomeService>();
             _ppm = _services.GetRequiredService<PpmService>();
+            _frontier = _services.GetRequiredService<FrontierService>();
 
             SubscribeDiscordEvents();
         }
@@ -86,6 +89,7 @@ namespace sblngavnav5X.Core
             try { await DataBase.ApplyLastStatusAsync(_client); } catch (Exception ex) { await LoggingService.LogErrorAsync("db", "ApplyLastStatus fail", ex); }
 
             await _ppm.StartSweeperAsync();
+            await _frontier.StartAsync();
             started = true;
             SetReady(_client.ConnectionState == ConnectionState.Connected);
 
@@ -176,6 +180,15 @@ namespace sblngavnav5X.Core
                 .AddSingleton<PpmService>()
                 .AddSingleton<GuildConfig>(_ => new GuildConfig())
                 .AddSingleton<GovorConfig>(_ => new GovorConfig())
+                .AddFrontier(o =>
+                {
+                    o.TelegramToken = Global.Vars.Cfg.telegramToken;
+                    o.DefaultGuildId = Global.Vars.Cfg.telegramDefaultGuild;
+                    foreach (var (left, right) in ParsePairs(Global.Vars.Cfg.telegramChatGuild))
+                        o.Chat(left, right);
+                    foreach (var (left, right) in ParsePairs(Global.Vars.Cfg.telegramUserLink))
+                        o.User(left, right);
+                })
                 .AddLavaNode(x =>
                 {
                     x.SelfDeaf = true;
@@ -185,6 +198,17 @@ namespace sblngavnav5X.Core
                 })
                 .AddHttpClient()
                 .BuildServiceProvider();
+        }
+
+        private static IEnumerable<(long left, ulong right)> ParsePairs(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) yield break;
+            foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var kv = part.Split(':', 2);
+                if (kv.Length == 2 && long.TryParse(kv[0], out var l) && ulong.TryParse(kv[1], out var r))
+                    yield return (l, r);
+            }
         }
     }
 }

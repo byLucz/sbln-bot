@@ -2,6 +2,7 @@
 using Discord.Commands;
 using sblngavnav5X.Core;
 using sblngavnav5X.Common;
+using DiscordTelegramFrontier;
 
 namespace sblngavnav5X.Commands
 {
@@ -15,6 +16,7 @@ namespace sblngavnav5X.Commands
         {
             _WService = wh;
         }
+        [Frontier]
         [Command("погода")]
         public async Task WeatherInfo(params string[] cityname)
         {

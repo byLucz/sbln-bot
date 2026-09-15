@@ -71,6 +71,11 @@ namespace sblngavnav5X.Data
 
                 public static readonly int booksSeason = Int("Books:BooksSeason", 2);
                 public static readonly string booksJsonPath = Str("Books:BooksJsonPath");
+
+                public static readonly string telegramToken = Str("Telegram:Token");
+                public static readonly ulong telegramDefaultGuild = UL("Telegram:DefaultGuild", 0);
+                public static readonly string telegramChatGuild = Str("Telegram:ChatGuild");
+                public static readonly string telegramUserLink = Str("Telegram:UserLink");
             }
 
             public static class BuiltIn

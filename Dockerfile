@@ -6,6 +6,7 @@ ARG SBLN_VERSION=
 ARG SBLN_COMMIT=
 
 COPY sblngavnav5X.csproj Directory.Build.props ./
+COPY external/DTF/src/DTF/DTF.csproj external/DTF/src/DTF/
 RUN dotnet restore sblngavnav5X.csproj
 
 COPY . .

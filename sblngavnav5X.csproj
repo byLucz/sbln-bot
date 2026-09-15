@@ -19,6 +19,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="external\**\*.cs" />
+    <Content Remove="external\**" />
+    <None Remove="external\**" />
+    <EmbeddedResource Remove="external\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="external\DTF\src\DTF\DTF.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Discord.Addons.Interactive" Version="2.0.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="NLayer" Version="1.11.0" NoWarn="NU1701" />

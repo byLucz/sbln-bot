@@ -3,6 +3,7 @@ using sblngavnav5X.Common;
 using Discord.Commands;
 using Discord.Interactions;
 using sblngavnav5X.Data;
+using DiscordTelegramFrontier;
 
 namespace sblngavnav5X.Commands
 {
@@ -65,6 +66,7 @@ namespace sblngavnav5X.Commands
     }
     public class SheffCommands : ModuleBase<SocketCommandContext>
     {
+        [Frontier]
         [Command("пососи")]
         public async Task BossesGloryCommand()
         {

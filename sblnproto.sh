@@ -44,8 +44,9 @@ case "$cmd" in
       git -C "$PROTO" reset -q --hard origin/proto
     else
       mkdir -p "$BASE"
-      git clone --branch proto "$REPO" "$PROTO"
+      git clone --branch proto --recurse-submodules "$REPO" "$PROTO"
     fi
+    [[ -d "$PROTO/.git" ]] && git -C "$PROTO" submodule update --init --recursive
     install -m 0755 "$PROTO/sbln.sh" /usr/local/bin/sbln
     install -m 0755 "$PROTO/sblnproto.sh" /usr/local/bin/sblnproto
     bash "$HELPER" build "$PROTO" proto

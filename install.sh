@@ -27,9 +27,10 @@ else
     git -C "$ROOT" checkout -q "$branch"
     git -C "$ROOT" reset -q --hard "origin/$branch"
   else
-    git clone --branch "$branch" "$REPO" "$ROOT"
+    git clone --branch "$branch" --recurse-submodules "$REPO" "$ROOT"
   fi
 fi
+[[ -d "$ROOT/.git" ]] && git -C "$ROOT" submodule update --init --recursive
 install -d -m 0755 /usr/local/bin
 install -m 0755 "$ROOT/sbln.sh" /usr/local/bin/sbln
 install -m 0755 "$ROOT/sblnproto.sh" /usr/local/bin/sblnproto

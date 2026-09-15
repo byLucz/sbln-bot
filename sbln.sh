@@ -87,6 +87,7 @@ case "$cmd" in
     git -C "$APP" fetch -q origin --tags
     git -C "$APP" checkout -q master
     git -C "$APP" reset -q --hard origin/master
+    git -C "$APP" submodule update --init --recursive
     build "$APP"
     install -m 0755 "$APP/sbln.sh" /usr/local/bin/sbln
     [[ -e /usr/local/bin/sblnproto && -f "$APP/sblnproto.sh" ]] && install -m 0755 "$APP/sblnproto.sh" /usr/local/bin/sblnproto
