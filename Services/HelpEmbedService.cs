@@ -20,7 +20,7 @@ public class HelpEmbedService
             .WithName("Zдарова я сын гавна и это мои основные команды")
             .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
         var copy = new EmbedFooterBuilder()
-            .WithText("стр. 1 \ndev by lucz@lois.media🏃")
+            .WithText("dev by lucz@lois.media🏃")
             .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
 
         var q = new EmbedFieldBuilder().WithName("инфа").WithValue("инфа о сервере");
@@ -74,7 +74,7 @@ public class HelpEmbedService
             .WithName("Музыкальные команды AudioSeven")
             .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
         var copy = new EmbedFooterBuilder()
-            .WithText("стр. 2 \ndev by lucz@lois.media🏃")
+            .WithText("dev by lucz@lois.media🏃")
             .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
 
         var m1 = new EmbedFieldBuilder().WithName("играй|и").WithValue("играть песенку");
@@ -120,7 +120,7 @@ public class HelpEmbedService
             .WithName("Команды для фанчика")
             .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
         var copy = new EmbedFooterBuilder()
-            .WithText("стр. 3 \ndev by lucz@lois.media🏃")
+            .WithText("dev by lucz@lois.media🏃")
             .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
 
         var r = new EmbedFieldBuilder().WithName("шутка|анек").WithValue("рандомная шутка по категории (1-3)");
@@ -182,7 +182,7 @@ public class HelpEmbedService
             .WithName("Мои вип/мод команды😎")
             .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
         var copy = new EmbedFooterBuilder()
-            .WithText("стр. 4 \ndev by lucz@lois.media🏃")
+            .WithText("dev by lucz@lois.media🏃")
             .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
 
         var r = new EmbedFieldBuilder().WithName("ир").WithValue("инфа для девелоперов");

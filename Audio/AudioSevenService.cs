@@ -406,8 +406,6 @@ namespace sblngavnav5X.Audio
                     embeds.Add(BuildPagedEmbed(
                         title: $"{EmbedHandler.MusicFooter}, лист",
                         pageLines: pages[i],
-                        pageIndex: i,
-                        pageCount: pages.Count,
                         footer: ""));
 
                 await _pager.SendAsync(channel, embeds);
@@ -1281,12 +1279,10 @@ namespace sblngavnav5X.Audio
             return bar.ToString();
         }
 
-        private static Embed BuildPagedEmbed(string title, string pageLines, int pageIndex, int pageCount, string footer)
+        private static Embed BuildPagedEmbed(string title, string pageLines, string footer)
         {
-            var fullTitle = $"{title} ({pageIndex + 1}/{pageCount})";
-
             var b = new EmbedBuilder()
-                .WithTitle(fullTitle)
+                .WithTitle(title)
                 .WithColor(Color.Purple)
                 .WithDescription(pageLines.Length > 3900 ? pageLines.Substring(0, 3900) + "\n…" : pageLines);
 

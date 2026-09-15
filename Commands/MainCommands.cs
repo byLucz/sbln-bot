@@ -14,14 +14,12 @@ namespace sblngavnav5X.Commands;
 public class MainCommands : ModuleBase<SocketCommandContext>
 {
     private DiscordSocketClient _client;
-    private readonly PaginatorService _pager;
 
     public IGuildUser User { get; private set; }
 
-    public MainCommands(DiscordSocketClient client, CommandService commands, PaginatorService pager)
+    public MainCommands(DiscordSocketClient client, CommandService commands)
     {
         _client = client;
-        _pager = pager;
     }
 
     [Command("111")]
@@ -195,12 +193,8 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     {
         var g = Context.Guild;
         string desc = string.IsNullOrWhiteSpace(g.Description) ? "—" : g.Description;
-        var gs = DataBase.GetGuildSettings(g.Id);
 
-        string Chan(ulong? id) => id is ulong c ? MentionUtils.MentionChannel(c) : "`выкл`";
-        string Role(ulong? id) => id is ulong r ? MentionUtils.MentionRole(r) : "`не задано`";
-
-        var overview = EmbedHandler.FieldsEmbed($"ℹ️ {g.Name}", Color.Blue, "sbln инфа🔭 · 1/2", g.IconUrl)
+        var embed = EmbedHandler.FieldsEmbed($"ℹ️ {g.Name}", Color.Blue, "sbln инфа🔭", g.IconUrl)
             .WithDescription(desc)
             .AddField("📅 Основное",
                 $"Владелец: {g.Owner.Mention}\n" +
@@ -216,20 +210,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                 $"AFK: {g.AFKTimeout}с", inline: true)
             .Build();
 
-        var config = EmbedHandler.FieldsEmbed($"⚙️ Конфиг — {g.Name}", Color.Teal, "sbln инфа🔭 · 2/2", g.IconUrl)
-            .AddField("👑 Доступ", $"Superuser-роль: {Role(gs.SuperuserRoleId)}")
-            .AddField("👋 Welcome",
-                $"Канал: {Chan(gs.WelcomeChannelId)}\n" +
-                $"Роль: {Role(gs.WelcomeRoleId)}\n" +
-                $"Текст: {(string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? "`по умолчанию`" : gs.WelcomeMessage)}")
-            .AddField("📺 Стримы", $"Канал уведомлений: {Chan(gs.StreamNotifChannelId)}")
+        var comp = new ComponentBuilder()
+            .WithButton("⚙️ Настройки сервера", "setopen", ButtonStyle.Secondary)
             .Build();
 
-        await _pager.SendAsync(
-            Context.Channel,
-            new[] { overview, config },
-            ownerId: null,
-            decorate: (b, _) => b.WithButton("⚙️ Настройки сервера", "setopen", ButtonStyle.Secondary, row: 1));
+        await Context.Channel.SendMessageAsync(embed: embed, components: comp);
     }
 
     [Command("анонс", RunMode = RunMode.Async)]

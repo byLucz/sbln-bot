@@ -17,7 +17,6 @@ namespace sblngavnav5X.PPM
 
         public static Embed BuildRootEmbed(IReadOnlyList<PpmMailbox> boxes, int page)
         {
-            int totalPages = Pagination.TotalPages(boxes.Count, PageSize);
             var eb = EmbedHandler.FieldsEmbed("📮 PechkinPostManager", Color.Teal, EmbedHandler.PpmFooter);
 
             if (boxes.Count == 0)
@@ -37,7 +36,7 @@ namespace sblngavnav5X.PPM
                     return $"`{b.Email}` · {ttl}";
                 });
 
-            eb.WithDescription($"Твои ящики (стр. {page + 1}/{totalPages}):\n" + string.Join("\n", lines));
+            eb.WithDescription("Твои ящики:\n" + string.Join("\n", lines));
             return eb.Build();
         }
 
