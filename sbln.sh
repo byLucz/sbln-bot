@@ -89,6 +89,7 @@ case "$cmd" in
     git -C "$APP" reset -q --hard origin/master
     build "$APP"
     install -m 0755 "$APP/sbln.sh" /usr/local/bin/sbln
+    [[ -e /usr/local/bin/sblnproto && -f "$APP/sblnproto.sh" ]] && install -m 0755 "$APP/sblnproto.sh" /usr/local/bin/sblnproto
     systemctl restart "$SVC"
     wait_ready
     echo 'Обновлено из master, служба перезапущена.'

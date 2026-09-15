@@ -46,6 +46,8 @@ case "$cmd" in
       mkdir -p "$BASE"
       git clone --branch proto "$REPO" "$PROTO"
     fi
+    install -m 0755 "$PROTO/sbln.sh" /usr/local/bin/sbln
+    install -m 0755 "$PROTO/sblnproto.sh" /usr/local/bin/sblnproto
     bash "$HELPER" build "$PROTO" proto
     docker rm -f "$PBOT" >/dev/null 2>&1 || true
     net_args=(--add-host host.docker.internal:host-gateway)
