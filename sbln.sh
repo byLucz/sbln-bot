@@ -5,6 +5,9 @@ APP="$BASE/app"
 SVC=sbln-service
 BOT=sbln-bot
 [[ "$BASE" =~ ^/[a-zA-Z0-9_./-]+$ && "$BASE" != / && "$BASE" != *..* ]] || exit 1
+if ! docker info >/dev/null 2>&1 && [[ ${EUID:-$(id -u)} -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
+  exec sudo -E bash "$0" "$@"
+fi
 cmd=${1:-menu}
 if [[ $# -gt 0 ]]; then shift; fi
 

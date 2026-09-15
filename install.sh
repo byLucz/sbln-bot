@@ -37,9 +37,13 @@ CONFIG="$BASE/config.json"
 example=config.example.json
 if [[ "$channel" = proto ]]; then CONFIG="$BASE/config-proto.json"; example=config-proto.example.json; fi
 if [[ ! -f "$CONFIG" ]]; then
-  install -m 0600 "$ROOT/config/$example" "$CONFIG"
+  install -m 0600 -o "${SUDO_UID:-0}" -g "${SUDO_GID:-0}" "$ROOT/config/$example" "$CONFIG"
   echo "Создан $CONFIG. Заполни конфиг и повтори установку."
   exit 1
+fi
+if [[ -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" ]]; then
+  chown "$SUDO_UID:$SUDO_GID" "$CONFIG"
+  chmod u+rw "$CONFIG"
 fi
 if [[ "$channel" = proto ]]; then
   exec bash /usr/local/bin/sblnproto hotswap "$ROOT"

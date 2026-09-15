@@ -6,6 +6,9 @@ PROTO="$BASE/proto"
 PCONFIG="$BASE/config-proto.json"
 PBOT=sbln-bot-proto
 [[ "$BASE" =~ ^/[a-zA-Z0-9_./-]+$ && "$BASE" != / && "$BASE" != *..* ]] || exit 1
+if ! docker info >/dev/null 2>&1 && [[ ${EUID:-$(id -u)} -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
+  exec sudo -E bash "$0" "$@"
+fi
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 HELPER="$ROOT/sbln.sh"
 [[ -f "$HELPER" ]] || HELPER="$ROOT/sbln"
@@ -45,6 +48,8 @@ case "$cmd" in
     fi
     bash "$HELPER" build "$PROTO" proto
     docker rm -f "$PBOT" >/dev/null 2>&1 || true
+    net_args=(--add-host host.docker.internal:host-gateway)
+    [[ "${SBLN_NET:-}" = host ]] && net_args=(--network host)
     docker run -d --name "$PBOT" --restart no --init --stop-timeout 30 \
       -e SBLN_CONFIG=/opt/sbln/config.json -e SBLN_READY_FILE=/tmp/sbln-ready \
       -e SBLN_AUDIO_DIR=/opt/sbln/audio/proto -e SBLN_LOG_DIR=/opt/sbln/logs \
@@ -52,7 +57,7 @@ case "$cmd" in
       -v "$BASE/data/proto":/opt/sbln/data -v "$BASE/logs/proto":/opt/sbln/logs \
       -v "$BASE/audio":/opt/sbln/audio -v /var/run/docker.sock:/var/run/docker.sock \
       --log-opt max-size=10m --log-opt max-file=3 \
-      --add-host host.docker.internal:host-gateway sbln-bot:proto >/dev/null
+      "${net_args[@]}" sbln-bot:proto >/dev/null
     bash "$HELPER" wait "$PBOT"
     echo 'Proto запущен. Production-контейнер не перезапускался.'
     ;;
