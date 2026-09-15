@@ -7,6 +7,7 @@ using sblngavnav5X.Core;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using static sblngavnav5X.Common.CommonUtils.Text;
+using DiscordTelegramFrontier;
 
 namespace sblngavnav5X.Commands
 {
@@ -353,6 +354,7 @@ namespace sblngavnav5X.Commands
             }
         }
 
+        [Frontier]
         [Command("рейтинг")]
         public async Task ShowSeasonRatingAsync(int? season = null)
         {
