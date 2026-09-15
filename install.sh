@@ -42,6 +42,18 @@ if [[ ! -f "$CONFIG" ]]; then
   echo "Создан $CONFIG. Заполни конфиг и повтори установку."
   exit 1
 fi
+if command -v jq >/dev/null 2>&1; then
+  tmp=$(mktemp)
+  if jq -s '.[0] * .[1]' "$ROOT/config/$example" "$CONFIG" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
+    if ! cmp -s "$tmp" "$CONFIG"; then
+      cat "$tmp" > "$CONFIG"
+      echo "Конфиг дополнен недостающими ключами из примера (значения сохранены)."
+    fi
+  fi
+  rm -f "$tmp"
+else
+  echo "jq не найден — авто-домёрж новых ключей конфига пропущен (поставь: apt install jq)."
+fi
 if [[ -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" ]]; then
   chown "$SUDO_UID:$SUDO_GID" "$CONFIG"
   chmod u+rw "$CONFIG"

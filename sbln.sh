@@ -88,6 +88,13 @@ case "$cmd" in
     git -C "$APP" checkout -q master
     git -C "$APP" reset -q --hard origin/master
     git -C "$APP" submodule update --init --recursive
+    if command -v jq >/dev/null 2>&1 && [[ -f "$BASE/config.json" ]]; then
+      tmp=$(mktemp)
+      if jq -s '.[0] * .[1]' "$APP/config/config.example.json" "$BASE/config.json" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]] && ! cmp -s "$tmp" "$BASE/config.json"; then
+        cat "$tmp" > "$BASE/config.json"; echo '>> конфиг дополнен новыми ключами из примера'
+      fi
+      rm -f "$tmp"
+    fi
     build "$APP"
     install -m 0755 "$APP/sbln.sh" /usr/local/bin/sbln
     [[ -e /usr/local/bin/sblnproto && -f "$APP/sblnproto.sh" ]] && install -m 0755 "$APP/sblnproto.sh" /usr/local/bin/sblnproto

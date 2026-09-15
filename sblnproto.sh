@@ -47,6 +47,13 @@ case "$cmd" in
       git clone --branch proto --recurse-submodules "$REPO" "$PROTO"
     fi
     [[ -d "$PROTO/.git" ]] && git -C "$PROTO" submodule update --init --recursive
+    if command -v jq >/dev/null 2>&1 && [[ -f "$PCONFIG" ]]; then
+      tmp=$(mktemp)
+      if jq -s '.[0] * .[1]' "$PROTO/config/config-proto.example.json" "$PCONFIG" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]] && ! cmp -s "$tmp" "$PCONFIG"; then
+        cat "$tmp" > "$PCONFIG"; echo '>> proto-конфиг дополнен новыми ключами из примера'
+      fi
+      rm -f "$tmp"
+    fi
     install -m 0755 "$PROTO/sbln.sh" /usr/local/bin/sbln
     install -m 0755 "$PROTO/sblnproto.sh" /usr/local/bin/sblnproto
     bash "$HELPER" build "$PROTO" proto
