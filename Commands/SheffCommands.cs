@@ -83,7 +83,7 @@ namespace sblngavnav5X.Commands
             await ReplyAsync(embed: embed);
         }
 
-        [Frontier]
+        [FrontierAsImage]
         [Command("маг7")]
         public async Task SheffMag7()
         {
