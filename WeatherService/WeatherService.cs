@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace sblngavnav5X.Commands;
 
 
@@ -9,8 +11,8 @@ public class WeatherApiBase
 {
     public IEnumerable<WeatherModel> weather { get; set; }
     public MainWeather main { get; set; }
-    public Wind windSc { get; set; }
-    public Sys sysSc { get; set; }
+    [JsonPropertyName("wind")] public Wind windSc { get; set; }
+    [JsonPropertyName("sys")] public Sys sysSc { get; set; }
 
 }
 

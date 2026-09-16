@@ -83,6 +83,7 @@ namespace sblngavnav5X.Commands
             await ReplyAsync(embed: embed);
         }
 
+        [Frontier]
         [Command("маг7")]
         public async Task SheffMag7()
         {
@@ -98,7 +99,7 @@ namespace sblngavnav5X.Commands
 
                 if (message == null)
                 {
-                    message = await Context.Channel.SendMessageAsync(embed: embedAnim);
+                    message = await ReplyAsync(embed: embedAnim);
                     await Task.Delay(TimeSpan.FromSeconds(2.5));
                 }
                 else
