@@ -9,6 +9,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using static sblngavnav5X.Data.DataRoots;
+using DiscordTelegramFrontier;
 
 namespace sblngavnav5X.Commands;
 
@@ -251,6 +252,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
         await ReminderService.RemindAsyncSeconds(Context.User, seconds, remindMsg);
     }
 
+    [FrontierAsImage]
     [Command("выбери")]
     public async Task ChooseAsync([Remainder] string options)
     {
