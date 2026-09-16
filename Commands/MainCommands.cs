@@ -471,7 +471,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(embed: EmbedHandler.Moderation(
             "sbln кик <:roflanPominki:552795319516135424>",
-            $":white_check_mark: {user.Mention} был кикнут с сервера **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
+            $"✅ {user.Mention} был кикнут с сервера **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
             user.GetAvatarUrl(),
             Context.User.Username,
             Context.User.GetAvatarUrl()));
@@ -492,7 +492,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(embed: EmbedHandler.Moderation(
             "sbln бан <:roflanPominki:552795319516135424>",
-            $":white_check_mark: {user.Mention} был забанен на сервере **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
+            $"✅ {user.Mention} был забанен на сервере **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
             user.GetAvatarUrl(),
             Context.User.Username,
             Context.User.GetAvatarUrl()));

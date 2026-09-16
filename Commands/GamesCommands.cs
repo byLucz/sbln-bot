@@ -164,16 +164,16 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
     }
     Dictionary<int, string> minesweeperValues = new Dictionary<int, string>()
     {
-        { -1 , ":bomb:" },
+        { -1 , "💣" },
         {  0 , "<:slyr3head:779368192036306954>" },
-        {  1 , ":one:" },
-        {  2 , ":two:" },
-        {  3 , ":three:" },
-        {  4 , ":four:" },
-        {  5 , ":five:" },
-        {  6 , ":six:" },
-        {  7 , ":seven:" },
-        {  8 , ":eight:" },
+        {  1 , "1️⃣" },
+        {  2 , "2️⃣" },
+        {  3 , "3️⃣" },
+        {  4 , "4️⃣" },
+        {  5 , "5️⃣" },
+        {  6 , "6️⃣" },
+        {  7 , "7️⃣" },
+        {  8 , "8️⃣" },
     };
 
     [Command("сапер")]

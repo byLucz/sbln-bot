@@ -20,7 +20,7 @@ namespace sblngavnav5X.Commands
             {
                 var embedAnim = new EmbedBuilder()
                     .WithColor(Color.Orange)
-                    .WithDescription($"какой ты макс сегодня? :game_die: {rot}")
+                    .WithDescription($"какой ты макс сегодня? 🎲 {rot}")
                     .WithFooter("sbln шефчик🧑‍🍳")
                     .Build();
 
@@ -40,7 +40,7 @@ namespace sblngavnav5X.Commands
 
             var finalEmbed = new EmbedBuilder()
                 .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты :game_die: {DataBase.GetRandomEmote()}\n{Global.Vars.BuiltIn.greetList[greetings]}")
+                .WithDescription($"сегодня ты 🎲 {DataBase.GetRandomEmote()}\n{Global.Vars.BuiltIn.greetList[greetings]}")
                 .WithFooter("sbln шефчик🧑‍🍳")
                 .Build();
 
@@ -93,7 +93,7 @@ namespace sblngavnav5X.Commands
             {
                 var embedAnim = new EmbedBuilder()
                     .WithColor(Color.Orange)
-                    .WithDescription($"какой ты макс сегодня? :game_die: {rot}")
+                    .WithDescription($"какой ты макс сегодня? 🎲 {rot}")
                     .WithFooter("sbln шефчик🧑‍🍳")
                     .Build();
 
@@ -113,7 +113,7 @@ namespace sblngavnav5X.Commands
 
             var finalEmbed = new EmbedBuilder()
                 .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты :game_die: {DataBase.GetRandomEmote()}\n{Global.Vars.BuiltIn.greetList[greetings]}")
+                .WithDescription($"сегодня ты 🎲 {DataBase.GetRandomEmote()}\n{Global.Vars.BuiltIn.greetList[greetings]}")
                 .WithFooter("sbln шефчик🧑‍🍳")
                 .Build();
 
