@@ -2,19 +2,20 @@
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
-using sblngavnav5X.Audio;
-using sblngavnav5X.Commands;
-using sblngavnav5X.Data;
-using sblngavnav5X.GVR;
-using sblngavnav5X.PPM;
-using sblngavnav5X.Services;
-using sblngavnav5X.TwitchService;
+using sblngavnav6.Audio;
+using sblngavnav6.Commands;
+using sblngavnav6.Data;
+using sblngavnav6.GVR;
+using sblngavnav6.PPM;
+using sblngavnav6.Services;
+using sblngavnav6.TelegramExtensions;
+using sblngavnav6.TwitchService;
 using Victoria;
 using System.Runtime.InteropServices;
 using DiscordTelegramFrontier;
 using CommandService = Discord.Commands.CommandService;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
     public class DiscordService
     {
@@ -180,6 +181,7 @@ namespace sblngavnav5X.Core
                 .AddSingleton<PpmService>()
                 .AddSingleton<GuildConfig>(_ => new GuildConfig())
                 .AddSingleton<GovorConfig>(_ => new GovorConfig())
+                .AddTelegramExtensions(Environment.GetEnvironmentVariable("SBLN_DATA_DIR"))
                 .AddFrontier(o =>
                 {
                     o.TelegramToken = Global.Vars.Cfg.telegramToken;
