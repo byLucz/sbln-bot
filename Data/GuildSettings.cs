@@ -1,4 +1,4 @@
-namespace sblngavnav5X.Data
+namespace sblngavnav6.Data
 {
     public sealed class GuildSettings
     {

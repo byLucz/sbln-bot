@@ -1,9 +1,9 @@
 ﻿using Discord.Interactions;
 using Discord.WebSocket;
-using sblngavnav5X.Services;
+using sblngavnav6.Services;
 using System.Reflection;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
     public class InteractionHandler
     {

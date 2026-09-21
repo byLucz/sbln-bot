@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 
-namespace sblngavnav5X.Commands;
+namespace sblngavnav6.Commands;
 
 
 public static class WeatherUrl

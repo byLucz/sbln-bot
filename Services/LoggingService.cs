@@ -2,7 +2,7 @@
 using Discord.WebSocket;
 using System.Text;
 
-namespace sblngavnav5X.Services
+namespace sblngavnav6.Services
 {
     public static class LoggingService
     {

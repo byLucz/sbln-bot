@@ -1,8 +1,8 @@
 using Discord;
 using Discord.WebSocket;
-using sblngavnav5X.Data;
+using sblngavnav6.Data;
 
-namespace sblngavnav5X.Services
+namespace sblngavnav6.Services
 {
     public class WelcomeService
     {

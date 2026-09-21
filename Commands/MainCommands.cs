@@ -1,15 +1,15 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
-using sblngavnav5X.Core;
-using sblngavnav5X.Common;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
+using sblngavnav6.Core;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.InteropServices;
 
-namespace sblngavnav5X.Commands;
+namespace sblngavnav6.Commands;
 
 public class MainCommands : ModuleBase<SocketCommandContext>
 {
@@ -32,7 +32,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                 $"• AudioSeven: починка плейлистов/миксов, поиск по всем источникам + умные варианты, реакция шафл → команда {Format.Bold("перемешай")}\n" +
                 $"• Ограничение голосования до 50 вариантов, фикс-таймер, появилась возможность скипнуть перечисления\n" +
                 $"• Говорилка обновлена до версии 1.7, фиксы core/edge-кейсов\n" +
-                $"• [Полный чендж-лог доступен на сайте 🌀](https://lois.media/sbln/v5.6.1)")
+                $"• [Полный чендж-лог доступен на сайте 🌀](https://lois.media/sbln/v{Versioning.Version})")
             .WithFooter(footer => footer
                 .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
                 .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x"))

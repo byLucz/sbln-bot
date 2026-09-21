@@ -1,5 +1,5 @@
 using Discord.Commands;
-using sblngavnav5X.Core;
+using sblngavnav6.Core;
 
 public class HelpCommands : ModuleBase<SocketCommandContext>
 {

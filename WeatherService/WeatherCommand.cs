@@ -1,10 +1,10 @@
 ﻿using Discord;
 using Discord.Commands;
-using sblngavnav5X.Core;
-using sblngavnav5X.Common;
+using sblngavnav6.Core;
+using sblngavnav6.Common;
 using DiscordTelegramFrontier;
 
-namespace sblngavnav5X.Commands
+namespace sblngavnav6.Commands
 {
     public class WeatherCommand:ModuleBase<SocketCommandContext>
     {

@@ -1,0 +1,12 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/external/">
+    <Project Path="external/DTF/DTF.csproj" />
+  </Folder>
+  <Project Path="sblngavnav6.csproj" />
+  <Project Path="TelegramExtensions/TelegramExtensions.csproj" />
+</Solution>

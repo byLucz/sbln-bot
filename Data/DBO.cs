@@ -3,10 +3,10 @@ using Discord.WebSocket;
 using MySqlConnector;
 using System.Collections.Concurrent;
 using System.Text.Json;
-using static sblngavnav5X.Data.DataRoots;
-using static sblngavnav5X.Data.DataRoots.States;
+using static sblngavnav6.Data.DataRoots;
+using static sblngavnav6.Data.DataRoots.States;
 
-namespace sblngavnav5X.Data
+namespace sblngavnav6.Data
 {
     public static class DataBase
     {

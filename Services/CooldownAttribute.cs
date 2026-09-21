@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using Discord.Commands;
 
-namespace sblngavnav5X.Services
+namespace sblngavnav6.Services
 {
     public class CooldownAttribute : PreconditionAttribute
 	{

@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace sblngavnav5X.Data
+namespace sblngavnav6.Data
 {
     public static class DataRoots
     {

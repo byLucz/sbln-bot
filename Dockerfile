@@ -5,13 +5,15 @@ ARG SBLN_CHANNEL=
 ARG SBLN_VERSION=
 ARG SBLN_COMMIT=
 
-COPY sblngavnav5X.csproj Directory.Build.props ./
-COPY external/DTF/src/DTF/DTF.csproj external/DTF/src/DTF/
-RUN dotnet restore sblngavnav5X.csproj
+COPY sblngavnav6.csproj Directory.Build.props ./
+COPY external/DTF/Directory.Build.props external/DTF/
+COPY external/DTF/DTF.csproj external/DTF/
+COPY TelegramExtensions/TelegramExtensions.csproj TelegramExtensions/
+RUN dotnet restore sblngavnav6.csproj
 
 COPY . .
 RUN if [ -n "$SBLN_VERSION" ]; then set -- "-p:SblnVersion=$SBLN_VERSION"; else set --; fi; \
-    dotnet publish sblngavnav5X.csproj -c Release -o /app --no-restore \
+    dotnet publish sblngavnav6.csproj -c Release -o /app --no-restore \
       "-p:SblnChannel=$SBLN_CHANNEL" "-p:SourceRevisionId=$SBLN_COMMIT" "$@"
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS runtime
@@ -32,4 +34,4 @@ RUN apt-get update \
 COPY --from=build /app ./
 HEALTHCHECK --interval=5s --timeout=3s --start-period=15s --retries=12 CMD test -f /tmp/sbln-ready || exit 1
 
-ENTRYPOINT ["sh", "-eu", "-c", "rm -f /tmp/sbln-ready; mkdir -p /opt/sbln/data /opt/sbln/logs \"${SBLN_AUDIO_DIR:-/opt/sbln/audio/stable}\"; exec dotnet /app/sblngavnav5X.dll \"$@\"", "sbln"]
+ENTRYPOINT ["sh", "-eu", "-c", "rm -f /tmp/sbln-ready; mkdir -p /opt/sbln/data /opt/sbln/logs \"${SBLN_AUDIO_DIR:-/opt/sbln/audio/stable}\"; exec dotnet /app/sblngavnav6.dll \"$@\"", "sbln"]

@@ -1,15 +1,15 @@
 ﻿using Discord;
-using sblngavnav5X.Common;
+using sblngavnav6.Common;
 using Discord.Commands;
 using Discord.WebSocket;
 using System.Text.Json.Nodes;
-using sblngavnav5X.Core;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
-using static sblngavnav5X.Common.CommonUtils.Text;
+using sblngavnav6.Core;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
+using static sblngavnav6.Common.CommonUtils.Text;
 using DiscordTelegramFrontier;
 
-namespace sblngavnav5X.Commands
+namespace sblngavnav6.Commands
 {
     public class BooksClubCommands : ModuleBase<SocketCommandContext>
     {

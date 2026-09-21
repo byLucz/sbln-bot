@@ -3,11 +3,11 @@ using System.Text;
 using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Security;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
-using static sblngavnav5X.Data.DataRoots;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
+using static sblngavnav6.Data.DataRoots;
 
-namespace sblngavnav5X.PPM
+namespace sblngavnav6.PPM
 {
     public class PpmMessageView
     {

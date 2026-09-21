@@ -1,9 +1,9 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using sblngavnav5X.Commands;
-using static sblngavnav5X.Data.DataRoots;
+using sblngavnav6.Commands;
+using static sblngavnav6.Data.DataRoots;
 
-namespace sblngavnav5X.Data
+namespace sblngavnav6.Data
 {
     [JsonSourceGenerationOptions(WriteIndented = true, PropertyNameCaseInsensitive = true)]
     [JsonSerializable(typeof(CatData[]))]

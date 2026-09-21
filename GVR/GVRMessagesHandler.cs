@@ -1,12 +1,12 @@
-using sblngavnav5X.Common;
+using sblngavnav6.Common;
 using Discord.Commands;
-using sblngavnav5X.Data;
-using sblngavnav5X.GVR;
-using sblngavnav5X.Services;
+using sblngavnav6.Data;
+using sblngavnav6.GVR;
+using sblngavnav6.Services;
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
     public sealed class GVRMessagesHandler
     {

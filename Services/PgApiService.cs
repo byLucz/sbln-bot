@@ -1,8 +1,8 @@
 ﻿using System.Net.Http.Headers;
 using System.Text;
-using sblngavnav5X.Data;
+using sblngavnav6.Data;
 
-namespace sblngavnav5X.Services;
+namespace sblngavnav6.Services;
 
 public sealed class PgApiService
 {

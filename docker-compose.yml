@@ -16,6 +16,7 @@ services:
       SBLN_READY_FILE: /tmp/sbln-ready
       SBLN_AUDIO_DIR: /opt/sbln/audio/${SBLN_INSTANCE:-stable}
       SBLN_LOG_DIR: /opt/sbln/logs
+      SBLN_DATA_DIR: /opt/sbln/data
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - type: bind

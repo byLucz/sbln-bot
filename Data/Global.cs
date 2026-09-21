@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Configuration;
 
-namespace sblngavnav5X.Data
+namespace sblngavnav6.Data
 {
     public static class Global
     {

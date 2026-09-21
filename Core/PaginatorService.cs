@@ -3,7 +3,7 @@ using Discord.Interactions;
 using Discord.WebSocket;
 using System.Collections.Concurrent;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
     public sealed class PaginatorService
     {

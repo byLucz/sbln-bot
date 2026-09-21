@@ -2,12 +2,12 @@ using Discord;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
-using sblngavnav5X.Core;
-using sblngavnav5X.Common;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
+using sblngavnav6.Core;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
 
-namespace sblngavnav5X.Commands;
+namespace sblngavnav6.Commands;
 
 public static class PgApiPanelBuilder
 {

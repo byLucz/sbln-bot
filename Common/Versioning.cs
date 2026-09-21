@@ -1,7 +1,7 @@
 using System.Linq;
 using System.Reflection;
 
-namespace sblngavnav5X.Common
+namespace sblngavnav6.Common
 {
     public static class Versioning
     {

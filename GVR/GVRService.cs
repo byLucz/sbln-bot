@@ -1,12 +1,12 @@
 using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
-using sblngavnav5X.Core;
-using sblngavnav5X.Common;
-using sblngavnav5X.Data;
+using sblngavnav6.Core;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
 using System.Runtime.InteropServices;
 
-namespace sblngavnav5X.GVR
+namespace sblngavnav6.GVR
 {
     public class GVRService : ModuleBase<SocketCommandContext>
     {

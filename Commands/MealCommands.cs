@@ -3,11 +3,11 @@ using Discord.Commands;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.RegularExpressions;
-using sblngavnav5X.Data;
-using static sblngavnav5X.Data.DataRoots;
-using static sblngavnav5X.Common.CommonUtils.Text;
+using sblngavnav6.Data;
+using static sblngavnav6.Data.DataRoots;
+using static sblngavnav6.Common.CommonUtils.Text;
 
-namespace sblngavnav5X.Commands
+namespace sblngavnav6.Commands
 {
     public class MealCommands : ModuleBase<SocketCommandContext>
     {

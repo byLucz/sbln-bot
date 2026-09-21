@@ -1,4 +1,4 @@
-namespace sblngavnav5X.Common
+namespace sblngavnav6.Common
 {
     public static class CommonUtils
     {

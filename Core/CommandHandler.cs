@@ -2,15 +2,15 @@
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
-using sblngavnav5X.Data;
-using sblngavnav5X.GVR;
-using sblngavnav5X.Services;
+using sblngavnav6.Data;
+using sblngavnav6.GVR;
+using sblngavnav6.Services;
 using System.Collections.Concurrent;
 using System.Reflection;
 using Victoria;
 using Timer = System.Timers.Timer;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
     public sealed class CommandHandler : IDisposable
     {

@@ -1,8 +1,8 @@
-﻿using sblngavnav5X.Data;
-using sblngavnav5X.TwitchService;
+﻿using sblngavnav6.Data;
+using sblngavnav6.TwitchService;
 using TwitchLib.Api.Helix.Models.Users.GetUsers;
 
-namespace sblngavnav5X.Services.Twitch
+namespace sblngavnav6.Services.Twitch
 {
     public class StreamerFileHelper
     {

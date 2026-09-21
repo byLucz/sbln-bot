@@ -1,6 +1,6 @@
-﻿using sblngavnav5X.Core;
+﻿using sblngavnav6.Core;
 
-namespace sblngavnav5X
+namespace sblngavnav6
 {
     class Program
     {

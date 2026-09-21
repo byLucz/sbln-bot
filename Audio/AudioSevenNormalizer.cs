@@ -1,6 +1,6 @@
 ﻿using System.Text.RegularExpressions;
 
-namespace sblngavnav5X.Audio
+namespace sblngavnav6.Audio
 {
     internal static class AudioQueryNormalizer
     {

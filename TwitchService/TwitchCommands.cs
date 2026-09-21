@@ -1,8 +1,8 @@
 ﻿using Discord.Commands;
-using sblngavnav5X.Services.Twitch;
-using sblngavnav5X.TwitchService;
+using sblngavnav6.Services.Twitch;
+using sblngavnav6.TwitchService;
 
-namespace sblngavnav5X.Commands.Twitch
+namespace sblngavnav6.Commands.Twitch
 {
     public class TwitchCommands : ModuleBase<SocketCommandContext>
     {

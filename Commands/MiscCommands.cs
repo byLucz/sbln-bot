@@ -1,17 +1,17 @@
 ﻿using Discord;
 using Discord.Commands;
-using sblngavnav5X.Core;
-using sblngavnav5X.Common;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
+using sblngavnav6.Core;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
 using System.Data;
 using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using static sblngavnav5X.Data.DataRoots;
+using static sblngavnav6.Data.DataRoots;
 using DiscordTelegramFrontier;
 
-namespace sblngavnav5X.Commands;
+namespace sblngavnav6.Commands;
 
 public class MiscCommands : ModuleBase<SocketCommandContext>
 {

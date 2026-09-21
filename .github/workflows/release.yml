@@ -78,7 +78,7 @@ jobs:
 
       - name: build
         if: steps.exists.outputs.skip == 'false'
-        run: dotnet build sblngavnav5X.csproj -c Release --nologo -p:SblnVersion=${{ steps.ver.outputs.version }} -p:SblnChannel= -p:SourceRevisionId=$GITHUB_SHA
+        run: dotnet build sblngavnav6.csproj -c Release --nologo -p:SblnVersion=${{ steps.ver.outputs.version }} -p:SblnChannel= -p:SourceRevisionId=$GITHUB_SHA
 
       - name: build number
         if: steps.exists.outputs.skip == 'false'

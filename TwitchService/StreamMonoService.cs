@@ -7,10 +7,10 @@ using TwitchLib.Api.Helix.Models.Users.GetUsers;
 using TwitchLib.Api.Services;
 using TwitchLib.Api.Services.Events;
 using TwitchLib.Api.Services.Events.LiveStreamMonitor;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
 
-namespace sblngavnav5X.TwitchService
+namespace sblngavnav6.TwitchService
 {
     public class StreamMonoService : StreamMonoServiceBase
     {

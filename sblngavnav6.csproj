@@ -23,10 +23,15 @@
     <Content Remove="external\**" />
     <None Remove="external\**" />
     <EmbeddedResource Remove="external\**" />
+    <Compile Remove="TelegramExtensions\**\*.cs" />
+    <Content Remove="TelegramExtensions\**" />
+    <None Remove="TelegramExtensions\**" />
+    <EmbeddedResource Remove="TelegramExtensions\**" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="external\DTF\src\DTF\DTF.csproj" />
+    <ProjectReference Include="external\DTF\DTF.csproj" />
+    <ProjectReference Include="TelegramExtensions\TelegramExtensions.csproj" />
   </ItemGroup>
 
   <ItemGroup>

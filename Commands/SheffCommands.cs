@@ -1,11 +1,11 @@
 ﻿using Discord;
-using sblngavnav5X.Common;
+using sblngavnav6.Common;
 using Discord.Commands;
 using Discord.Interactions;
-using sblngavnav5X.Data;
+using sblngavnav6.Data;
 using DiscordTelegramFrontier;
 
-namespace sblngavnav5X.Commands
+namespace sblngavnav6.Commands
 {
     public class SheffSlashModule : InteractionModuleBase<SocketInteractionContext>
     {

@@ -1,7 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
 
-namespace sblngavnav5X.Services
+namespace sblngavnav6.Services
 {
     public static class ReminderService
 	{

@@ -1,7 +1,7 @@
 using Discord;
 using System;
 
-namespace sblngavnav5X.Common
+namespace sblngavnav6.Common
 {
     public static class EmbedHandler
     {

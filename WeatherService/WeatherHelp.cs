@@ -1,6 +1,6 @@
 using System.Net.Http.Json;
-using sblngavnav5X.Data;
-namespace sblngavnav5X.Commands
+using sblngavnav6.Data;
+namespace sblngavnav6.Commands
 
 {
    public class WeatherHelp

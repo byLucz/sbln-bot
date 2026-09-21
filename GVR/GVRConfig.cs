@@ -1,4 +1,4 @@
-﻿namespace sblngavnav5X.GVR
+﻿namespace sblngavnav6.GVR
 {
     public class GuildConfig
     {

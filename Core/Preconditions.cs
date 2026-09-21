@@ -1,9 +1,9 @@
 using Discord;
 using Discord.Commands;
 using Discord.Interactions;
-using sblngavnav5X.Data;
+using sblngavnav6.Data;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
     public class RequireSuperuserAttribute : Discord.Commands.PreconditionAttribute
     {

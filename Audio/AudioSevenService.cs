@@ -2,12 +2,12 @@
 using Discord.WebSocket;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
-using sblngavnav5X.Core;
-using sblngavnav5X.Common;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
-using static sblngavnav5X.Common.CommonUtils.Text;
-using static sblngavnav5X.Common.CommonUtils.Time;
+using sblngavnav6.Core;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
+using static sblngavnav6.Common.CommonUtils.Text;
+using static sblngavnav6.Common.CommonUtils.Time;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
 using System.Text;
@@ -17,7 +17,7 @@ using Victoria.Enums;
 using Victoria.Rest.Search;
 using Victoria.WebSocket.EventArgs;
 
-namespace sblngavnav5X.Audio
+namespace sblngavnav6.Audio
 {
     public sealed class AudioSevenService : IDisposable
     {

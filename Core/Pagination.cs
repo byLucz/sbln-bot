@@ -1,6 +1,6 @@
 using Discord;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
     public static class Pagination
     {

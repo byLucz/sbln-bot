@@ -1,7 +1,7 @@
 ﻿using Discord.WebSocket;
 using TwitchLib.Api.Interfaces;
 
-namespace sblngavnav5X.TwitchService
+namespace sblngavnav6.TwitchService
 {
     public class StreamData
     {

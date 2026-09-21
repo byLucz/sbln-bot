@@ -2,14 +2,14 @@ using Discord;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
-using sblngavnav5X.Core;
-using sblngavnav5X.Common;
-using sblngavnav5X.Data;
-using static sblngavnav5X.Common.CommonUtils.Text;
-using static sblngavnav5X.Common.CommonUtils.Time;
-using static sblngavnav5X.Data.DataRoots;
+using sblngavnav6.Core;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using static sblngavnav6.Common.CommonUtils.Text;
+using static sblngavnav6.Common.CommonUtils.Time;
+using static sblngavnav6.Data.DataRoots;
 
-namespace sblngavnav5X.PPM
+namespace sblngavnav6.PPM
 {
     public static class PpmPanelBuilder
     {

@@ -1,14 +1,14 @@
 ﻿using Discord;
 using Discord.Commands;
-using sblngavnav5X.Core;
-using sblngavnav5X.Common;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
+using sblngavnav6.Core;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
 using System.Runtime.InteropServices;
 using Victoria;
 using Victoria.Rest.Search;
 
-namespace sblngavnav5X.Audio
+namespace sblngavnav6.Audio
 {
     public sealed class AudioSeven(
         LavaNode<LavaPlayer<LavaTrack>, LavaTrack> lavaNode,
@@ -302,7 +302,7 @@ namespace sblngavnav5X.Audio
                 .Build());
 
             using var http = httpClientFactory.CreateClient();
-            http.DefaultRequestHeaders.UserAgent.ParseAdd("sblnokv5x");
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("sblnokv6");
 
             await audioService.RunVoteAsync(guildId, statusMsg, items, winner, http);
         }
