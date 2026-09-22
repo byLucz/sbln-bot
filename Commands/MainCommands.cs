@@ -13,13 +13,15 @@ namespace sblngavnav6.Commands;
 
 public class MainCommands : ModuleBase<SocketCommandContext>
 {
-    private DiscordSocketClient _client;
+    private readonly DiscordSocketClient _client;
+    private readonly CommandHandler _commandHandler;
 
     public IGuildUser User { get; private set; }
 
-    public MainCommands(DiscordSocketClient client, CommandService commands)
+    public MainCommands(DiscordSocketClient client, CommandHandler commandHandler)
     {
         _client = client;
+        _commandHandler = commandHandler;
     }
 
     [Command("111")]
@@ -343,11 +345,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             }
 
             var sentMessage = await user.SendMessageAsync(embed: outgoingEmbed.Build());
-            CommandHandler.RegisterMailReplyRoute(sentMessage.Id, Context.User.Id, user.Id, isAnonymous);
+            _commandHandler.RegisterMailReplyRoute(sentMessage.Id, Context.User.Id, user.Id, isAnonymous);
 
             await LoggingService.LogInformationAsync(
                 "XMAIL",
-                $"SEND anonymous={isAnonymous} sender={Context.User.Id} recipient={user.Id} content={preparedMessage}");
+                $"SEND anonymous={isAnonymous} sender={Context.User.Id} recipient={user.Id} contentLength={preparedMessage.Length}");
 
             var embed = new EmbedBuilder()
                 .WithColor(Color.Green)

@@ -5,6 +5,7 @@
     "Prefix1": "x ",
     "Prefix2": "х ",
     "SlashScopeGuild": "0",
+    "SlashDevGuild": "0",
     "StreamsEnabled": "true",
     "PpmEnabled": "false",
     "MessageSourceChannelId": "0",
@@ -39,7 +40,7 @@
   "Telegram": {
     "Token": "",
     "DefaultGuild": "0",
-    "ChatGuild": "",
-    "UserLink": ""
+    "ChatGuild": {},
+    "UserLink": {}
   }
 }

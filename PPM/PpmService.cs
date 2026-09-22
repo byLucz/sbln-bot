@@ -17,9 +17,12 @@ namespace sblngavnav6.PPM
         public string Body { get; set; }
     }
 
-    public sealed class PpmService
+    public sealed class PpmService : IAsyncDisposable
     {
         private readonly PpmServerService _mail;
+        private CancellationTokenSource _sweeperCts;
+        private Task _sweeperTask = Task.CompletedTask;
+        private bool _disposed;
 
         public PpmService(PpmServerService mail)
         {
@@ -94,23 +97,45 @@ namespace sblngavnav6.PPM
             return result;
         }
 
-        public Task StartSweeperAsync()
+        public Task StartSweeperAsync(CancellationToken cancellationToken = default)
         {
-            if (!Global.Vars.Cfg.ppmEnabled) return Task.CompletedTask;
-            _ = Task.Run(SweepLoopAsync);
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (!Global.Vars.Cfg.ppmEnabled || _sweeperCts != null) return Task.CompletedTask;
+            _sweeperCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _sweeperTask = Task.Run(() => SweepLoopAsync(_sweeperCts.Token));
             return Task.CompletedTask;
         }
 
-        private async Task SweepLoopAsync()
+        public async Task StopAsync()
         {
-            while (true)
+            if (_disposed || _sweeperCts == null) return;
+            await _sweeperCts.CancelAsync();
+            try { await _sweeperTask; }
+            catch (OperationCanceledException) when (_sweeperCts.IsCancellationRequested) { }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            if (_disposed) return;
+            try { await StopAsync(); }
+            finally
+            {
+                _disposed = true;
+                _sweeperCts?.Dispose();
+            }
+        }
+
+        private async Task SweepLoopAsync(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
                     var expired = DataBase.GetExpiredPpmMailboxes();
                     foreach (var (id, email) in expired)
                     {
-                        var (ok, output) = await _mail.DelAsync(email);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var (ok, output) = await _mail.DelAsync(email, cancellationToken);
                         if (ok)
                         {
                             DataBase.MarkPpmMailboxDeleted(id);
@@ -122,12 +147,13 @@ namespace sblngavnav6.PPM
                         }
                     }
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
                 catch (Exception ex)
                 {
                     await LoggingService.LogErrorAsync("ppm", "Ошибка sweeper-цикла", ex);
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(30));
+                await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
             }
         }
 

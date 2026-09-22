@@ -12,6 +12,7 @@ namespace sblngavnav6.GVR
     {
         private readonly GovorConfig _govorilka;
         private readonly GuildConfig _guild;
+        private readonly CommandHandler _commandHandler;
 
         private const string GovorAuthor = "sbln говорилка🎤📓";
         private const string GovorFooter = "powered by GovorNGN";
@@ -20,10 +21,11 @@ namespace sblngavnav6.GVR
         private static EmbedBuilder GovorEmbed() =>
             EmbedHandler.FieldsEmbed(GovorAuthor, Color.LighterGrey, GovorFooter);
 
-        public GVRService(GovorConfig govor, GuildConfig guild)
+        public GVRService(GovorConfig govor, GuildConfig guild, CommandHandler commandHandler)
         {
             _govorilka = govor;
             _guild = guild;
+            _commandHandler = commandHandler;
         }
 
         [Command("говорилка"), Alias("говор")]
@@ -96,7 +98,7 @@ namespace sblngavnav6.GVR
                 await ReplyAsync("Укажи значение больше 0.");
                 return;
             }
-            CommandHandler.UpdateTimerInterval(amount);
+            _commandHandler.UpdateTimerInterval(amount);
             await ReplyAsync(embed: GovorEmbed()
                 .AddField("время подзагрузки обновлено на", $"***{amount / 1000.0:0.##} секунд***", true)
                 .Build());

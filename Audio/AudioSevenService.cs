@@ -19,7 +19,7 @@ using Victoria.WebSocket.EventArgs;
 
 namespace sblngavnav6.Audio
 {
-    public sealed class AudioSevenService : IDisposable
+    public sealed class AudioSevenService : IDisposable, IAsyncDisposable
     {
         private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
         private readonly DiscordSocketClient _client;
@@ -39,6 +39,9 @@ namespace sblngavnav6.Audio
         private readonly ConcurrentDictionary<ulong, SearchPickState> _searchPicksByMessageId = new();
         private readonly ConcurrentDictionary<ulong, VoteSkipState> _voteSkipByMessageId = new();
         private readonly ConcurrentDictionary<ulong, CancellationTokenSource> _autoLeaveCts = new();
+        private CancellationTokenSource _cleanupCts;
+        private Task _cleanupTask = Task.CompletedTask;
+        private bool _disposed;
 
         private readonly object _statsLock = new();
         private StatsEventArg? _lastStats;
@@ -60,15 +63,38 @@ namespace sblngavnav6.Audio
 
             _client.ReactionAdded += OnReactionAddedAsync;
             _client.UserVoiceStateUpdated += OnUserVoiceStateUpdatedAsync;
+        }
 
-            _ = Task.Run(async () =>
+        public void StartCleanup(CancellationToken cancellationToken = default)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_cleanupCts != null) return;
+            _cleanupCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _cleanupTask = CleanupLoopAsync(_cleanupCts.Token);
+        }
+
+        private async Task CleanupLoopAsync(CancellationToken cancellationToken)
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+            try
             {
-                while (true)
-                {
-                    await Task.Delay(TimeSpan.FromMinutes(5));
+                while (await timer.WaitForNextTickAsync(cancellationToken))
                     CleanupStaleStates();
-                }
-            });
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        }
+
+        public async Task StopCleanupAsync()
+        {
+            if (_disposed || _cleanupCts == null) return;
+            await _cleanupCts.CancelAsync();
+            await _cleanupTask;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try { await StopCleanupAsync(); }
+            finally { Dispose(); }
         }
 
         public void SetGuildChannels(ulong guildId, ulong voiceChannelId, ulong textChannelId)
@@ -1194,6 +1220,12 @@ namespace sblngavnav6.Audio
 
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
+            try { _cleanupCts?.Cancel(); }
+            catch (ObjectDisposedException) { }
+            _cleanupCts?.Dispose();
+
             _lavaNode.OnWebSocketClosed -= OnWebSocketClosedAsync;
             _lavaNode.OnStats -= OnStatsAsync;
             _lavaNode.OnTrackEnd -= OnTrackEndAsync;
@@ -1204,12 +1236,17 @@ namespace sblngavnav6.Audio
 
             foreach (var kv in _guildLocks)
             {
-                try { kv.Value.Dispose(); } catch { }
+                try { kv.Value.Dispose(); }
+                catch (ObjectDisposedException) { }
             }
 
             foreach (var kv in _autoLeaveCts)
             {
-                try { kv.Value.Dispose(); } catch { }
+                try { kv.Value.Cancel(); }
+                catch (ObjectDisposedException) { }
+
+                try { kv.Value.Dispose(); }
+                catch (ObjectDisposedException) { }
             }
         }
 

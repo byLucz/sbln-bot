@@ -1,10 +1,10 @@
-﻿using sblngavnav6.Core;
+using sblngavnav6.Core;
 
 namespace sblngavnav6
 {
     class Program
     {
         private static Task Main()
-            => new DiscordService().InitializeAsync();
+            => new DiscordService().RunAsync();
     }
 }

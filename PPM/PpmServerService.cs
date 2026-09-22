@@ -6,14 +6,15 @@ namespace sblngavnav6.PPM
 {
     public sealed class PpmServerService
     {
-        public Task<(bool ok, string output)> AddAsync(string email, string password)
-            => RunSetupAsync("email", "add", email, password);
+        public Task<(bool ok, string output)> AddAsync(string email, string password, CancellationToken cancellationToken = default)
+            => RunSetupAsync(cancellationToken, "email", "add", email, password);
 
-        public Task<(bool ok, string output)> DelAsync(string email)
-            => RunSetupAsync("email", "del", "-y", email);
+        public Task<(bool ok, string output)> DelAsync(string email, CancellationToken cancellationToken = default)
+            => RunSetupAsync(cancellationToken, "email", "del", "-y", email);
 
-        private async Task<(bool ok, string output)> RunSetupAsync(params string[] setupArgs)
+        private async Task<(bool ok, string output)> RunSetupAsync(CancellationToken cancellationToken, params string[] setupArgs)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var psi = new ProcessStartInfo
             {
                 FileName = "docker",
@@ -44,7 +45,8 @@ namespace sblngavnav6.PPM
                 return (false, $"не удалось запустить docker: {ex.Message}");
             }
 
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(30));
             try
             {
                 await proc.WaitForExitAsync(cts.Token);
@@ -52,6 +54,7 @@ namespace sblngavnav6.PPM
             catch (OperationCanceledException)
             {
                 try { proc.Kill(true); } catch { }
+                cancellationToken.ThrowIfCancellationRequested();
                 return (false, "docker exec timeout (30s)");
             }
 

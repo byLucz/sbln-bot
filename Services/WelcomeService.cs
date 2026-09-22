@@ -4,16 +4,30 @@ using sblngavnav6.Data;
 
 namespace sblngavnav6.Services
 {
-    public class WelcomeService
+    public sealed class WelcomeService : IDisposable
     {
         private const string DefaultMessage = "Добро пожаловать!";
 
         private readonly DiscordSocketClient _client;
+        private bool _disposed;
 
         public WelcomeService(DiscordSocketClient client)
         {
             _client = client;
             _client.UserJoined += OnUserJoined;
+        }
+
+        public Task StopAsync()
+        {
+            Dispose();
+            return Task.CompletedTask;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _client.UserJoined -= OnUserJoined;
         }
 
         private async Task OnUserJoined(SocketGuildUser user)

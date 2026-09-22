@@ -40,11 +40,19 @@ namespace sblngavnav6.Data
                 private static bool Bool(string key, bool fallback)
                     => bool.TryParse(_config[key], out var v) ? v : fallback;
 
+                public static IEnumerable<(long left, ulong right)> IdMap(string key)
+                {
+                    foreach (var child in _config.GetSection(key).GetChildren())
+                        if (long.TryParse(child.Key, out var l) && ulong.TryParse(child.Value, out var r))
+                            yield return (l, r);
+                }
+
                 public static readonly string token = Str("System:BotToken");
                 public static readonly string connectionString = Str("System:DbConnectionString");
                 public static readonly string pref1 = Str("System:Prefix1", "x ");
                 public static readonly string pref2 = Str("System:Prefix2", "х ");
                 public static readonly ulong slashScopeGuild = UL("System:SlashScopeGuild", 0);
+                public static readonly ulong slashDevGuild = UL("System:SlashDevGuild", 0);
                 public static readonly bool streamsEnabled = Bool("System:StreamsEnabled", true);
                 public static readonly bool ppmEnabled = Bool("System:PpmEnabled", true);
                 public static readonly ulong messageSourceChannelId = UL("System:MessageSourceChannelId", 0);
@@ -74,8 +82,6 @@ namespace sblngavnav6.Data
 
                 public static readonly string telegramToken = Str("Telegram:Token");
                 public static readonly ulong telegramDefaultGuild = UL("Telegram:DefaultGuild", 0);
-                public static readonly string telegramChatGuild = Str("Telegram:ChatGuild");
-                public static readonly string telegramUserLink = Str("Telegram:UserLink");
             }
 
             public static class BuiltIn

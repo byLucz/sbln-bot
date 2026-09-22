@@ -12,10 +12,11 @@ using sblngavnav6.Services;
 
 namespace sblngavnav6.TwitchService
 {
-    public class StreamMonoService : StreamMonoServiceBase
+    public class StreamMonoService : StreamMonoServiceBase, IDisposable
     {
         private readonly DiscordSocketClient _discord;
         private LiveStreamMonitorService _liveStreamMonitor;
+        private bool _disposed;
 
         private void LoadStreamOnlineState()
         {
@@ -35,8 +36,10 @@ namespace sblngavnav6.TwitchService
             TwitchApi = api;
         }
 
-        public async Task CreateStreamMonoAsync()
+        public async Task CreateStreamMonoAsync(CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            cancellationToken.ThrowIfCancellationRequested();
             if (_liveStreamMonitor != null)
                 return;
 
@@ -70,7 +73,7 @@ namespace sblngavnav6.TwitchService
 
             try
             {
-                StreamProfileImages = await GetProfImgUrlsAsync(StreamIdList);
+                StreamProfileImages = await GetProfImgUrlsAsync(StreamIdList, cancellationToken);
             }
             catch (TwitchLib.Api.Core.Exceptions.InternalServerErrorException ex)
             {
@@ -82,14 +85,15 @@ namespace sblngavnav6.TwitchService
                 }
 
                 await LoggingService.LogCriticalAsync("TTVLK", $"{ex.GetType().Name} - Попытка {CreationAttempts}: Ошибка в загрузке профилей, повторная попытка...");
-                await VerifyAndGetStreamIdAsync();
+                await VerifyAndGetStreamIdAsync(cancellationToken);
                 CreationAttempts++;
-                await CreateStreamMonoAsync();
+                await CreateStreamMonoAsync(cancellationToken);
                 return;
             }
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 _liveStreamMonitor = new LiveStreamMonitorService(TwitchApi, UpdInt, 100);
                 _liveStreamMonitor.OnServiceTick += OnServiceTickEvent;
                 _liveStreamMonitor.OnChannelsSet += OnChannelsSetEvent;
@@ -105,6 +109,7 @@ namespace sblngavnav6.TwitchService
                 _liveStreamMonitor.SetChannelsById(StreamIdList);
                 _liveStreamMonitor.Start();
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (ArgumentException e)
             {
                 await LoggingService.LogInformationAsync("TTVLK", $"Лист стримеров пуст: {e.Message}");
@@ -221,7 +226,7 @@ namespace sblngavnav6.TwitchService
             StreamModels.Add(twitchStream.UserId, streamModel);
         }
 
-        private async Task<Dictionary<string, string>> GetProfImgUrlsAsync(List<string> streamIds)
+        private async Task<Dictionary<string, string>> GetProfImgUrlsAsync(List<string> streamIds, CancellationToken cancellationToken = default)
         {
             Dictionary<string, string> profImages = new();
 
@@ -229,7 +234,7 @@ namespace sblngavnav6.TwitchService
                 return profImages;
 
             GetUsersResponse usersResponse =
-                await TwitchApi.Helix.Users.GetUsersAsync(streamIds, null, TwitchApi.Settings.AccessToken);
+                await TwitchApi.Helix.Users.GetUsersAsync(streamIds, null, TwitchApi.Settings.AccessToken).WaitAsync(cancellationToken);
 
             foreach (var user in usersResponse.Users)
                 profImages[user.Id] = user.ProfileImageUrl;
@@ -277,7 +282,7 @@ namespace sblngavnav6.TwitchService
             return eb;
         }
 
-        public async Task VerifyAndGetStreamIdAsync()
+        public async Task VerifyAndGetStreamIdAsync(CancellationToken cancellationToken = default)
         {
             Dictionary<string, string> streamsidsDict = new();
             List<string> verifiedStreams = new();
@@ -285,12 +290,13 @@ namespace sblngavnav6.TwitchService
 
             foreach (string s in StreamList)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 tmp[0] = s;
 
                 try
                 {
                     GetUsersResponse response =
-                        await TwitchApi.Helix.Users.GetUsersAsync(logins: tmp, accessToken: TwitchApi.Settings.AccessToken);
+                        await TwitchApi.Helix.Users.GetUsersAsync(logins: tmp, accessToken: TwitchApi.Settings.AccessToken).WaitAsync(cancellationToken);
 
                     if (response.Users.Length > 0)
                     {
@@ -298,7 +304,7 @@ namespace sblngavnav6.TwitchService
                         verifiedStreams.Add(s);
                     }
 
-                    await Task.Delay(5000);
+                    await Task.Delay(5000, cancellationToken);
                 }
                 catch (TwitchLib.Api.Core.Exceptions.InternalServerErrorException ex)
                 {
@@ -306,12 +312,14 @@ namespace sblngavnav6.TwitchService
                 }
             }
 
-            await UpdateChannelsToMonitor();
+            await UpdateChannelsToMonitor(cancellationToken);
         }
 
-        public async Task UpdateChannelsToMonitor()
+        public async Task UpdateChannelsToMonitor(CancellationToken cancellationToken = default)
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             await GetStreamerIdDictAsync();
+            if (_liveStreamMonitor == null) return;
 
             try
             {
@@ -325,13 +333,13 @@ namespace sblngavnav6.TwitchService
                     _liveStreamMonitor.Stop();
             }
 
-            StreamProfileImages = await GetProfImgUrlsAsync(StreamIdList);
+            StreamProfileImages = await GetProfImgUrlsAsync(StreamIdList, cancellationToken);
             GetStreamerList();
         }
 
         public bool StopLsm()
         {
-            if (!_liveStreamMonitor.Enabled)
+            if (_disposed || _liveStreamMonitor?.Enabled != true)
                 return false;
 
             _liveStreamMonitor.Stop();
@@ -340,7 +348,7 @@ namespace sblngavnav6.TwitchService
 
         public bool StartLsm()
         {
-            if (_liveStreamMonitor.Enabled)
+            if (_disposed || _liveStreamMonitor == null || _liveStreamMonitor.Enabled)
                 return false;
 
             _liveStreamMonitor.Start();
@@ -349,7 +357,32 @@ namespace sblngavnav6.TwitchService
 
         public string StatusLsm()
         {
-            return _liveStreamMonitor.Enabled ? "Онлайн" : "Oффлайн";
+            return _liveStreamMonitor?.Enabled == true ? "Онлайн" : "Oффлайн";
+        }
+
+        public Task StopAsync()
+        {
+            Dispose();
+            return Task.CompletedTask;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            var monitor = _liveStreamMonitor;
+            if (monitor == null) return;
+
+            monitor.OnServiceTick -= OnServiceTickEvent;
+            monitor.OnChannelsSet -= OnChannelsSetEvent;
+            monitor.OnServiceStarted -= OnServiceStartedEvent;
+            monitor.OnServiceStopped -= OnServiceStoppedEvent;
+            monitor.OnStreamOnline -= OnStreamOnlineEventAsync;
+            monitor.OnStreamOffline -= OnStreamOfflineEvent;
+
+            if (monitor.Enabled)
+                monitor.Stop();
         }
     }
 }

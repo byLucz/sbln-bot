@@ -1,216 +1,247 @@
-﻿using Discord;
-using Discord.Interactions;
+using Discord;
 using Discord.WebSocket;
+using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Audio;
-using sblngavnav6.Commands;
 using sblngavnav6.Data;
-using sblngavnav6.GVR;
 using sblngavnav6.PPM;
 using sblngavnav6.Services;
-using sblngavnav6.TelegramExtensions;
 using sblngavnav6.TwitchService;
-using Victoria;
 using System.Runtime.InteropServices;
-using DiscordTelegramFrontier;
-using CommandService = Discord.Commands.CommandService;
 
 namespace sblngavnav6.Core
 {
-    public class DiscordService
+    public sealed class DiscordService
     {
-        public readonly DiscordSocketClient _client;
-        private readonly CommandHandler _commandHandler;
-        private readonly InteractionHandler _interHandler;
-        private readonly ServiceProvider _services;
-        private readonly AudioSevenService _audioService;
-        private readonly StreamMonoService _streams;
-        private readonly WelcomeService _welcomeService;
-        private readonly PpmService _ppm;
-        private readonly FrontierService _frontier;
+        private readonly object _readyLock = new();
+        private readonly TaskCompletionSource _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly string _readyFile = Environment.GetEnvironmentVariable("SBLN_READY_FILE");
+        private ServiceProvider _services;
+        private DiscordSocketClient _client;
+        private CommandHandler _commandHandler;
+        private InteractionHandler _interHandler;
+        private AudioSevenService _audioService;
+        private StreamMonoService _streams;
+        private PpmService _ppm;
+        private FrontierService _frontier;
+        private WelcomeService _welcome;
+        private bool _started;
+        private int _running;
 
-        public DiscordService()
+        public async Task RunAsync(CancellationToken cancellationToken = default)
         {
-            _services = ConfigureServices();
+            if (Interlocked.Exchange(ref _running, 1) != 0)
+                throw new InvalidOperationException("DiscordService уже запущен");
 
-            _client = _services.GetRequiredService<DiscordSocketClient>();
-            _commandHandler = _services.GetRequiredService<CommandHandler>();
-            _audioService = _services.GetRequiredService<AudioSevenService>();
-            _streams = _services.GetRequiredService<StreamMonoService>();
-            _interHandler = _services.GetRequiredService<InteractionHandler>();
-            _welcomeService = _services.GetRequiredService<WelcomeService>();
-            _ppm = _services.GetRequiredService<PpmService>();
-            _frontier = _services.GetRequiredService<FrontierService>();
-
-            SubscribeDiscordEvents();
-        }
-
-        public async Task InitializeAsync()
-        {
-            string token = Global.Vars.Cfg.token;
-            var readyFile = Environment.GetEnvironmentVariable("SBLN_READY_FILE");
-            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            var started = false;
-            void SetReady(bool value)
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            void Cancel()
             {
-                if (string.IsNullOrWhiteSpace(readyFile)) return;
-                if (value) File.WriteAllText(readyFile, "ready");
-                else File.Delete(readyFile);
+                try { stopping.Cancel(); }
+                catch (ObjectDisposedException) { }
+                catch (AggregateException ex) { Console.Error.WriteLine($"Ошибка отмены фоновых задач: {ex}"); }
             }
-            SetReady(false);
-            _client.Ready += () =>
+            void OnCancelKeyPress(object sender, ConsoleCancelEventArgs args)
             {
-                ready.TrySetResult();
-                if (started) SetReady(true);
-                return Task.CompletedTask;
-            };
-            _client.Disconnected += _ => { SetReady(false); return Task.CompletedTask; };
-            foreach (var path in new[] { Global.Vars.Cfg.messagesFilePath, Global.Vars.Cfg.booksJsonPath })
-                if (!string.IsNullOrWhiteSpace(path)) Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-
-            if (!DataBase.CanConnect())
-            {
-                Environment.ExitCode = 1;
-                await LoggingService.LogCriticalAsync("db", "Старт без БД невозможен");
-                await _services.DisposeAsync();
-                return;
+                args.Cancel = true;
+                Cancel();
             }
+            void OnProcessExit(object sender, EventArgs args) => Cancel();
 
-            await _commandHandler.InitializeAsync();
-            await _interHandler.InitializeAsync();
-            if (Global.Vars.Cfg.streamsEnabled) DataBase.DownloadStreamers();
-            if (Global.Vars.Cfg.streamsEnabled)
-                _client.Ready += _streams.CreateStreamMonoAsync;
-
-            await _client.LoginAsync(TokenType.Bot, token);
-            await _client.StartAsync();
-
-            await ready.Task.WaitAsync(TimeSpan.FromSeconds(90));
-
-            try { await DataBase.ApplyLastStatusAsync(_client); } catch (Exception ex) { await LoggingService.LogErrorAsync("db", "ApplyLastStatus fail", ex); }
-
-            await _ppm.StartSweeperAsync();
-            await _frontier.StartAsync();
-            started = true;
-            SetReady(_client.ConnectionState == ConnectionState.Connected);
-
-            using var cts = new CancellationTokenSource();
             using var sigterm = OperatingSystem.IsWindows() ? null : PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
             {
                 context.Cancel = true;
-                cts.Cancel();
+                Cancel();
             });
-
-            Console.CancelKeyPress += (_, e) =>
-            {
-                e.Cancel = true;
-                cts.Cancel();
-            };
-
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { cts.Cancel(); } catch { } };
+            Console.CancelKeyPress += OnCancelKeyPress;
+            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
 
             try
             {
-                await Task.Delay(-1, cts.Token);
-            }
-            catch (TaskCanceledException) { }
+                SetReady(false);
+                foreach (var path in new[] { Global.Vars.Cfg.messagesFilePath, Global.Vars.Cfg.booksJsonPath })
+                    if (!string.IsNullOrWhiteSpace(path))
+                        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
 
-            started = false;
-            SetReady(false);
-            await ShutdownAsync().WaitAsync(TimeSpan.FromSeconds(20));
+                if (!DataBase.CanConnect())
+                    throw new InvalidOperationException("Старт без БД невозможен");
+
+                stopping.Token.ThrowIfCancellationRequested();
+                _services = new ServiceCollection().AddBotServices().BuildServiceProvider();
+                _client = _services.GetRequiredService<DiscordSocketClient>();
+                _client.Log += LogAsync;
+                _client.Ready += OnReadyAsync;
+                _client.Disconnected += OnDisconnectedAsync;
+
+                _commandHandler = _services.GetRequiredService<CommandHandler>();
+                _interHandler = _services.GetRequiredService<InteractionHandler>();
+                _audioService = _services.GetRequiredService<AudioSevenService>();
+                _welcome = _services.GetRequiredService<WelcomeService>();
+                _ppm = _services.GetRequiredService<PpmService>();
+                _frontier = _services.GetRequiredService<FrontierService>();
+
+                await _commandHandler.InitializeAsync();
+                await _interHandler.InitializeAsync();
+                if (Global.Vars.Cfg.streamsEnabled)
+                {
+                    DataBase.DownloadStreamers();
+                    _streams = _services.GetRequiredService<StreamMonoService>();
+                }
+
+                stopping.Token.ThrowIfCancellationRequested();
+                await _client.LoginAsync(TokenType.Bot, Global.Vars.Cfg.token);
+                await _client.StartAsync();
+                await _ready.Task.WaitAsync(TimeSpan.FromSeconds(90), stopping.Token);
+
+                try { await DataBase.ApplyLastStatusAsync(_client); }
+                catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось восстановить статус", ex); }
+
+                stopping.Token.ThrowIfCancellationRequested();
+                if (_streams != null)
+                {
+                    try { await _streams.CreateStreamMonoAsync(stopping.Token); }
+                    catch (OperationCanceledException) when (stopping.IsCancellationRequested) { throw; }
+                    catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось запустить Twitch-монитор", ex); }
+                }
+
+                _audioService.StartCleanup(stopping.Token);
+                await _ppm.StartSweeperAsync(stopping.Token);
+                await _frontier.StartAsync();
+
+                lock (_readyLock)
+                {
+                    _started = true;
+                    SetReady(_client.ConnectionState == ConnectionState.Connected);
+                }
+                await Task.Delay(Timeout.Infinite, stopping.Token);
+            }
+            catch (OperationCanceledException) when (stopping.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                Environment.ExitCode = 1;
+                await LoggingService.LogErrorAsync("EXSRV", "Ошибка запуска или работы бота", ex);
+            }
+            finally
+            {
+                try
+                {
+                    Cancel();
+                    lock (_readyLock)
+                    {
+                        _started = false;
+                        SetReady(false);
+                    }
+                    await ShutdownAsync();
+                }
+                finally
+                {
+                    Console.CancelKeyPress -= OnCancelKeyPress;
+                    AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+                }
+            }
         }
 
         private async Task ShutdownAsync()
         {
-            await LoggingService.LogInformationAsync("EXSRV", "Завершение работы...");
-
-            foreach (var guildId in _audioService.GetActiveGuildIds().ToArray())
+            try
             {
-                try { await _audioService.ForceLeaveAsync(guildId); } catch { }
+                await ShutdownStepAsync("Лог завершения", () => LoggingService.LogInformationAsync("EXSRV", "Завершение работы..."));
+
+                if (_client != null)
+                {
+                    _client.Ready -= OnReadyAsync;
+                    _client.Disconnected -= OnDisconnectedAsync;
+                }
+
+                foreach (var (name, stop) in BuildShutdownSequence())
+                    await ShutdownStepAsync(name, stop);
+
+                if (_client != null)
+                    _client.Log -= LogAsync;
             }
-
-            try { await _client.LogoutAsync(); } catch { }
-            try { await _client.StopAsync(); } catch { }
-            try { await _services.DisposeAsync(); } catch { }
-        }
-
-        private void SubscribeDiscordEvents()
-        {
-            _client.Log += LogAsync;
-        }
-
-        private Task LogAsync(LogMessage log)
-        {
-            if (log.Exception?.StackTrace?.Contains("Victoria.LavaNode") == true)
-                return Task.CompletedTask;
-
-            return LoggingService.LogDiscordAsync(log);
-        }
-
-        private ServiceProvider ConfigureServices()
-        {
-            var config = new DiscordSocketConfig
+            finally
             {
-                GatewayIntents = GatewayIntents.All
-            };
-
-            return new ServiceCollection()
-                .AddLogging()
-                .AddSingleton(new DiscordSocketClient(config))
-                .AddSingleton<CommandService>()
-                .AddSingleton<CommandHandler>()
-                .AddSingleton<InteractionService>(provider =>
-                {
-                    var client = provider.GetRequiredService<DiscordSocketClient>();
-                    var interactionConfig = new InteractionServiceConfig
-                    {
-                        DefaultRunMode = RunMode.Async,
-                        LogLevel = LogSeverity.Info
-                    };
-                    return new InteractionService(client, interactionConfig);
-                })
-                .AddSingleton<InteractionHandler>()
-                .AddSingleton<AudioSevenService>()
-                .AddSingleton<GVRMessagesHandler>()
-                .AddSingleton<WeatherHelp>()
-                .AddSingleton<StreamMonoService>()
-                .AddSingleton<WelcomeService>()
-                .AddSingleton<PaginatorService>()
-                .AddSingleton<PgApiService>()
-                .AddSingleton<PpmServerService>()
-                .AddSingleton<PpmService>()
-                .AddSingleton<GuildConfig>(_ => new GuildConfig())
-                .AddSingleton<GovorConfig>(_ => new GovorConfig())
-                .AddTelegramExtensions()
-                .AddFrontier(o =>
-                {
-                    o.TelegramToken = Global.Vars.Cfg.telegramToken;
-                    o.DefaultGuildId = Global.Vars.Cfg.telegramDefaultGuild;
-                    foreach (var (left, right) in ParsePairs(Global.Vars.Cfg.telegramChatGuild))
-                        o.Chat(left, right);
-                    foreach (var (left, right) in ParsePairs(Global.Vars.Cfg.telegramUserLink))
-                        o.User(left, right);
-                })
-                .AddLavaNode(x =>
-                {
-                    x.SelfDeaf = true;
-                    x.Hostname = Global.Vars.Cfg.lavaHost;
-                    x.Port = Global.Vars.Cfg.lavaPort;
-                    x.Authorization = Global.Vars.Cfg.lavaPass;
-                })
-                .AddHttpClient()
-                .BuildServiceProvider();
-        }
-
-        private static IEnumerable<(long left, ulong right)> ParsePairs(string raw)
-        {
-            if (string.IsNullOrWhiteSpace(raw)) yield break;
-            foreach (var part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            {
-                var kv = part.Split(':', 2);
-                if (kv.Length == 2 && long.TryParse(kv[0], out var l) && ulong.TryParse(kv[1], out var r))
-                    yield return (l, r);
+                if (_services != null)
+                    await ShutdownStepAsync("Контейнер сервисов", () => _services.DisposeAsync().AsTask());
             }
         }
+
+        private IEnumerable<(string Name, Func<Task> Stop)> BuildShutdownSequence()
+        {
+            if (_frontier != null)
+                yield return ("Telegram", _frontier.StopAsync);
+
+            if (_interHandler != null)
+                yield return ("Interactions", _interHandler.StopAsync);
+
+            if (_commandHandler != null)
+                yield return ("CommandHandler", _commandHandler.StopAsync);
+
+            if (_streams != null)
+                yield return ("Twitch", _streams.StopAsync);
+
+            if (_welcome != null)
+                yield return ("Welcome", _welcome.StopAsync);
+
+            if (_ppm != null)
+                yield return ("PPM", _ppm.StopAsync);
+
+            if (_audioService != null)
+            {
+                yield return ("AudioSeven cleanup", _audioService.StopCleanupAsync);
+
+                foreach (var guildId in _audioService.GetActiveGuildIds().ToArray())
+                {
+                    var id = guildId;
+                    yield return ($"AudioSeven {id}", () => _audioService.ForceLeaveAsync(id));
+                }
+            }
+
+            if (_client != null)
+            {
+                yield return ("Discord Stop", _client.StopAsync);
+                yield return ("Discord Logout", _client.LogoutAsync);
+            }
+        }
+
+        private static async Task ShutdownStepAsync(string name, Func<Task> stop)
+        {
+            try { await stop(); }
+            catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", $"Ошибка завершения: {name}", ex); }
+        }
+
+        private Task OnReadyAsync()
+        {
+            lock (_readyLock)
+            {
+                _ready.TrySetResult();
+                if (_started) SetReady(true);
+            }
+            return Task.CompletedTask;
+        }
+
+        private Task OnDisconnectedAsync(Exception exception)
+        {
+            lock (_readyLock) SetReady(false);
+            return Task.CompletedTask;
+        }
+
+        private void SetReady(bool value)
+        {
+            if (string.IsNullOrWhiteSpace(_readyFile)) return;
+            try
+            {
+                if (value) File.WriteAllText(_readyFile, "ready");
+                else File.Delete(_readyFile);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Console.Error.WriteLine($"Не удалось обновить readiness-файл: {ex.Message}");
+            }
+        }
+
+        private static Task LogAsync(LogMessage log)
+            => log.Exception?.StackTrace?.Contains("Victoria.LavaNode") == true
+                ? Task.CompletedTask
+                : LoggingService.LogDiscordAsync(log);
     }
 }
