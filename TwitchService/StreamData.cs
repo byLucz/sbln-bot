@@ -37,6 +37,5 @@ namespace sblngavnav6.TwitchService
 
         protected List<SocketTextChannel> StreamNotifChannels { get; set; }
 
-        protected string NotifChannelName { get; set; }
     }
 }

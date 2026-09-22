@@ -16,7 +16,7 @@ namespace sblngavnav6.Commands
 
             IUserMessage message = null;
 
-            foreach (var rot in Global.Vars.BuiltIn.rotatingNumbers)
+            foreach (var rot in SheffCommands.rotatingNumbers)
             {
                 var embedAnim = new EmbedBuilder()
                     .WithColor(Color.Orange)
@@ -40,7 +40,7 @@ namespace sblngavnav6.Commands
 
             var finalEmbed = new EmbedBuilder()
                 .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты 🎲 {DataBase.GetRandomEmote()}\n{Global.Vars.BuiltIn.greetList[greetings]}")
+                .WithDescription($"сегодня ты 🎲 {DataBase.GetRandomEmote()}\n{SheffCommands.greetList[greetings]}")
                 .WithFooter("sbln шефчик🧑‍🍳")
                 .Build();
 
@@ -66,6 +66,19 @@ namespace sblngavnav6.Commands
     }
     public class SheffCommands : ModuleBase<SocketCommandContext>
     {
+        internal static readonly string[] greetList =
+        {
+            "поздравляю!",
+            "соболезную!"
+        };
+
+        internal static readonly string[] rotatingNumbers =
+        {
+            "<:slyrHead:779359060225949757>",
+            "<:slyr2head:779363223467458571>",
+            "<:slyrGdetvoyasamoironiya:800698140021358612>"
+        };
+
         [Frontier]
         [Command("пососи")]
         public async Task BossesGloryCommand()
@@ -89,7 +102,7 @@ namespace sblngavnav6.Commands
         {
             IUserMessage message = null;
 
-            foreach (var rot in Global.Vars.BuiltIn.rotatingNumbers)
+            foreach (var rot in rotatingNumbers)
             {
                 var embedAnim = new EmbedBuilder()
                     .WithColor(Color.Orange)
@@ -113,7 +126,7 @@ namespace sblngavnav6.Commands
 
             var finalEmbed = new EmbedBuilder()
                 .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты 🎲 {DataBase.GetRandomEmote()}\n{Global.Vars.BuiltIn.greetList[greetings]}")
+                .WithDescription($"сегодня ты 🎲 {DataBase.GetRandomEmote()}\n{greetList[greetings]}")
                 .WithFooter("sbln шефчик🧑‍🍳")
                 .Build();
 

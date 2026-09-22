@@ -81,22 +81,8 @@ namespace sblngavnav6.Data
             public static class BuiltIn
             {
                 public const int streamUpdTime = 600;
-                public const string streamNotifCh = "twitch";
                 public static int govorUpdTime = 86400000;
                 public static string govorVM = "выкл";
-
-                public static readonly string[] greetList =
-                {
-                    "поздравляю!",
-                    "соболезную!"
-                };
-
-                public static readonly string[] rotatingNumbers =
-                {
-                    "<:slyrHead:779359060225949757>",
-                    "<:slyr2head:779363223467458571>",
-                    "<:slyrGdetvoyasamoironiya:800698140021358612>"
-                };
             }
         }
     }
