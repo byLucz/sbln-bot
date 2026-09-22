@@ -1,8 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Text;
-using DiscordTelegramFrontier;
-using sblngavnav6.TelegramExtensions.Services;
+using sblngavnav6.TelegramExtensions.Core;
 using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Types;
@@ -11,52 +10,41 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace sblngavnav6.TelegramExtensions.Modules;
 
-public sealed class ChatInfoModule : IFrontierModule
+public sealed class ChatInfoModule : TelegramModuleBase
 {
     private static readonly CultureInfo Russian = CultureInfo.GetCultureInfo("ru-RU");
 
-    public async Task<bool> HandleAsync(FrontierUpdateContext context)
+    [Command("инфа")]
+    [Alias("информация")]
+    [RequireGroup]
+    public async Task InfoAsync()
     {
-        if (context.AddressedToAnotherBot) return false;
-        var message = context.Update.Message ?? context.Update.ChannelPost;
-        if (message is null) return false;
-        if (context.Command is not ("информация" or "инфа") &&
-            !string.Equals(message.Text?.Trim(), "инфа", StringComparison.OrdinalIgnoreCase)) return false;
-
-        if (message.Chat.Type == ChatType.Private)
-        {
-            await context.ReplyAsync("напиши инфа в группе или канале, тут смотреть нечего 😋");
-            return true;
-        }
-
         ChatFullInfo chat;
         try
         {
-            chat = await context.Bot.GetChat(message.Chat.Id, context.CancellationToken);
+            chat = await Context.Bot.GetChat(Context.Chat.Id, Context.CancellationToken);
         }
         catch (ApiRequestException ex) when (ex.ErrorCode is 400 or 403)
         {
-            await context.ReplyAsync("не могу посмотреть инфу, проверь мой доступ к чату 😕");
-            return true;
+            await ReplyAsync("не могу посмотреть инфу, проверь мой доступ к чату 😕");
+            return;
         }
 
         int? memberCount = null;
         try
         {
-            memberCount = await context.Bot.GetChatMemberCount(chat.Id, context.CancellationToken);
+            memberCount = await Context.Bot.GetChatMemberCount(chat.Id, Context.CancellationToken);
         }
         catch (ApiRequestException ex) when (ex.ErrorCode is 400 or 403) { }
 
-        context.Items.TryGetValue(ChatStatisticsMiddleware.StatisticsKey, out var statistics);
         var username = chat.Username ?? chat.ActiveUsernames?.FirstOrDefault();
         var keyboard = string.IsNullOrWhiteSpace(username) ? null : new InlineKeyboardMarkup(
             InlineKeyboardButton.WithUrl(chat.Type == ChatType.Channel ? "🔗 Открыть канал" : "🔗 Открыть группу",
                 $"https://t.me/{Uri.EscapeDataString(username)}"));
-        await context.ReplyAsync(CreateText(chat, memberCount, statistics as ChatStatistics), ParseMode.Html, keyboard);
-        return true;
+        await ReplyAsync(CreateText(chat, memberCount), ParseMode.Html, keyboard);
     }
 
-    private static string CreateText(ChatFullInfo chat, int? memberCount, ChatStatistics? statistics)
+    private static string CreateText(ChatFullInfo chat, int? memberCount)
     {
         var type = chat.Type switch
         {
@@ -72,22 +60,9 @@ public sealed class ChatInfoModule : IFrontierModule
         text.AppendLine()
             .AppendLine("📅 <b>Основное</b>")
             .AppendLine($"Тип: {type}")
-            .AppendLine($"Создание: {statistics?.CreatedAtUtc?.ToString("dd.MM.yyyy HH:mm 'UTC'", Russian) ?? "нет данных"}")
             .Append(chat.Type == ChatType.Channel ? "Подписчиков: " : "Участников: ")
             .Append("<b>").Append(memberCount?.ToString("N0", Russian) ?? "нет данных").AppendLine("</b>")
-            .Append("ID: <code>").Append(chat.Id.ToString(CultureInfo.InvariantCulture)).AppendLine("</code>")
-            .AppendLine()
-            .AppendLine("💬 <b>Активность</b>");
-        if (statistics is null)
-        {
-            text.AppendLine("Счётчик пока недоступен 😕");
-        }
-        else
-        {
-            text.Append("Сообщений учтено: <b>").Append(statistics.ReceivedMessages.ToString("N0", Russian)).AppendLine("</b>")
-                .AppendLine($"С {statistics.ObservedSinceUtc.ToString("dd.MM.yyyy HH:mm", Russian)} UTC")
-                .AppendLine("<i>Считаю только то, что получаю, включая служебные. Удалённые не вычитаю.</i>");
-        }
+            .Append("ID: <code>").Append(chat.Id.ToString(CultureInfo.InvariantCulture)).AppendLine("</code>");
 
         text.AppendLine()
             .AppendLine("🛡️ <b>Прочее</b>")

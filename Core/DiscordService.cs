@@ -181,7 +181,7 @@ namespace sblngavnav6.Core
                 .AddSingleton<PpmService>()
                 .AddSingleton<GuildConfig>(_ => new GuildConfig())
                 .AddSingleton<GovorConfig>(_ => new GovorConfig())
-                .AddTelegramExtensions(Environment.GetEnvironmentVariable("SBLN_DATA_DIR"))
+                .AddTelegramExtensions()
                 .AddFrontier(o =>
                 {
                     o.TelegramToken = Global.Vars.Cfg.telegramToken;
