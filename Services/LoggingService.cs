@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using System.Security;
 using System.Text;
 
 namespace sblngavnav6.Services
@@ -12,6 +13,7 @@ namespace sblngavnav6.Services
 
         private const int LogRetentionDays = 14;
         private static DateTime _lastCleanupDateUtc = DateTime.MinValue;
+        private static bool _fileSinkFailureReported;
 
         public static async Task LogAsync(
             string src,
@@ -19,40 +21,53 @@ namespace sblngavnav6.Services
             string? message,
             Exception? exception = null)
         {
-            var now = DateTime.Now;
-            var utcNow = DateTime.UtcNow;
-
-            var consoleTimeStamp = now.ToString("dd.MM | HH:mm:ss");
-            var fileTimeStamp = now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-
-            var severityText = GetSeverityString(severity);
-            var severityColor = GetConsoleColor(severity);
-            var sourceText = SourceToString(src);
-
-            var consoleMessage = BuildConsoleMessage(message, exception, src, severity);
-            var fileMessage = BuildFileMessage(message, exception, src, severity);
-
-            var generalLogPath = GetGeneralLogFilePath(now);
-            var errorLogPath = GetErrorLogFilePath(now);
-
-            await _sync.WaitAsync();
+            var acquired = false;
             try
             {
-                Directory.CreateDirectory(_logsDirectory);
+                var now = DateTime.Now;
+                var utcNow = DateTime.UtcNow;
+
+                var consoleTimeStamp = now.ToString("dd.MM | HH:mm:ss");
+                var fileTimeStamp = now.ToString("yyyy-MM-dd HH:mm:ss.fff");
+
+                var severityText = GetSeverityString(severity);
+                var severityColor = GetConsoleColor(severity);
+                var sourceText = SourceToString(src);
+
+                var consoleMessage = BuildConsoleMessage(message, exception, src, severity);
+                var fileMessage = BuildFileMessage(message, exception, src, severity);
+
+                var generalLogPath = GetGeneralLogFilePath(now);
+                var errorLogPath = GetErrorLogFilePath(now);
+                var isError = severity is LogSeverity.Error or LogSeverity.Critical || exception != null;
+
+                await _sync.WaitAsync();
+                acquired = true;
 
                 WriteToConsole(severityText, severityColor, consoleTimeStamp, sourceText, consoleMessage);
-                await WriteToFileAsync(generalLogPath, severityText, fileTimeStamp, sourceText, fileMessage);
 
-                if (severity == LogSeverity.Error || severity == LogSeverity.Critical || exception != null)
+                if (EnsureLogsDirectory())
                 {
-                    await WriteToFileAsync(errorLogPath, severityText, fileTimeStamp, sourceText, fileMessage);
-                }
+                    await WriteToFileAsync(generalLogPath, severityText, fileTimeStamp, sourceText, fileMessage);
 
-                await CleanupOldLogsIfNeededAsync(utcNow);
+                    if (isError)
+                        await WriteToFileAsync(errorLogPath, severityText, fileTimeStamp, sourceText, fileMessage);
+
+                    CleanupOldLogsIfNeeded(utcNow);
+                }
+            }
+            catch (Exception ex)
+            {
+                WriteFallback(src, severity, message, exception, ex);
             }
             finally
             {
-                _sync.Release();
+                if (acquired)
+                {
+                    try { _sync.Release(); }
+                    catch (ObjectDisposedException) { }
+                    catch (SemaphoreFullException) { }
+                }
             }
         }
 
@@ -87,22 +102,58 @@ namespace sblngavnav6.Services
             string sourceText,
             string message)
         {
-            var previousColor = Console.ForegroundColor;
+            var previousColor = ConsoleColor.Gray;
+            var colorAvailable = TryGetConsoleColor(out previousColor);
 
             try
             {
-                Console.ForegroundColor = severityColor;
+                if (colorAvailable) TrySetConsoleColor(severityColor);
                 Console.Write(severityText);
 
-                Console.ForegroundColor = ConsoleColor.Gray;
+                if (colorAvailable) TrySetConsoleColor(ConsoleColor.Gray);
                 Console.Write($" {timeStamp} [{sourceText}] ");
 
-                Console.ForegroundColor = ConsoleColor.White;
+                if (colorAvailable) TrySetConsoleColor(ConsoleColor.White);
                 Console.WriteLine(message);
             }
+            catch (IOException) { }
             finally
             {
-                Console.ForegroundColor = previousColor;
+                if (colorAvailable) TrySetConsoleColor(previousColor);
+            }
+        }
+
+        private static bool TryGetConsoleColor(out ConsoleColor color)
+        {
+            try
+            {
+                color = Console.ForegroundColor;
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or SecurityException)
+            {
+                color = ConsoleColor.Gray;
+                return false;
+            }
+        }
+
+        private static void TrySetConsoleColor(ConsoleColor color)
+        {
+            try { Console.ForegroundColor = color; }
+            catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or SecurityException) { }
+        }
+
+        private static bool EnsureLogsDirectory()
+        {
+            try
+            {
+                Directory.CreateDirectory(_logsDirectory);
+                return true;
+            }
+            catch (Exception ex) when (IsFileSinkFailure(ex))
+            {
+                ReportFileSinkFailure(_logsDirectory, ex);
+                return false;
             }
         }
 
@@ -114,7 +165,49 @@ namespace sblngavnav6.Services
             string message)
         {
             var line = $"{severityText} {timeStamp} [{sourceText}] {message}{Environment.NewLine}";
-            await File.AppendAllTextAsync(filePath, line, Encoding.UTF8);
+
+            try
+            {
+                await File.AppendAllTextAsync(filePath, line, Encoding.UTF8);
+                _fileSinkFailureReported = false;
+            }
+            catch (Exception ex) when (IsFileSinkFailure(ex))
+            {
+                ReportFileSinkFailure(filePath, ex);
+            }
+        }
+
+        private static bool IsFileSinkFailure(Exception ex)
+            => ex is IOException
+                or UnauthorizedAccessException
+                or SecurityException
+                or NotSupportedException
+                or ArgumentException;
+
+        private static void ReportFileSinkFailure(string path, Exception ex)
+        {
+            if (_fileSinkFailureReported) return;
+            _fileSinkFailureReported = true;
+
+            try { Console.Error.WriteLine($"Лог-файл недоступен ({path}): {ex.GetType().Name}: {ex.Message}"); }
+            catch (IOException) { }
+        }
+
+        private static void WriteFallback(
+            string? src,
+            LogSeverity severity,
+            string? message,
+            Exception? exception,
+            Exception loggingFailure)
+        {
+            try
+            {
+                Console.Error.WriteLine(
+                    $"[{GetSeverityString(severity)}] [{src ?? "(null)"}] {message}" +
+                    $"{(exception != null ? Environment.NewLine + exception : string.Empty)}");
+                Console.Error.WriteLine($"Сбой логгера: {loggingFailure}");
+            }
+            catch (IOException) { }
         }
 
         private static string GetGeneralLogFilePath(DateTime now)
@@ -127,17 +220,27 @@ namespace sblngavnav6.Services
             return Path.Combine(_logsDirectory, $"errors-{now:yyyy-MM-dd}.log");
         }
 
-        private static async Task CleanupOldLogsIfNeededAsync(DateTime utcNow)
+        private static void CleanupOldLogsIfNeeded(DateTime utcNow)
         {
             if (_lastCleanupDateUtc.Date == utcNow.Date)
                 return;
 
             _lastCleanupDateUtc = utcNow.Date;
 
-            if (!Directory.Exists(_logsDirectory))
-                return;
+            string[] files;
+            try
+            {
+                if (!Directory.Exists(_logsDirectory))
+                    return;
 
-            var files = Directory.GetFiles(_logsDirectory, "*.log", SearchOption.TopDirectoryOnly);
+                files = Directory.GetFiles(_logsDirectory, "*.log", SearchOption.TopDirectoryOnly);
+            }
+            catch (Exception ex) when (IsFileSinkFailure(ex))
+            {
+                ReportFileSinkFailure(_logsDirectory, ex);
+                return;
+            }
+
             var threshold = utcNow.AddDays(-LogRetentionDays);
 
             foreach (var file in files)
@@ -146,14 +249,10 @@ namespace sblngavnav6.Services
                 {
                     var fileInfo = new FileInfo(file);
                     if (fileInfo.LastWriteTimeUtc < threshold)
-                    {
                         fileInfo.Delete();
-                    }
                 }
-                catch {}
+                catch (Exception ex) when (IsFileSinkFailure(ex)) { }
             }
-
-            await Task.CompletedTask;
         }
 
         private static string BuildConsoleMessage(
