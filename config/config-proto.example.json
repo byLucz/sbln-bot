@@ -7,7 +7,7 @@
     "SlashScopeGuild": "",
     "SlashDevGuild": "0",
     "StreamsEnabled": "false",
-    "PpmEnabled": "false",
+    "PpmEnabled": "true",
     "MessageSourceChannelId": "0",
     "MessagesFilePath": "/opt/sbln/data/messages.csv"
   },
