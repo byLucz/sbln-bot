@@ -12,7 +12,7 @@ using Timer = System.Timers.Timer;
 
 namespace sblngavnav6.Core
 {
-    public sealed class CommandHandler : IDisposable
+    public sealed class CommandHandler : IDisposable, IAsyncDisposable
     {
         private readonly DiscordSocketClient _client;
         private readonly CommandService _commands;
@@ -21,19 +21,21 @@ namespace sblngavnav6.Core
         private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
         private readonly GVRMessagesHandler _GVRMessagesHandler;
         private readonly SemaphoreSlim _lavaReconnectLock = new(1, 1);
-        private static readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
+        private readonly CancellationTokenSource _stopping = new();
+        private readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
+        private readonly object _timerLock = new();
 
-        private static readonly Timer _timer = new(Global.Vars.BuiltIn.govorUpdTime)
+        private readonly Timer _timer = new(Global.Vars.BuiltIn.govorUpdTime)
         {
             AutoReset = true,
             Enabled = false
         };
 
-        private static readonly object _timerLock = new();
+        private Task _timerTask = Task.CompletedTask;
 
         private bool _eventsHooked;
         private bool _timerStarted;
-        private int _timerBusy;
+        private bool _stopped;
         private DateTime _lastLavaReconnectAttemptUtc = DateTime.MinValue;
         private bool _disposed;
         private sealed record MailReplyRoute(ulong SenderId, ulong RecipientId, bool IsAnonymous, DateTimeOffset CreatedAt);
@@ -51,33 +53,34 @@ namespace sblngavnav6.Core
             HookEvents();
         }
 
-        public static void UpdateTimerInterval(double amount)
+        public void UpdateTimerInterval(double amount)
         {
             if (amount <= 0)
                 throw new ArgumentOutOfRangeException(nameof(amount), "Интервал должен быть больше 0");
 
             lock (_timerLock)
             {
+                if (_disposed) return;
                 _timer.Interval = amount;
                 Global.Vars.BuiltIn.govorUpdTime = (int)amount;
             }
         }
 
-        public static double GetTimerInterval()
+        public double GetTimerInterval()
         {
             lock (_timerLock)
             {
-                return _timer.Interval;
+                return _disposed ? Global.Vars.BuiltIn.govorUpdTime : _timer.Interval;
             }
         }
 
-        public static void RegisterMailReplyRoute(ulong sentMessageId, ulong senderId, ulong recipientId, bool isAnonymous)
+        public void RegisterMailReplyRoute(ulong sentMessageId, ulong senderId, ulong recipientId, bool isAnonymous)
         {
             var cutoff = DateTimeOffset.UtcNow.AddHours(-10);
-            foreach (var key in _mailReplyRoutes.Keys.ToArray())
+            foreach (var pair in _mailReplyRoutes.ToArray())
             {
-                if (_mailReplyRoutes.TryGetValue(key, out var r) && r.CreatedAt < cutoff)
-                    _mailReplyRoutes.TryRemove(key, out _);
+                if (pair.Value.CreatedAt < cutoff)
+                    _mailReplyRoutes.TryRemove(pair);
             }
 
             _mailReplyRoutes[sentMessageId] = new MailReplyRoute(senderId, recipientId, isAnonymous, DateTimeOffset.UtcNow);
@@ -208,7 +211,7 @@ namespace sblngavnav6.Core
 
             await LoggingService.LogInformationAsync(
                 "XMAIL",
-                $"REPLY anonymous={route.IsAnonymous} sender={route.SenderId} recipient={route.RecipientId} replier={message.Author.Id} contentLength={message.Content} attachments={message.Attachments.Count}");
+                $"REPLY anonymous={route.IsAnonymous} sender={route.SenderId} recipient={route.RecipientId} replier={message.Author.Id} contentLength={message.Content.Length} attachments={message.Attachments.Count}");
 
             return true;
         }
@@ -222,18 +225,20 @@ namespace sblngavnav6.Core
             string reply = result.Error switch
             {
                 CommandError.BadArgCount =>
-                    $"🔴 Не хватает аргументов\n{BuildUsageHint(cmd)}",
+                    $"🔴 Не хватает аргументов{BuildUsageHint(cmd)}",
 
                 CommandError.ParseFailed =>
-                    $"🔴 Неверный тип аргумента\n{BuildUsageHint(cmd)}",
+                    $"🔴 Неверный тип аргумента{BuildUsageHint(cmd)}",
 
                 CommandError.ObjectNotFound =>
-                    $"🔴 Не найден объект: {result.ErrorReason}\n{BuildUsageHint(cmd)}",
+                    $"🔴 Не найден объект: {result.ErrorReason}{BuildUsageHint(cmd)}",
 
                 CommandError.UnmetPrecondition when !string.IsNullOrWhiteSpace(result.ErrorReason) =>
                     result.ErrorReason,
 
-                _ => $"🔴ОШИБКА🔴 - {result.ErrorReason}"
+                _ => string.IsNullOrWhiteSpace(result.ErrorReason)
+                    ? $"🔴ОШИБКА🔴 - {result.Error}"
+                    : $"🔴ОШИБКА🔴 - {result.ErrorReason}"
             };
 
             await context.Channel.SendMessageAsync(reply);
@@ -253,7 +258,7 @@ namespace sblngavnav6.Core
 
             var prefix = Global.Vars.Cfg.pref1;
             var aliases = cmd.Aliases.Count > 0 ? $" ({string.Join("/", cmd.Aliases)})" : "";
-            return $"Использование: `{prefix} {cmd.Name}{aliases} {paramStr}`";
+            return $"\nИспользование: `{prefix} {cmd.Name}{aliases} {paramStr}`";
         }
 
         private static string FriendlyTypeName(Type t)
@@ -287,32 +292,36 @@ namespace sblngavnav6.Core
 
         private async Task StartTimerAsync()
         {
-            if (_timerStarted)
-                return;
-
-            _timerStarted = true;
-            _timer.Start();
+            lock (_timerLock)
+            {
+                if (_timerStarted || _stopped) return;
+                _timerStarted = true;
+                _timer.Start();
+            }
 
             await LoggingService.LogInformationAsync("GOVOR", "Таймер сбора сообщений запущен");
         }
 
         private async Task EnsureLavaNodeConnectedAsync(string reason)
         {
+            if (_stopping.IsCancellationRequested) return;
             if (_lavaNode.IsConnected)
             {
                 await LoggingService.LogInformationAsync("VI-KA", $"Lavalink подключен / State=({reason})");
                 return;
             }
 
-            await _lavaReconnectLock.WaitAsync();
+            try { await _lavaReconnectLock.WaitAsync(_stopping.Token); }
+            catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { return; }
             try
             {
+                _stopping.Token.ThrowIfCancellationRequested();
                 if (_lavaNode.IsConnected)
                     return;
 
                 var elapsed = DateTime.UtcNow - _lastLavaReconnectAttemptUtc;
                 if (elapsed < TimeSpan.FromSeconds(5))
-                    await Task.Delay(TimeSpan.FromSeconds(5) - elapsed);
+                    await Task.Delay(TimeSpan.FromSeconds(5) - elapsed, _stopping.Token);
 
                 _lastLavaReconnectAttemptUtc = DateTime.UtcNow;
 
@@ -324,6 +333,7 @@ namespace sblngavnav6.Core
                 else
                     await LoggingService.LogCriticalAsync("VI-KA", "Не подключен к Lavalink");
             }
+            catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { }
             catch (Exception ex)
             {
                 await LoggingService.LogCriticalAsync("VI-KA", $"Ошибка переподключения Lavalink / State=({reason})", ex);
@@ -336,23 +346,14 @@ namespace sblngavnav6.Core
 
         private void OnTimedEvent(object? sender, System.Timers.ElapsedEventArgs e)
         {
-            if (Interlocked.Exchange(ref _timerBusy, 1) == 1)
-                return;
-
-            _ = Task.Run(async () =>
+            lock (_timerLock)
             {
-                try
-                {
-                    await ProcessTimedEventAsync();
-                }
-                finally
-                {
-                    Interlocked.Exchange(ref _timerBusy, 0);
-                }
-            });
+                if (_stopped || !_timerTask.IsCompleted) return;
+                _timerTask = Task.Run(() => ProcessTimedEventAsync(_stopping.Token));
+            }
         }
 
-        private async Task ProcessTimedEventAsync()
+        private async Task ProcessTimedEventAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -365,23 +366,25 @@ namespace sblngavnav6.Core
 
                 var cursorPath = Global.Vars.Cfg.messagesFilePath + ".cursor";
                 ulong? oldestId = null;
-                if (File.Exists(cursorPath) && ulong.TryParse(await File.ReadAllTextAsync(cursorPath), out var parsed))
+                if (File.Exists(cursorPath) && ulong.TryParse(await File.ReadAllTextAsync(cursorPath, cancellationToken), out var parsed))
                     oldestId = parsed;
 
                 var existingLines = File.Exists(Global.Vars.Cfg.messagesFilePath)
-                    ? new HashSet<string>((await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath))
+                    ? new HashSet<string>((await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath, cancellationToken))
                         .Select(l => l.Trim()).Where(l => l.Length > 0))
                     : new HashSet<string>();
 
                 var newLines = new List<string>();
                 ulong? newOldestId = null;
 
+                var options = new RequestOptions { CancelToken = cancellationToken };
                 var query = oldestId.HasValue
-                    ? channel.GetMessagesAsync(oldestId.Value, Direction.Before, (int)_govorilka.Collection).Flatten()
-                    : channel.GetMessagesAsync((int)_govorilka.Collection).Flatten();
+                    ? channel.GetMessagesAsync(oldestId.Value, Direction.Before, (int)_govorilka.Collection, options: options).Flatten()
+                    : channel.GetMessagesAsync((int)_govorilka.Collection, options: options).Flatten();
 
                 await foreach (var message in query)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     if (message == null ||
                         string.IsNullOrWhiteSpace(message.Content) ||
                         message.Author.IsBot ||
@@ -418,28 +421,50 @@ namespace sblngavnav6.Core
                 if (newOldestId.HasValue)
                     await File.WriteAllTextAsync(cursorPath, newOldestId.Value.ToString());
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("GOVOR", $"Произошла ошибка в обработке таймера: {ex.Message}");
+                await LoggingService.LogCriticalAsync("GOVOR", "Произошла ошибка в обработке таймера", ex);
             }
+        }
+
+        public async Task StopAsync()
+        {
+            if (_disposed) return;
+            Task timerTask;
+            lock (_timerLock)
+            {
+                _stopped = true;
+                _timer.Stop();
+                UnhookEvents();
+                timerTask = _timerTask;
+            }
+            await _stopping.CancelAsync();
+            await timerTask;
+            await _lavaReconnectLock.WaitAsync();
+            _lavaReconnectLock.Release();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try { await StopAsync(); }
+            finally { Dispose(); }
         }
 
         public void Dispose()
         {
-            if (_disposed)
-                return;
-
+            if (_disposed) return;
             _disposed = true;
-
-            try
+            lock (_timerLock)
             {
+                _stopped = true;
                 _timer.Stop();
+                _timer.Dispose();
                 UnhookEvents();
-                _lavaReconnectLock.Dispose();
             }
-            catch
-            {
-            }
+            _stopping.Cancel();
+            _stopping.Dispose();
+            _lavaReconnectLock.Dispose();
         }
     }
 }
