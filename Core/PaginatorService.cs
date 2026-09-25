@@ -105,6 +105,29 @@ namespace sblngavnav6.Core
             _views.TryUpdate(messageId, view with { Page = page, At = DateTimeOffset.UtcNow }, view);
         }
 
+        public MessageComponent BuildControls(Action<ComponentBuilder, int> controls, int page = 0)
+            => Build(page, total: 1, controls);
+
+        public async Task ModifyAsync(
+            IUserMessage message,
+            Embed embed = null,
+            Action<ComponentBuilder, int> controls = null,
+            bool clearControls = false)
+        {
+            ArgumentNullException.ThrowIfNull(message);
+
+            await message.ModifyAsync(properties =>
+            {
+                if (embed is not null)
+                    properties.Embed = embed;
+
+                if (clearControls)
+                    properties.Components = BuildControls(null);
+                else if (controls is not null)
+                    properties.Components = BuildControls(controls);
+            });
+        }
+
         private static MessageComponent Build(int page, int total, Action<ComponentBuilder, int> decorate)
         {
             var b = new ComponentBuilder();

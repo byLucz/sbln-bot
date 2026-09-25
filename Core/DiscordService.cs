@@ -2,7 +2,7 @@ using Discord;
 using Discord.WebSocket;
 using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
-using sblngavnav6.Audio;
+using sblngavnav6.Audio8;
 using sblngavnav6.Data;
 using sblngavnav6.PPM;
 using sblngavnav6.Services;
@@ -20,7 +20,7 @@ namespace sblngavnav6.Core
         private DiscordSocketClient _client;
         private CommandHandler _commandHandler;
         private InteractionHandler _interHandler;
-        private AudioSevenService _audioService;
+        private Audio8Runtime _audio;
         private StreamMonoService _streams;
         private PpmService _ppm;
         private FrontierService _frontier;
@@ -75,7 +75,7 @@ namespace sblngavnav6.Core
 
                 _commandHandler = _services.GetRequiredService<CommandHandler>();
                 _interHandler = _services.GetRequiredService<InteractionHandler>();
-                _audioService = _services.GetRequiredService<AudioSevenService>();
+                _audio = _services.GetRequiredService<Audio8Runtime>();
                 _welcome = _services.GetRequiredService<WelcomeService>();
                 _ppm = _services.GetRequiredService<PpmService>();
                 _pager = _services.GetRequiredService<PaginatorService>();
@@ -105,7 +105,7 @@ namespace sblngavnav6.Core
                     catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось запустить Twitch-монитор", ex); }
                 }
 
-                _audioService.StartCleanup(stopping.Token);
+                await _audio.StartAsync(stopping.Token);
                 _pager.StartCleanup(stopping.Token);
                 await _ppm.StartSweeperAsync(stopping.Token);
                 await _frontier.StartAsync();
@@ -191,16 +191,8 @@ namespace sblngavnav6.Core
             if (_pager != null)
                 yield return ("Paginator cleanup", _pager.StopCleanupAsync);
 
-            if (_audioService != null)
-            {
-                yield return ("AudioSeven cleanup", _audioService.StopCleanupAsync);
-
-                foreach (var guildId in _audioService.GetActiveGuildIds().ToArray())
-                {
-                    var id = guildId;
-                    yield return ($"AudioSeven {id}", () => _audioService.ForceLeaveAsync(id));
-                }
-            }
+            if (_audio != null)
+                yield return ("Audio8", _audio.StopAsync);
 
             if (_client != null)
             {
@@ -246,8 +238,6 @@ namespace sblngavnav6.Core
         }
 
         private static Task LogAsync(LogMessage log)
-            => log.Exception?.StackTrace?.Contains("Victoria.LavaNode") == true
-                ? Task.CompletedTask
-                : LoggingService.LogDiscordAsync(log);
+            => LoggingService.LogDiscordAsync(log);
     }
 }

@@ -2,7 +2,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
-using sblngavnav6.Audio;
+using sblngavnav6.Audio8;
 using sblngavnav6.Commands;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
@@ -10,7 +10,6 @@ using sblngavnav6.PPM;
 using sblngavnav6.Services;
 using sblngavnav6.TelegramExtensions;
 using sblngavnav6.TwitchService;
-using Victoria;
 using DiscordTelegramFrontier;
 using CommandService = Discord.Commands.CommandService;
 
@@ -41,7 +40,6 @@ namespace sblngavnav6.Core
                     return new InteractionService(client, interactionConfig);
                 })
                 .AddSingleton<InteractionHandler>()
-                .AddSingleton<AudioSevenService>()
                 .AddSingleton<GVRMessagesHandler>()
                 .AddSingleton<WeatherHelp>()
                 .AddSingleton<StreamMonoService>()
@@ -61,13 +59,7 @@ namespace sblngavnav6.Core
                     foreach (var (left, right) in Global.Vars.Cfg.IdMap("Telegram:UserLink"))
                         o.User(left, right);
                 })
-                .AddLavaNode(x =>
-                {
-                    x.SelfDeaf = true;
-                    x.Hostname = Global.Vars.Cfg.lavaHost;
-                    x.Port = Global.Vars.Cfg.lavaPort;
-                    x.Authorization = Global.Vars.Cfg.lavaPass;
-                })
+                .AddAudio8()
                 .AddHttpClient();
         }
     }

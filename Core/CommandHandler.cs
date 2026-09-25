@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
@@ -7,7 +7,6 @@ using sblngavnav6.GVR;
 using sblngavnav6.Services;
 using System.Collections.Concurrent;
 using System.Reflection;
-using Victoria;
 using Timer = System.Timers.Timer;
 
 namespace sblngavnav6.Core
@@ -18,9 +17,7 @@ namespace sblngavnav6.Core
         private readonly CommandService _commands;
         private readonly IServiceProvider _services;
         private readonly GovorConfig _govorilka;
-        private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
         private readonly GVRMessagesHandler _GVRMessagesHandler;
-        private readonly SemaphoreSlim _lavaReconnectLock = new(1, 1);
         private readonly CancellationTokenSource _stopping = new();
         private readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
         private readonly object _timerLock = new();
@@ -36,7 +33,6 @@ namespace sblngavnav6.Core
         private bool _eventsHooked;
         private bool _timerStarted;
         private bool _stopped;
-        private DateTime _lastLavaReconnectAttemptUtc = DateTime.MinValue;
         private bool _disposed;
         private sealed record MailReplyRoute(ulong SenderId, ulong RecipientId, bool IsAnonymous, DateTimeOffset CreatedAt);
 
@@ -47,7 +43,6 @@ namespace sblngavnav6.Core
 
             _commands = services.GetRequiredService<CommandService>();
             _client = services.GetRequiredService<DiscordSocketClient>();
-            _lavaNode = services.GetRequiredService<LavaNode<LavaPlayer<LavaTrack>, LavaTrack>>();
             _GVRMessagesHandler = services.GetRequiredService<GVRMessagesHandler>();
 
             HookEvents();
@@ -102,7 +97,6 @@ namespace sblngavnav6.Core
             _commands.Log += LogAsync;
             _client.MessageReceived += HandleMessageAsync;
             _client.Ready += OnClientReadyAsync;
-            _client.Connected += OnClientConnectedAsync;
             _timer.Elapsed += OnTimedEvent;
 
             _eventsHooked = true;
@@ -117,7 +111,6 @@ namespace sblngavnav6.Core
             _commands.Log -= LogAsync;
             _client.MessageReceived -= HandleMessageAsync;
             _client.Ready -= OnClientReadyAsync;
-            _client.Connected -= OnClientConnectedAsync;
             _timer.Elapsed -= OnTimedEvent;
 
             _eventsHooked = false;
@@ -279,16 +272,7 @@ namespace sblngavnav6.Core
             return LoggingService.LogInformationAsync("COMND", log.ToString());
         }
 
-        private async Task OnClientReadyAsync()
-        {
-            await StartTimerAsync();
-            await EnsureLavaNodeConnectedAsync("ready");
-        }
-
-        private Task OnClientConnectedAsync()
-        {
-            return EnsureLavaNodeConnectedAsync("connected");
-        }
+        private Task OnClientReadyAsync() => StartTimerAsync();
 
         private async Task StartTimerAsync()
         {
@@ -302,47 +286,6 @@ namespace sblngavnav6.Core
             await LoggingService.LogInformationAsync("GOVOR", "Таймер сбора сообщений запущен");
         }
 
-        private async Task EnsureLavaNodeConnectedAsync(string reason)
-        {
-            if (_stopping.IsCancellationRequested) return;
-            if (_lavaNode.IsConnected)
-            {
-                await LoggingService.LogInformationAsync("VI-KA", $"Lavalink подключен / State=({reason})");
-                return;
-            }
-
-            try { await _lavaReconnectLock.WaitAsync(_stopping.Token); }
-            catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { return; }
-            try
-            {
-                _stopping.Token.ThrowIfCancellationRequested();
-                if (_lavaNode.IsConnected)
-                    return;
-
-                var elapsed = DateTime.UtcNow - _lastLavaReconnectAttemptUtc;
-                if (elapsed < TimeSpan.FromSeconds(5))
-                    await Task.Delay(TimeSpan.FromSeconds(5) - elapsed, _stopping.Token);
-
-                _lastLavaReconnectAttemptUtc = DateTime.UtcNow;
-
-                await LoggingService.LogInformationAsync("VI-KA", $"Переподключение Lavalink / State=({reason})...");
-                await _services.UseLavaNodeAsync();
-
-                if (_lavaNode.IsConnected)
-                    await LoggingService.LogInformationAsync("VI-KA", "Подключен к Lavalink");
-                else
-                    await LoggingService.LogCriticalAsync("VI-KA", "Не подключен к Lavalink");
-            }
-            catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { }
-            catch (Exception ex)
-            {
-                await LoggingService.LogCriticalAsync("VI-KA", $"Ошибка переподключения Lavalink / State=({reason})", ex);
-            }
-            finally
-            {
-                _lavaReconnectLock.Release();
-            }
-        }
 
         private void OnTimedEvent(object? sender, System.Timers.ElapsedEventArgs e)
         {
@@ -441,8 +384,6 @@ namespace sblngavnav6.Core
             }
             await _stopping.CancelAsync();
             await timerTask;
-            await _lavaReconnectLock.WaitAsync();
-            _lavaReconnectLock.Release();
         }
 
         public async ValueTask DisposeAsync()
@@ -464,7 +405,6 @@ namespace sblngavnav6.Core
             }
             _stopping.Cancel();
             _stopping.Dispose();
-            _lavaReconnectLock.Dispose();
         }
     }
 }

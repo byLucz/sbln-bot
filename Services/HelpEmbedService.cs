@@ -1,4 +1,4 @@
-﻿using Discord;
+using Discord;
 
 public class HelpEmbedService
 {
@@ -71,7 +71,7 @@ public class HelpEmbedService
     private static Embed BuildMusicHelp()
     {
         var botzname = new EmbedAuthorBuilder()
-            .WithName("Музыкальные команды AudioSeven")
+            .WithName("Музыкальные команды Audio8")
             .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
         var copy = new EmbedFooterBuilder()
             .WithText("dev by lucz@lois.media🏃")
@@ -84,13 +84,17 @@ public class HelpEmbedService
         var m5 = new EmbedFieldBuilder().WithName("останови|стоп").WithValue("остановить и очистить плейлист");
         var m7 = new EmbedFieldBuilder().WithName("пауза|пз").WithValue("приостановить");
         var m8 = new EmbedFieldBuilder().WithName("продолжи|прод").WithValue("продолжить");
-        var m9 = new EmbedFieldBuilder().WithName("басс|бс").WithValue("басс буст");
-        var m10 = new EmbedFieldBuilder().WithName("громкость|гр").WithValue("управление громкостью (0-500)");
+        var m9 = new EmbedFieldBuilder().WithName("басс|бс").WithValue("басс буст, ступени 1-4 (1 — выкл)");
+        var m10 = new EmbedFieldBuilder().WithName("громкость|гр").WithValue("громкость 1-500, без аргумента — текущая");
         var m11 = new EmbedFieldBuilder().WithName("перейти|пр").WithValue("перейти по таймингу");
         var m12 = new EmbedFieldBuilder().WithName("залупа|луп").WithValue("вкл/выкл повтор");
-        var m13 = new EmbedFieldBuilder().WithName("сброс|сб").WithValue("сбросить настройки плеера");
+        var m13 = new EmbedFieldBuilder().WithName("назад|пред").WithValue("вернуть предыдущий трек");
         var m14 = new EmbedFieldBuilder().WithName("озвучь|ттс").WithValue("произнести текст в голосовом канале");
         var m15 = new EmbedFieldBuilder().WithName("лавастат").WithValue("статус музыкального lavalink");
+        var m16 = new EmbedFieldBuilder().WithName("фильтр|эффект").WithValue("найткор | слоу | 8д | караоке | вибрато | выкл");
+        var m17 = new EmbedFieldBuilder().WithName("источник|сорс").WithValue("дефолтный источник поиска");
+        var m18 = new EmbedFieldBuilder().WithName("перемешай|шафл").WithValue("перемешать очередь");
+        var m19 = new EmbedFieldBuilder().WithName("голосование|голос").WithValue("выбор из вариантов с озвучкой");
 
         var embed = new EmbedBuilder()
             .WithAuthor(botzname)
@@ -109,7 +113,11 @@ public class HelpEmbedService
             .AddField(m12)
             .AddField(m13)
             .AddField(m14)
-            .AddField(m15);
+            .AddField(m15)
+            .AddField(m16)
+            .AddField(m17)
+            .AddField(m18)
+            .AddField(m19);
 
         return embed.Build();
     }
