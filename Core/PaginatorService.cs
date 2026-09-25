@@ -5,8 +5,11 @@ using System.Collections.Concurrent;
 
 namespace sblngavnav6.Core
 {
-    public sealed class PaginatorService
+    public sealed class PaginatorService : IDisposable, IAsyncDisposable
     {
+        private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5);
+        private static readonly TimeSpan ViewLifetime = TimeSpan.FromMinutes(15);
+
         private readonly record struct View(
             IReadOnlyList<Embed> Pages,
             int Page,
@@ -15,20 +18,39 @@ namespace sblngavnav6.Core
             Action<ComponentBuilder, int> Decorate);
 
         private readonly ConcurrentDictionary<ulong, View> _views = new();
+        private CancellationTokenSource _cleanupCts;
+        private Task _cleanupTask = Task.CompletedTask;
+        private bool _disposed;
 
-        public PaginatorService()
+        public void StartCleanup(CancellationToken cancellationToken = default)
         {
-            _ = Task.Run(async () =>
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_cleanupCts != null) return;
+            _cleanupCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _cleanupTask = CleanupLoopAsync(_cleanupCts.Token);
+        }
+
+        public async Task StopCleanupAsync()
+        {
+            if (_disposed || _cleanupCts == null) return;
+            await _cleanupCts.CancelAsync();
+            await _cleanupTask;
+        }
+
+        private async Task CleanupLoopAsync(CancellationToken cancellationToken)
+        {
+            using var timer = new PeriodicTimer(CleanupInterval);
+            try
             {
-                while (true)
+                while (await timer.WaitForNextTickAsync(cancellationToken))
                 {
-                    await Task.Delay(TimeSpan.FromMinutes(5));
-                    var cut = DateTimeOffset.UtcNow - TimeSpan.FromMinutes(15);
+                    var cut = DateTimeOffset.UtcNow - ViewLifetime;
                     foreach (var kv in _views.ToArray())
                         if (kv.Value.At < cut)
-                            _views.TryRemove(kv.Key, out _);
+                            _views.TryRemove(kv);
                 }
-            });
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         }
 
         public async Task<IUserMessage> SendAsync(
@@ -38,7 +60,11 @@ namespace sblngavnav6.Core
             int startPage = 0,
             Action<ComponentBuilder, int> decorate = null)
         {
-            var single = pages.Count <= 1;
+            ArgumentNullException.ThrowIfNull(pages);
+            if (pages.Count == 0)
+                throw new ArgumentException("Нечего показывать: список страниц пуст", nameof(pages));
+
+            var single = pages.Count == 1;
             startPage = Math.Clamp(startPage, 0, pages.Count - 1);
 
             var components = (single && decorate == null) ? null : Build(startPage, pages.Count, decorate);
@@ -51,24 +77,32 @@ namespace sblngavnav6.Core
             return msg;
         }
 
-        public bool TryFlip(ulong messageId, ulong userId, int target, out Embed embed, out MessageComponent components)
+        public FlipOutcome TryPrepareFlip(ulong messageId, ulong userId, int target, out Embed embed, out MessageComponent components)
         {
             embed = null;
             components = null;
 
-            if (!_views.TryGetValue(messageId, out var v))
-                return false;
-            if (v.OwnerId is ulong owner && owner != userId)
-                return false;
+            if (!_views.TryGetValue(messageId, out var view))
+                return FlipOutcome.Expired;
+            if (view.OwnerId is ulong owner && owner != userId)
+                return FlipOutcome.Forbidden;
 
-            target = Math.Clamp(target, 0, v.Pages.Count - 1);
-            if (target == v.Page)
-                return false;
+            target = Math.Clamp(target, 0, view.Pages.Count - 1);
+            if (target == view.Page)
+                return FlipOutcome.Unchanged;
 
-            _views[messageId] = v with { Page = target, At = DateTimeOffset.UtcNow };
-            embed = v.Pages[target];
-            components = Build(target, v.Pages.Count, v.Decorate);
-            return true;
+            embed = view.Pages[target];
+            components = Build(target, view.Pages.Count, view.Decorate);
+            return FlipOutcome.Ready;
+        }
+
+        public void CommitFlip(ulong messageId, int page)
+        {
+            if (!_views.TryGetValue(messageId, out var view))
+                return;
+
+            page = Math.Clamp(page, 0, view.Pages.Count - 1);
+            _views.TryUpdate(messageId, view with { Page = page, At = DateTimeOffset.UtcNow }, view);
         }
 
         private static MessageComponent Build(int page, int total, Action<ComponentBuilder, int> decorate)
@@ -79,6 +113,32 @@ namespace sblngavnav6.Core
                 b.AddPager(page, total, "pgr_page", 0);
             return b.Build();
         }
+
+        public async ValueTask DisposeAsync()
+        {
+            try { await StopCleanupAsync(); }
+            finally { Dispose(); }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+
+            try { _cleanupCts?.Cancel(); }
+            catch (ObjectDisposedException) { }
+            _cleanupCts?.Dispose();
+
+            _views.Clear();
+        }
+    }
+
+    public enum FlipOutcome
+    {
+        Ready,
+        Unchanged,
+        Forbidden,
+        Expired
     }
 
     public class PaginatorInteractions : InteractionModuleBase<SocketInteractionContext>
@@ -96,14 +156,32 @@ namespace sblngavnav6.Core
             if (Context.Interaction is not SocketMessageComponent c)
                 return;
 
-            if (int.TryParse(pageRaw, out var page) &&
-                _pager.TryFlip(c.Message.Id, Context.User.Id, page, out var embed, out var components))
-            {
-                await c.UpdateAsync(m => { m.Embed = embed; m.Components = components; });
-            }
-            else
+            if (!int.TryParse(pageRaw, out var page))
             {
                 await c.DeferAsync();
+                return;
+            }
+
+            var outcome = _pager.TryPrepareFlip(c.Message.Id, Context.User.Id, page, out var embed, out var components);
+
+            switch (outcome)
+            {
+                case FlipOutcome.Ready:
+                    await c.UpdateAsync(m => { m.Embed = embed; m.Components = components; });
+                    _pager.CommitFlip(c.Message.Id, page);
+                    break;
+
+                case FlipOutcome.Expired:
+                    await c.RespondAsync("Панель устарела, вызови команду заново", ephemeral: true);
+                    break;
+
+                case FlipOutcome.Forbidden:
+                    await c.RespondAsync("Это не твоя панель", ephemeral: true);
+                    break;
+
+                default:
+                    await c.DeferAsync();
+                    break;
             }
         }
     }

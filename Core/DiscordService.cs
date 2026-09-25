@@ -25,6 +25,7 @@ namespace sblngavnav6.Core
         private PpmService _ppm;
         private FrontierService _frontier;
         private WelcomeService _welcome;
+        private PaginatorService _pager;
         private bool _started;
         private int _running;
 
@@ -77,6 +78,7 @@ namespace sblngavnav6.Core
                 _audioService = _services.GetRequiredService<AudioSevenService>();
                 _welcome = _services.GetRequiredService<WelcomeService>();
                 _ppm = _services.GetRequiredService<PpmService>();
+                _pager = _services.GetRequiredService<PaginatorService>();
                 _frontier = _services.GetRequiredService<FrontierService>();
 
                 await _commandHandler.InitializeAsync();
@@ -104,6 +106,7 @@ namespace sblngavnav6.Core
                 }
 
                 _audioService.StartCleanup(stopping.Token);
+                _pager.StartCleanup(stopping.Token);
                 await _ppm.StartSweeperAsync(stopping.Token);
                 await _frontier.StartAsync();
 
@@ -184,6 +187,9 @@ namespace sblngavnav6.Core
 
             if (_ppm != null)
                 yield return ("PPM", _ppm.StopAsync);
+
+            if (_pager != null)
+                yield return ("Paginator cleanup", _pager.StopCleanupAsync);
 
             if (_audioService != null)
             {
