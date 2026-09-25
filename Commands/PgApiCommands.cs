@@ -65,7 +65,7 @@ public static class PgApiPanelBuilder
     }
 }
 
-[RequireSuperuser]
+[RequirePgOperator]
 public class PgApiCommands : ModuleBase<SocketCommandContext>
 {
     private readonly PgApiService _pgApi;
@@ -79,12 +79,12 @@ public class PgApiCommands : ModuleBase<SocketCommandContext>
     public async Task PgApiPanel()
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();
-        string health = await _pgApi.HealthAsync();
+        var health = await _pgApi.HealthAsync();
         sw.Stop();
 
-        string pingInfo = health.StartsWith("❌")
-            ? "недоступен"
-            : $"{sw.ElapsedMilliseconds} мс";
+        string pingInfo = health.Ok
+            ? $"{sw.ElapsedMilliseconds} мс"
+            : health.Status is null ? "недоступен" : $"{health.Error} за {sw.ElapsedMilliseconds} мс";
 
         await Context.Channel.SendMessageAsync(
             embed: PgApiPanelBuilder.BuildPanelEmbed(0, pingInfo),
@@ -101,7 +101,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         _pgApi = pgApi;
     }
 
-    [RequireSuperuserInteraction]
+    [RequirePgOperatorInteraction]
     [ComponentInteraction("pgapi_page:*")]
     public async Task ChangePage(string pageRaw)
     {
@@ -118,13 +118,13 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         });
     }
 
-    [RequireSuperuserInteraction]
+    [RequirePgOperatorInteraction]
     [ComponentInteraction("pgapi_action:*")]
     public async Task ExecuteAction(string action)
     {
         await DeferAsync(ephemeral: true);
 
-        string result;
+        PgApiResult result;
         try
         {
             result = action switch
@@ -139,17 +139,21 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
                 "restart_bot" => await _pgApi.RestartServiceAsync(PgApiPanelBuilder.DefaultProject, "bot"),
                 "stop"        => await _pgApi.StopProjectAsync(PgApiPanelBuilder.DefaultProject),
                 "start"       => await _pgApi.StartProjectAsync(PgApiPanelBuilder.DefaultProject),
-                _             => "❌ Неизвестное действие"
+                _             => PgApiResult.Fail("Неизвестное действие")
             };
         }
         catch (Exception ex)
         {
-            result = $"❌ Ошибка запроса: {ex.Message}";
+            await LoggingService.LogErrorAsync("PGAPI", $"Ошибка действия {action}", ex);
+            result = PgApiResult.Fail($"Ошибка запроса: {ex.Message}");
         }
 
-        bool success = !result.StartsWith("❌");
         await FollowupAsync(
-            embed: EmbedHandler.Simple($"pgAPI/{action}", result, success ? Color.DarkBlue : Color.DarkRed, "sbln x lois.media"),
+            embed: EmbedHandler.Simple(
+                $"pgAPI/{action}",
+                result.ToDisplay(),
+                result.Ok ? Color.DarkBlue : Color.DarkRed,
+                "sbln x lois.media"),
             ephemeral: true);
     }
 }

@@ -11,7 +11,6 @@ namespace sblngavnav6.GVR
     public class GVRService : ModuleBase<SocketCommandContext>
     {
         private readonly GovorConfig _govorilka;
-        private readonly GuildConfig _guild;
         private readonly CommandHandler _commandHandler;
 
         private const string GovorAuthor = "sbln говорилка🎤📓";
@@ -21,10 +20,9 @@ namespace sblngavnav6.GVR
         private static EmbedBuilder GovorEmbed() =>
             EmbedHandler.FieldsEmbed(GovorAuthor, Color.LighterGrey, GovorFooter);
 
-        public GVRService(GovorConfig govor, GuildConfig guild, CommandHandler commandHandler)
+        public GVRService(GovorConfig govor, CommandHandler commandHandler)
         {
             _govorilka = govor;
-            _guild = guild;
             _commandHandler = commandHandler;
         }
 
@@ -53,13 +51,13 @@ namespace sblngavnav6.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task GetSettings()
         {
-            var chips = _govorilka.Rand ? "рандом" : _guild.govorilka.Count.ToString();
+            var chips = _govorilka.Rand ? "рандом" : _govorilka.Count.ToString();
             var embed = EmbedHandler.FieldsEmbed("sbln говорилка/настройки🎤📓", Color.LighterGrey, GovorFooter, authorIconUrl: GovorIcon)
-                .AddField("шаг рандома", $"**{_guild.govorilka.Step}**", true)
+                .AddField("шаг рандома", $"**{_govorilka.Step}**", true)
                 .AddField("число слов", $"**{chips}**", true)
-                .AddField("шанс ролла", $"**{_guild.govorilka.Chance}%**", true)
-                .AddField("кол-во сообщений подзагрузки", $"**{_guild.govorilka.Collection}**", true)
-                .AddField("время подзагрузки", $"**{Global.Vars.BuiltIn.govorUpdTime / 1000} сек**", true)
+                .AddField("шанс ролла", $"**{_govorilka.Chance}%**", true)
+                .AddField("кол-во сообщений подзагрузки", $"**{_govorilka.Collection}**", true)
+                .AddField("время подзагрузки", $"**{_commandHandler.GetTimerInterval() / 1000:0.##} сек**", true)
                 .AddField("режим вербальной нищеты", $"**{Global.Vars.BuiltIn.govorVM}**", true)
                 .Build();
             await ReplyAsync(embed: embed);
@@ -251,7 +249,9 @@ namespace sblngavnav6.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task Reset()
         {
-            _guild.govorilka = new GovorConfig();
+            _govorilka.Reset();
+            _commandHandler.UpdateTimerInterval(Global.Vars.BuiltIn.govorUpdTimeDefault);
+            Global.Vars.BuiltIn.govorVM = Global.Vars.BuiltIn.govorVMDefault;
             await ReplyAsync(embed: GovorEmbed()
                 .AddField("сбросил все на дефолтыч", true)
                 .Build());

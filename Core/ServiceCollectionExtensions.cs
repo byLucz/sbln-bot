@@ -50,7 +50,6 @@ namespace sblngavnav6.Core
                 .AddSingleton<PgApiService>()
                 .AddSingleton<PpmServerService>()
                 .AddSingleton<PpmService>()
-                .AddSingleton<GuildConfig>()
                 .AddSingleton<GovorConfig>()
                 .AddTelegramExtensions()
                 .AddFrontier(o =>

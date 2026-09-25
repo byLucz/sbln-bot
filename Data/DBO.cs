@@ -642,14 +642,17 @@ namespace sblngavnav6.Data
             cmd.ExecuteNonQuery();
         }
 
+        private const string PpmLiveFilter = "deleted = 0 AND (expires_at IS NULL OR expires_at > @now)";
+
         public static PpmMailbox GetActivePpmMailbox(string email)
         {
             using var conn = Db();
             const string sql =
                 @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
-                  FROM temp_mailboxes WHERE email = @e AND deleted = 0 LIMIT 1";
+                  FROM temp_mailboxes WHERE email = @e AND " + PpmLiveFilter + " LIMIT 1";
             using var cmd = new MySqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@e", email);
+            cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
             using var r = cmd.ExecuteReader();
             if (!r.Read())
                 return null;
@@ -661,9 +664,10 @@ namespace sblngavnav6.Data
             using var conn = Db();
             const string sql =
                 @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
-                  FROM temp_mailboxes WHERE id = @id AND deleted = 0 LIMIT 1";
+                  FROM temp_mailboxes WHERE id = @id AND " + PpmLiveFilter + " LIMIT 1";
             using var cmd = new MySqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
             using var r = cmd.ExecuteReader();
             if (!r.Read())
                 return null;
@@ -676,9 +680,10 @@ namespace sblngavnav6.Data
             using var conn = Db();
             const string sql =
                 @"SELECT id, email, password, owner_id, created_at, expires_at, is_permanent
-                  FROM temp_mailboxes WHERE owner_id = @o AND deleted = 0 ORDER BY id DESC";
+                  FROM temp_mailboxes WHERE owner_id = @o AND " + PpmLiveFilter + " ORDER BY id DESC";
             using var cmd = new MySqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@o", ownerId);
+            cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 list.Add(ReadPpmMailbox(r));

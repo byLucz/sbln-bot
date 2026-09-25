@@ -72,11 +72,47 @@ namespace sblngavnav6.Core
             try
             {
                 var ctx = new SocketInteractionContext(_client, socketInteraction);
-                await _interactions.ExecuteCommandAsync(ctx, _services);
+                var result = await _interactions.ExecuteCommandAsync(ctx, _services);
+
+                if (!result.IsSuccess && result.Error != InteractionCommandError.UnknownCommand)
+                    await ReportFailureAsync(socketInteraction, result);
             }
             catch (Exception ex)
             {
                 await LoggingService.LogCriticalAsync("Interactions", "Ошибка обработки interaction", ex);
+                await RespondSafeAsync(socketInteraction, "🔴 Внутренняя ошибка, попробуй позже");
+            }
+        }
+
+        private static async Task ReportFailureAsync(SocketInteraction interaction, IResult result)
+        {
+            var reply = result.Error switch
+            {
+                InteractionCommandError.UnmetPrecondition => $"🔴 {result.ErrorReason}",
+                InteractionCommandError.ConvertFailed => "🔴 Не удалось разобрать аргументы",
+                InteractionCommandError.BadArgs => "🔴 Неверные аргументы",
+                _ => $"🔴 Не выполнено: {result.ErrorReason}"
+            };
+
+            await LoggingService.LogWarningAsync(
+                "Interactions",
+                $"Interaction не выполнен. Type={interaction.Type}, User={interaction.User?.Id}, Error={result.Error}, Reason={result.ErrorReason}");
+
+            await RespondSafeAsync(interaction, reply);
+        }
+
+        private static async Task RespondSafeAsync(SocketInteraction interaction, string message)
+        {
+            try
+            {
+                if (interaction.HasResponded)
+                    await interaction.FollowupAsync(message, ephemeral: true);
+                else
+                    await interaction.RespondAsync(message, ephemeral: true);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync("Interactions", $"Не удалось ответить на interaction: {ex.Message}");
             }
         }
 

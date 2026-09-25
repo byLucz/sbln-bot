@@ -1,9 +1,5 @@
-﻿namespace sblngavnav6.GVR
+namespace sblngavnav6.GVR
 {
-    public class GuildConfig
-    {
-        public GovorConfig govorilka { get; set; } = new GovorConfig();
-    }
     public class GovorConfig
     {
         public uint Step { get; set; } = 1;
@@ -13,5 +9,15 @@
         public bool Rand { get; set; } = true;
         public bool VerbalAbuseBySheff { get; set; } = false;
 
+        public void Reset()
+        {
+            var defaults = new GovorConfig();
+            Step = defaults.Step;
+            Count = defaults.Count;
+            Collection = defaults.Collection;
+            Chance = defaults.Chance;
+            Rand = defaults.Rand;
+            VerbalAbuseBySheff = defaults.VerbalAbuseBySheff;
+        }
     }
 }

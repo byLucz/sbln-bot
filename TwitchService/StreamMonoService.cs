@@ -49,25 +49,10 @@ namespace sblngavnav6.TwitchService
 
             await LoggingService.LogInformationAsync("TTVLK", $"Кол-во серверов: {_discord.Guilds.Count}");
 
-            List<SocketTextChannel> notifChannels = new();
+            var notifChannels = ResolveNotifChannels();
 
-            foreach (var guild in _discord.Guilds)
-            {
-                await LoggingService.LogInformationAsync("TTVLK", $"Сервера: {guild.Name}");
-
-                var gs = DataBase.GetGuildSettings(guild.Id);
-                if (gs.StreamNotifChannelId is not ulong chId)
-                    continue;
-
-                var channel = guild.GetTextChannel(chId);
-                if (channel != null)
-                    notifChannels.Add(channel);
-            }
-
-            StreamNotifChannels = notifChannels;
-
-            if (StreamNotifChannels.Any())
-                await LoggingService.LogInformationAsync("TTVLK", $"Кол-во каналов оповещений: {StreamNotifChannels.Count}");
+            if (notifChannels.Count > 0)
+                await LoggingService.LogInformationAsync("TTVLK", $"Кол-во каналов оповещений: {notifChannels.Count}");
             else
                 await LoggingService.LogCriticalAsync("TTVLK", "Не найдено каналов оповещений");
 
@@ -91,35 +76,79 @@ namespace sblngavnav6.TwitchService
                 return;
             }
 
+            LiveStreamMonitorService monitor = null;
             try
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                _liveStreamMonitor = new LiveStreamMonitorService(TwitchApi, UpdInt, 100);
-                _liveStreamMonitor.OnServiceTick += OnServiceTickEvent;
-                _liveStreamMonitor.OnChannelsSet += OnChannelsSetEvent;
-                _liveStreamMonitor.OnServiceStarted += OnServiceStartedEvent;
-                _liveStreamMonitor.OnServiceStopped += OnServiceStoppedEvent;
-                _liveStreamMonitor.OnStreamOnline += OnStreamOnlineEventAsync;
-                _liveStreamMonitor.OnStreamOffline += OnStreamOfflineEvent;
 
-                if (StreamIdList == null || !StreamIdList.Any())
+                if (StreamIdList == null || StreamIdList.Count == 0)
                     throw new ArgumentException("StreamIdList пуст");
 
+                monitor = new LiveStreamMonitorService(TwitchApi, UpdInt, 100);
+                monitor.OnServiceTick += OnServiceTickEvent;
+                monitor.OnChannelsSet += OnChannelsSetEvent;
+                monitor.OnServiceStarted += OnServiceStartedEvent;
+                monitor.OnServiceStopped += OnServiceStoppedEvent;
+                monitor.OnStreamOnline += OnStreamOnlineEventAsync;
+                monitor.OnStreamOffline += OnStreamOfflineEvent;
+
                 LoadStreamOnlineState();
-                _liveStreamMonitor.SetChannelsById(StreamIdList);
-                _liveStreamMonitor.Start();
+                monitor.SetChannelsById(StreamIdList);
+                monitor.Start();
+
+                _liveStreamMonitor = monitor;
+                monitor = null;
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                DetachMonitor(monitor);
+                throw;
+            }
             catch (ArgumentException e)
             {
+                DetachMonitor(monitor);
                 await LoggingService.LogInformationAsync("TTVLK", $"Лист стримеров пуст: {e.Message}");
             }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("TTVLK", ex.Message);
+                DetachMonitor(monitor);
+                await LoggingService.LogCriticalAsync("TTVLK", "Не удалось запустить мониторинг", ex);
             }
 
             await LoggingService.LogInformationAsync("TTVLK", $"Статус мониторинга - {_liveStreamMonitor?.Enabled ?? false}");
+        }
+
+        private List<SocketTextChannel> ResolveNotifChannels()
+        {
+            var channels = new List<SocketTextChannel>();
+
+            foreach (var guild in _discord.Guilds)
+            {
+                var gs = DataBase.GetGuildSettings(guild.Id);
+                if (gs.StreamNotifChannelId is not ulong chId)
+                    continue;
+
+                var channel = guild.GetTextChannel(chId);
+                if (channel != null)
+                    channels.Add(channel);
+            }
+
+            return channels;
+        }
+
+        private void DetachMonitor(LiveStreamMonitorService monitor)
+        {
+            if (monitor == null) return;
+
+            monitor.OnServiceTick -= OnServiceTickEvent;
+            monitor.OnChannelsSet -= OnChannelsSetEvent;
+            monitor.OnServiceStarted -= OnServiceStartedEvent;
+            monitor.OnServiceStopped -= OnServiceStoppedEvent;
+            monitor.OnStreamOnline -= OnStreamOnlineEventAsync;
+            monitor.OnStreamOffline -= OnStreamOfflineEvent;
+
+            if (monitor.Enabled)
+                monitor.Stop();
         }
 
         private void OnServiceTickEvent(object sender, OnServiceTickArgs e)
@@ -147,8 +176,19 @@ namespace sblngavnav6.TwitchService
                 UpdateLiveStreamModelsAsync(e.Stream, getGamesResponse);
 
                 EmbedBuilder eb = CreateStreamerEmbed(StreamModels[e.Stream.UserId], e.Stream.ThumbnailUrl);
-                foreach (var x in StreamNotifChannels)
-                    await x.SendMessageAsync($"@everyone, {e.Stream.UserName} сейчас стримит!", false, eb.Build());
+                var embed = eb.Build();
+
+                foreach (var channel in ResolveNotifChannels())
+                {
+                    try
+                    {
+                        await channel.SendMessageAsync($"@everyone, {e.Stream.UserName} сейчас стримит!", false, embed);
+                    }
+                    catch (Exception ex)
+                    {
+                        await LoggingService.LogWarningAsync("TTVLK", $"Не удалось оповестить канал {channel.Guild.Name}/{channel.Name}: {ex.Message}");
+                    }
+                }
 
                 DataBase.AddStreamOnline(e.Stream.UserId);
                 await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} добавлен в лист отслеживания");

@@ -34,8 +34,5 @@ namespace sblngavnav6.TwitchService
         protected Dictionary<string, StreamData> StreamModels { get; set; }
 
         protected Dictionary<string, string> StreamProfileImages { get; set; }
-
-        protected List<SocketTextChannel> StreamNotifChannels { get; set; }
-
     }
 }

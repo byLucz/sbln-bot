@@ -69,6 +69,8 @@ namespace sblngavnav6.Data
                 public static readonly string lavaHost = Str("Lava:LavaHost", "127.0.0.1");
                 public static readonly string lavaPass = Str("Lava:LavaPass", "youshallnotpass");
                 public static readonly int lavaPort = Int("Lava:LavaPort", 2333);
+                public static readonly string lavaAudioPath =
+                    Environment.GetEnvironmentVariable("SBLN_AUDIO_DIR_LAVA") ?? Str("Lava:AudioPath");
 
                 public static readonly string ppmImapHost = Str("Mail:MailImapHost", "127.0.0.1");
                 public static readonly int ppmImapPort = Int("Mail:MailImapPort", 993);
@@ -87,8 +89,11 @@ namespace sblngavnav6.Data
             public static class BuiltIn
             {
                 public const int streamUpdTime = 600;
-                public static int govorUpdTime = 86400000;
-                public static string govorVM = "выкл";
+                public const int govorUpdTimeDefault = 86400000;
+                public const string govorVMDefault = "выкл";
+
+                public static int govorUpdTime = govorUpdTimeDefault;
+                public static string govorVM = govorVMDefault;
             }
         }
     }

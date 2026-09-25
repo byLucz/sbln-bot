@@ -41,7 +41,18 @@ namespace sblngavnav6.PPM
                 return (false, null, output);
 
             DateTime? expiresAt = permanent ? null : DateTime.UtcNow.AddMinutes(Global.Vars.Cfg.ppmTtlMinutes);
-            int id = DataBase.InsertPpmMailbox(email, password, ownerId, expiresAt, permanent);
+
+            int id;
+            try
+            {
+                id = DataBase.InsertPpmMailbox(email, password, ownerId, expiresAt, permanent);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogErrorAsync("ppm", $"Не удалось записать ящик {email} в БД, откатываю создание", ex);
+                await CompensateAsync(email);
+                return (false, null, "Не удалось сохранить ящик, создание отменено");
+            }
 
             return (true, new PpmMailbox
             {
@@ -58,11 +69,39 @@ namespace sblngavnav6.PPM
         public async Task<(bool ok, string error)> DeleteAsync(PpmMailbox box)
         {
             if (!Global.Vars.Cfg.ppmEnabled) return (false, "PPM отключён в конфигурации");
+
             var (ok, output) = await _mail.DelAsync(box.Email);
             if (!ok)
                 return (false, output);
-            DataBase.MarkPpmMailboxDeleted(box.Id);
+
+            try
+            {
+                DataBase.MarkPpmMailboxDeleted(box.Id);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogCriticalAsync(
+                    "ppm",
+                    $"Ящик {box.Email} удалён на сервере, но запись id={box.Id} осталась активной в БД — нужна ручная сверка",
+                    ex);
+                return (false, "Ящик удалён, но запись в БД не обновилась — сообщи администратору");
+            }
+
             return (true, null);
+        }
+
+        private async Task CompensateAsync(string email)
+        {
+            try
+            {
+                var (ok, output) = await _mail.DelAsync(email);
+                if (!ok)
+                    await LoggingService.LogCriticalAsync("ppm", $"Компенсация не удалась, ящик {email} остался без записи в БД: {output}");
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogCriticalAsync("ppm", $"Компенсация не удалась, ящик {email} остался без записи в БД", ex);
+            }
         }
 
         public async Task<List<PpmMessageView>> ReadInboxAsync(PpmMailbox box, int max = 5)

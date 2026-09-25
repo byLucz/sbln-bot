@@ -46,11 +46,14 @@ namespace sblngavnav6.Commands
 
         [InputLabel("Значение (пусто = сброс на дефолт)")]
         [ModalTextInput("value", TextInputStyle.Paragraph, "id роли/канала или текст")]
+        [RequiredInput(false)]
         public string Value { get; set; }
     }
 
     public class SettingsInteractions : InteractionModuleBase<SocketInteractionContext>
     {
+        private const int MaxWelcomeLength = 1000;
+
         [ComponentInteraction("setopen")]
         public async Task Open()
         {
@@ -72,19 +75,98 @@ namespace sblngavnav6.Commands
 
             var gid = Context.Guild.Id;
             var raw = modal.Value?.Trim();
-            ulong? id = ulong.TryParse(raw, out var v) ? v : null;
+            var reset = string.IsNullOrWhiteSpace(raw);
+
+            if (field == "wtext")
+            {
+                if (!reset && raw.Length > MaxWelcomeLength)
+                {
+                    await FailAsync($"Текст слишком длинный: {raw.Length} символов, максимум {MaxWelcomeLength}");
+                    return;
+                }
+
+                DataBase.SetWelcomeMessage(gid, reset ? null : raw);
+                await ShowPanelAsync(reset ? "Welcome-текст сброшен на дефолт" : "Welcome-текст обновлён");
+                return;
+            }
+
+            ulong? id = null;
+            if (!reset)
+            {
+                if (!ulong.TryParse(raw, out var parsed))
+                {
+                    await FailAsync("Нужен числовой ID. Значение не сохранено — очисти поле, если хотел сбросить");
+                    return;
+                }
+
+                var error = ValidateTarget(field, parsed);
+                if (error != null)
+                {
+                    await FailAsync(error);
+                    return;
+                }
+
+                id = parsed;
+            }
+
+            if (field == "su" && reset && Context.User is IGuildUser self && !self.GuildPermissions.Administrator)
+            {
+                await FailAsync("Сброс superuser-роли доступен только администратору сервера — иначе потеряешь доступ к панели");
+                return;
+            }
 
             switch (field)
             {
                 case "su": DataBase.SetSuperuserRole(gid, id); break;
                 case "wch": DataBase.SetWelcomeChannel(gid, id); break;
                 case "wrole": DataBase.SetWelcomeRole(gid, id); break;
-                case "wtext": DataBase.SetWelcomeMessage(gid, string.IsNullOrWhiteSpace(raw) ? null : raw); break;
                 case "stream": DataBase.SetStreamNotifChannel(gid, id); break;
+                default:
+                    await FailAsync($"Неизвестное поле настроек: {field}");
+                    return;
             }
 
-            await RespondAsync(embed: SettingsPanel.Build(Context.Guild), components: SettingsPanel.Buttons(), ephemeral: true);
+            await ShowPanelAsync(reset ? "Сброшено на дефолт" : "Сохранено");
         }
+
+        private string ValidateTarget(string field, ulong id)
+        {
+            switch (field)
+            {
+                case "su":
+                case "wrole":
+                    var role = Context.Guild.GetRole(id);
+                    if (role == null)
+                        return "Роль с таким ID не найдена на этом сервере";
+                    if (role.IsManaged)
+                        return "Управляемую роль (бот/интеграция) выдавать нельзя";
+                    if (field == "wrole" && !Context.Guild.CurrentUser.GuildPermissions.ManageRoles)
+                        return "У бота нет права управлять ролями";
+                    return null;
+
+                case "wch":
+                case "stream":
+                    var channel = Context.Guild.GetChannel(id);
+                    if (channel is null)
+                        return "Канал с таким ID не найден на этом сервере";
+                    if (channel is not SocketTextChannel)
+                        return "Нужен текстовый канал";
+                    return null;
+
+                default:
+                    return $"Неизвестное поле настроек: {field}";
+            }
+        }
+
+        private Task FailAsync(string message)
+            => RespondAsync($"🔴 {message}", ephemeral: true);
+
+        private Task ShowPanelAsync(string note)
+            => RespondAsync(
+                $"✅ {note}",
+                embed: SettingsPanel.Build(Context.Guild),
+                components: SettingsPanel.Buttons(),
+                ephemeral: true);
 
         private async Task<bool> Allowed()
         {
