@@ -446,7 +446,7 @@ namespace sblngavnav6.Audio8
 
         public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
 
-        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
 
         public void Log<TState>(
             LogLevel logLevel,
@@ -458,7 +458,12 @@ namespace sblngavnav6.Audio8
             if (!IsEnabled(logLevel))
                 return;
 
-            var message = $"[{_category}] {formatter(state, exception)}";
+            var text = formatter(state, exception);
+
+            if (IsNoise(text))
+                return;
+
+            var message = $"[{_category}] {text}";
 
             _ = logLevel switch
             {
@@ -468,6 +473,10 @@ namespace sblngavnav6.Audio8
                 _ => LoggingService.LogInformationAsync(Audio8Constants.LogSource, message)
             };
         }
+
+        private static bool IsNoise(string text) =>
+            text.Contains("before the ready payload", StringComparison.OrdinalIgnoreCase) ||
+            text.Contains("default Lavalink password", StringComparison.OrdinalIgnoreCase);
 
         private sealed class NullScope : IDisposable
         {

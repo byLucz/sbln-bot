@@ -1,4 +1,5 @@
 using Discord;
+using Discord.Net;
 using Discord.WebSocket;
 using Lavalink4NET;
 using Lavalink4NET.Filters;
@@ -63,6 +64,8 @@ namespace sblngavnav6.Audio8
             _searchPrefixes.TryGetValue(guildId, out var prefix) ? prefix : Audio8Query.YouTubePrefix;
 
         public void SetSearchPrefix(ulong guildId, string prefix) => _searchPrefixes[guildId] = prefix;
+
+        public bool IsVoteRunning(ulong guildId) => _states.IsVoteRunning(guildId);
 
         public void StartCleanup(CancellationToken cancellationToken = default)
         {
@@ -439,10 +442,20 @@ namespace sblngavnav6.Audio8
 
             var hasQueue = !player.Queue.IsEmpty;
 
-            await _pager.SendAsync(
+            if (player.QueueMessage is { } previous)
+            {
+                player.QueueMessage = null;
+                try { await ModifyAsync(previous, clearControls: true).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is HttpException or TimeoutException) { }
+            }
+
+            var message = await _pager.SendAsync(
                 channel,
                 pages,
                 decorate: hasQueue ? Audio8Controls.QueuePick() : null).ConfigureAwait(false);
+
+            if (hasQueue)
+                player.QueueMessage = message;
         }
 
         public Task<bool> SkipToQueuedAsync(Audio8Player player, string trackKey, CancellationToken cancellationToken = default)

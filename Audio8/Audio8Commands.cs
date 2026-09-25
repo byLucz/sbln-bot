@@ -3,6 +3,7 @@ using Discord.Commands;
 using Lavalink4NET.Players;
 using System.Runtime.InteropServices;
 using sblngavnav6.Common;
+using sblngavnav6.Services;
 
 namespace sblngavnav6.Audio8
 {
@@ -25,7 +26,7 @@ namespace sblngavnav6.Audio8
             _httpClientFactory = httpClientFactory;
         }
 
-        [Command("играй")]
+        [Command("играй", RunMode = RunMode.Async)]
         [Alias("и")]
         public async Task PlayAsync([Remainder] string searchQuery)
         {
@@ -82,7 +83,7 @@ namespace sblngavnav6.Audio8
             }
         }
 
-        [Command("озвучь")]
+        [Command("озвучь", RunMode = RunMode.Async)]
         [Alias("ттс")]
         public async Task SpeakAsync([Remainder] string text)
         {
@@ -95,7 +96,7 @@ namespace sblngavnav6.Audio8
             await PlayAsync($"ftts://{text.Trim()}");
         }
 
-        [Command("выйди")]
+        [Command("выйди", RunMode = RunMode.Async)]
         [Alias("л")]
         public async Task LeaveAsync()
         {
@@ -105,7 +106,7 @@ namespace sblngavnav6.Audio8
             await _service.LeaveAsync(Context.Guild.Id);
         }
 
-        [Command("источник")]
+        [Command("источник", RunMode = RunMode.Async)]
         [Alias("сорс", "деф")]
         public async Task DefaultSourceAsync([Remainder] string source = null)
         {
@@ -113,7 +114,7 @@ namespace sblngavnav6.Audio8
             {
                 var current = Audio8Query.DisplayName(_service.GetSearchPrefix(Context.Guild.Id));
                 await ReplyAsync(embed: await Audio8Embeds.Accent("источник",
-                    $"дефолтный источник для `x и`: **{current}**\nсменить: `x источник ютуб | спотик | склауд`"));
+                    $"дефолтный источник для `x и`: **{current}**\nсменить: `x источник ютуб / спотик / склауд`"));
                 return;
             }
 
@@ -129,7 +130,7 @@ namespace sblngavnav6.Audio8
                 $"🎚️ Дефолтный источник для `x и` теперь: **{Audio8Query.DisplayName(prefix)}**"));
         }
 
-        [Command("скип")]
+        [Command("скип", RunMode = RunMode.Async)]
         [Alias("ск")]
         public async Task SkipAsync([Optional] int? index)
         {
@@ -151,7 +152,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Skipped(skip));
         }
 
-        [Command("плейлист")]
+        [Command("плейлист", RunMode = RunMode.Async)]
         [Alias("лист")]
         public async Task QueueAsync()
         {
@@ -162,7 +163,7 @@ namespace sblngavnav6.Audio8
             await _service.SendQueueAsync(player, (ITextChannel)Context.Channel);
         }
 
-        [Command("перемешай")]
+        [Command("перемешай", RunMode = RunMode.Async)]
         [Alias("шафл", "перемешка")]
         public async Task ShuffleAsync()
         {
@@ -180,7 +181,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Accent("шафл", $"🔀 **Очередь перемешана** ({count} треков)"));
         }
 
-        [Command("пауза")]
+        [Command("пауза", RunMode = RunMode.Async)]
         [Alias("пз")]
         public async Task PauseAsync()
         {
@@ -205,7 +206,7 @@ namespace sblngavnav6.Audio8
                 $"поставил на паузу --- {CommonUtils.Text.TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ⏸️"));
         }
 
-        [Command("продолжи")]
+        [Command("продолжи", RunMode = RunMode.Async)]
         [Alias("прод")]
         public async Task ResumeAsync()
         {
@@ -230,7 +231,7 @@ namespace sblngavnav6.Audio8
                 $"продолжаю --- {CommonUtils.Text.TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ▶️"));
         }
 
-        [Command("останови")]
+        [Command("останови", RunMode = RunMode.Async)]
         [Alias("стоп")]
         public async Task StopAsync()
         {
@@ -242,7 +243,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Info("стоп", "стопнулся и очистил плейлист ⛔"));
         }
 
-        [Command("громкость")]
+        [Command("громкость", RunMode = RunMode.Async)]
         [Alias("гр")]
         public async Task VolumeAsync([Optional] int? level)
         {
@@ -253,8 +254,8 @@ namespace sblngavnav6.Audio8
             if (!level.HasValue)
             {
                 await ReplyAsync(embed: await Audio8Embeds.Accent("громкость",
-                    $"**Сейчас — {(int)Math.Round(player.Volume * 100)} 📶**\n" +
-                    $"сменить: `x гр {Audio8Constants.MinVolume}..{Audio8Constants.MaxVolume}`"));
+                    $"**Сейчас - {(int)Math.Round(player.Volume * 100)} 📶**\n" +
+                    $"сменить: `x гр {Audio8Constants.MinVolume}-{Audio8Constants.MaxVolume}`"));
                 return;
             }
 
@@ -271,7 +272,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Accent("громкость", $"**Громкость - {volume} 📶**"));
         }
 
-        [Command("басс")]
+        [Command("басс", RunMode = RunMode.Async)]
         [Alias("бс")]
         public async Task BassBoostAsync([Optional] int? level)
         {
@@ -282,15 +283,15 @@ namespace sblngavnav6.Audio8
             if (!level.HasValue)
             {
                 await ReplyAsync(embed: await Audio8Embeds.Accent("басс",
-                    $"🔊 Ступень **{player.BassBoostLevel}** из {Audio8Constants.MaxBassBoost} — **{Audio8Service.BassBoostName(player.BassBoostLevel)}**\n" +
-                    $"сменить: `x бс 1..{Audio8Constants.MaxBassBoost}`, где **1** — выключено"));
+                    $"🔊 Ступень **{player.BassBoostLevel}** из {Audio8Constants.MaxBassBoost} - **{Audio8Service.BassBoostName(player.BassBoostLevel)}**\n" +
+                    $"сменить: `x бс 1..{Audio8Constants.MaxBassBoost}`, где **1** - выключено"));
                 return;
             }
 
             if (level.Value < Audio8Constants.MinBassBoost || level.Value > Audio8Constants.MaxBassBoost)
             {
                 await ReplyAsync(embed: await Audio8Embeds.Error("басс",
-                    $"только ступени {Audio8Constants.MinBassBoost}-{Audio8Constants.MaxBassBoost}, где **1** — выключено"));
+                    $"только ступени {Audio8Constants.MinBassBoost}-{Audio8Constants.MaxBassBoost}, где **1** - выключено"));
                 return;
             }
 
@@ -298,12 +299,12 @@ namespace sblngavnav6.Audio8
 
             var description = level.Value == Audio8Constants.MinBassBoost
                 ? "⛔ **Басс-буст выключен**"
-                : $"🔊 **Басс-буст: ступень {level.Value}** — {Audio8Service.BassBoostName(level.Value)}";
+                : $"🔊 **Басс-буст: ур. {level.Value}** ({Audio8Service.BassBoostName(level.Value)})";
 
             await ReplyAsync(embed: await Audio8Embeds.Accent("басс", description));
         }
 
-        [Command("назад")]
+        [Command("назад", RunMode = RunMode.Async)]
         [Alias("пред", "предыдущий")]
         public async Task PreviousAsync()
         {
@@ -321,7 +322,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Previous(previous));
         }
 
-        [Command("фильтр")]
+        [Command("фильтр", RunMode = RunMode.Async)]
         [Alias("фильтры", "эффект")]
         public async Task FilterAsync([Remainder] string preset = null)
         {
@@ -333,7 +334,7 @@ namespace sblngavnav6.Audio8
             {
                 await ReplyAsync(embed: await Audio8Embeds.Accent("фильтр",
                     $"сейчас: **{player.FilterPreset}**\n" +
-                    $"доступно: {string.Join(" | ", Audio8Filters.Presets.Select(item => $"**{item}**"))}"));
+                    $"доступно: {string.Join(" / ", Audio8Filters.Presets.Select(item => $"**{item}**"))}"));
                 return;
             }
 
@@ -341,14 +342,14 @@ namespace sblngavnav6.Audio8
             if (applied is null)
             {
                 await ReplyAsync(embed: await Audio8Embeds.Error("фильтр",
-                    $"не знаю такой. доступно: {string.Join(" | ", Audio8Filters.Presets.Select(item => $"**{item}**"))}"));
+                    $"не знаю такой. доступно: {string.Join(", ", Audio8Filters.Presets)}"));
                 return;
             }
 
             await ReplyAsync(embed: await Audio8Embeds.Filter(applied));
         }
 
-        [Command("залупа")]
+        [Command("залупа", RunMode = RunMode.Async)]
         [Alias("луп")]
         public async Task LoopAsync()
         {
@@ -361,7 +362,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Accent("луп", enabled ? "🔁 **Луп вкл**" : "⛔ **Луп выкл**"));
         }
 
-        [Command("перейти")]
+        [Command("перейти", RunMode = RunMode.Async)]
         [Alias("пр")]
         public async Task SeekAsync([Remainder] string timecode)
         {
@@ -408,7 +409,7 @@ namespace sblngavnav6.Audio8
                 items = items.Take(Audio8Constants.MaxVoteItems).ToList();
             }
 
-            var player = await EnsurePlayerAsync(requireSameChannel: false);
+            var player = await EnsurePlayerAsync(requireSameChannel: false, allowDuringVote: true);
             if (player is null)
                 return;
 
@@ -423,7 +424,7 @@ namespace sblngavnav6.Audio8
             await _vote.RunAsync(player, statusMessage, items, winner, http);
         }
 
-        [Command("лавастат")]
+        [Command("лавастат", RunMode = RunMode.Async)]
         public async Task StatsAsync()
         {
             var embed = _service.Stats.Build(_service.BuildStatsContext());
@@ -436,8 +437,14 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: embed);
         }
 
-        private async Task<Audio8Player> EnsurePlayerAsync(bool requireSameChannel)
+        private async Task<Audio8Player> EnsurePlayerAsync(bool requireSameChannel, bool allowDuringVote = false)
         {
+            if (!allowDuringVote && _service.IsVoteRunning(Context.Guild.Id))
+            {
+                await ReplyAsync(embed: await Audio8Embeds.Error("музыка", "идёт голосование, дождись конца или выгони меня командой `x л`"));
+                return null;
+            }
+
             if (Context.User is not IVoiceState { VoiceChannel: { } voiceChannel })
             {
                 await ReplyAsync("надо быть в войсе 😡");
@@ -453,11 +460,36 @@ namespace sblngavnav6.Audio8
             }
 
             var textChannelId = Context.Channel is ITextChannel textChannel ? textChannel.Id : 0UL;
-            return await _service.JoinAsync(voiceChannel, textChannelId);
+
+            try
+            {
+                return await _service.JoinAsync(voiceChannel, textChannelId);
+            }
+            catch (TimeoutException ex)
+            {
+                await LoggingService.LogWarningAsync(
+                    Audio8Constants.LogSource,
+                    $"Плеер не создался за отведённое время g={Context.Guild.Id}: {ex.Message}");
+
+                await ReplyAsync(embed: await Audio8Embeds.Error("играй", "не смог зайти в войс, попробуй ещё раз"));
+                return null;
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogErrorAsync(Audio8Constants.LogSource, $"Вход в войс сорвался g={Context.Guild.Id}", ex);
+                await ReplyAsync(embed: await Audio8Embeds.Error("играй", "не смог зайти в войс, детали в логах"));
+                return null;
+            }
         }
 
         private async Task<Audio8Player> RequirePlayerAsync()
         {
+            if (_service.IsVoteRunning(Context.Guild.Id))
+            {
+                await ReplyAsync(embed: await Audio8Embeds.Error("голос", "идёт голосование, дождись конца!"));
+                return null;
+            }
+
             if (Context.User is not IVoiceState { VoiceChannel: not null })
             {
                 await ReplyAsync("надо быть в войсе 😡");

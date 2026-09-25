@@ -41,6 +41,8 @@ namespace sblngavnav6.Audio8
 
         public IUserMessage NowPlayingMessage { get; set; }
 
+        public IUserMessage QueueMessage { get; set; }
+
         public int PlayCount { get; private set; }
 
         public bool RepeatEnabled => RepeatMode is TrackRepeatMode.Track;
@@ -155,11 +157,11 @@ namespace sblngavnav6.Audio8
 
         public static string Describe(string preset) => preset switch
         {
-            Nightcore => "найткор — быстрее и выше",
-            Slowed => "слоу — медленнее и ниже",
-            Rotation => "8д — звук вращается вокруг головы",
-            Karaoke => "караоке — вокал приглушён",
-            Vibrato => "вибрато — плавающая высота",
+            Nightcore => "найткор - быстрее и выше",
+            Slowed => "слоу - медленнее и ниже",
+            Rotation => "8д - звук вращается вокруг головы",
+            Karaoke => "караоке - вокал приглушён",
+            Vibrato => "вибрато - плавающая высота",
             _ => "фильтры выключены"
         };
 

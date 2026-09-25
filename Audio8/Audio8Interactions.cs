@@ -70,6 +70,8 @@ namespace sblngavnav6.Audio8
 
         public void EndVoteSession(ulong guildId) => _voteSessions.TryRemove(guildId, out _);
 
+        public bool IsVoteRunning(ulong guildId) => _voteSessions.ContainsKey(guildId);
+
         public void AddSkip(Audio8SkipState state) => _skips[state.MessageId] = state;
 
         public bool TryGetSkip(ulong messageId, out Audio8SkipState state) => _skips.TryGetValue(messageId, out state);
@@ -136,22 +138,22 @@ namespace sblngavnav6.Audio8
         };
 
         public static Action<ComponentBuilder, int> Hoist() => (builder, _) =>
-            builder.WithButton("В начало листа", HoistId, ButtonStyle.Primary, new Emoji(Audio8Constants.EmojiHoist));
+            builder.WithButton("В начало листа", HoistId, ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiHoist));
 
         public static Action<ComponentBuilder, int> Picks(int count) => (builder, _) =>
         {
             for (var index = 0; index < count; index++)
-                builder.WithButton($"{index + 1}", $"{PickId}:{index}", ButtonStyle.Primary);
+                builder.WithButton($"{index + 1}", $"{PickId}:{index}", ButtonStyle.Secondary);
         };
 
         public static Action<ComponentBuilder, int> VoteSkip() => (builder, _) =>
             builder.WithButton("Пропустить озвучку", VoteSkipId, ButtonStyle.Secondary, new Emoji("⏭️"));
 
         public static Action<ComponentBuilder, int> SkipToTrack() => (builder, _) =>
-            builder.WithButton("Скипнуть текущий", SkipToTrackId, ButtonStyle.Success, new Emoji("⏭️"));
+            builder.WithButton("Скипнуть текущий", SkipToTrackId, ButtonStyle.Secondary, new Emoji("⏭️"));
 
         public static Action<ComponentBuilder, int> QueuePick() => (builder, _) =>
-            builder.WithButton("Выбрать трек", QueuePickId, ButtonStyle.Primary, new Emoji("🎯"), row: 1);
+            builder.WithButton("Выбрать трек", QueuePickId, ButtonStyle.Secondary, new Emoji("🎯"), row: 1);
     }
 
     internal sealed class Audio8Interactions : IDisposable
@@ -573,7 +575,7 @@ namespace sblngavnav6.Audio8
 
             if (!int.TryParse(modal.Position?.Trim(), out var position))
             {
-                await RespondAsync("номер трека — это число", ephemeral: true);
+                await RespondAsync("номер трека - это число", ephemeral: true);
                 return;
             }
 

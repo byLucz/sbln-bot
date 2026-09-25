@@ -92,19 +92,11 @@ namespace sblngavnav6.Audio8
         {
             var extra = new List<string>();
 
-            if (player.RepeatEnabled)
-            {
-                extra.Add(player.PlayCount > 1
-                    ? $"🔁 **Луп включен** (x{player.PlayCount})"
-                    : "🔁 **Луп включен**");
-            }
-            else if (player.QueueRepeatEnabled)
-            {
-                extra.Add("🔁 **Луп очереди включен**");
-            }
+            if (player.RepeatEnabled && player.PlayCount > 1)
+                extra.Add($"🔁 **Повторов:** {player.PlayCount}");
 
             if (player.BassBoostLevel > Audio8Constants.MinBassBoost)
-                extra.Add($"🔊 **Басс:** ступень {player.BassBoostLevel}");
+                extra.Add($"🔊 **Басс:** ур. {player.BassBoostLevel}");
 
             if (player.FilterPreset != Audio8Constants.NoFilterPreset)
                 extra.Add($"🎛️ **Фильтр:** {player.FilterPreset}");
@@ -117,30 +109,36 @@ namespace sblngavnav6.Audio8
             if (extra.Count > 0)
                 description += "\n" + string.Join("\n", extra);
 
-            return EmbedHandler.BuildAsync(new EmbedSpec
-            {
-                Description = description,
-                Color = Color.Purple,
-                Footer = $"{SourceLabel(track)} • powered by {EmbedHandler.AudioEngine}"
-            });
+            return EmbedHandler.MusicCustom(null, description, $"💿 {SourceLabel(track)}", Color.Purple);
         }
 
         public static Task<Embed> Skipped(Audio8Skip skip) =>
             EmbedHandler.Music(
                 "скип",
-                $"👀 Пропустили говно: {TrackLink(skip.Replaced?.Title, skip.Replaced?.Uri?.ToString())}\n" +
-                $"🦻 Вместо это теперь: {TrackLink(skip.Upcoming?.Title, skip.Upcoming?.Uri?.ToString())}",
+                $"👀 Пропустили: {TrackLink(skip.Replaced?.Title, skip.Replaced?.Uri?.ToString())}\n" +
+                $"🦻 Поставили: {TrackLink(skip.Upcoming?.Title, skip.Upcoming?.Uri?.ToString())}",
                 Color.Green);
 
         public static Task<Embed> Previous(LavalinkTrack track) =>
             EmbedHandler.Music("назад", $"⏮️ Вернул: {TrackLink(track.Title, track.Uri?.ToString())}", Color.Blue);
+
+        public static Task<Embed> FilterList(string current)
+        {
+            var lines = Audio8Filters.Presets.Select(preset =>
+            {
+                var mark = preset == current ? "▸" : "  ";
+                return $"{mark} **{preset}** - {Audio8Filters.Describe(preset)}";
+            });
+
+            return EmbedHandler.Music("фильтр", string.Join("\n", lines), Color.DarkMagenta);
+        }
 
         public static Task<Embed> Filter(string preset) =>
             EmbedHandler.Music(
                 "фильтр",
                 preset == Audio8Constants.NoFilterPreset
                     ? "⛔ **Фильтры выключены**"
-                    : $"🎛️ **{preset}** — {Audio8Filters.Describe(preset)}",
+                    : $"🎛️ **{preset}** - {Audio8Filters.Describe(preset)}",
                 Color.DarkMagenta);
 
         public static Task<Embed> TrackFailed(LavalinkTrack track, string reason) =>
@@ -158,7 +156,7 @@ namespace sblngavnav6.Audio8
         {
             var lines = new List<string>
             {
-                $"**{result.PlaylistName}** — добавлено треков: **{result.Added}** 🤙"
+                $"**{result.PlaylistName}** - добавлено треков: **{result.Added}** 🤙"
             };
 
             if (result.Skipped > 0)
@@ -228,13 +226,13 @@ namespace sblngavnav6.Audio8
             var fields = new List<EmbedFieldSpec>
             {
                 new("🎧 Плееры",
-                    $"наших: `{context.Players}` · играет: `{context.Playing}`\n" +
+                    $"наших: `{context.Players}` / играет: `{context.Playing}`\n" +
                     $"в очередях: `{context.QueuedTracks}` трек(ов)",
                     true),
                 new("🖥️ Lavalink",
                     $"аптайм: `{statistics.Uptime:d\\.hh\\:mm\\:ss}`\n" +
-                    $"нагрузка: `{statistics.ProcessorUsage.LavalinkLoad:P1}` из `{statistics.ProcessorUsage.SystemLoad:P1}` системной\n" +
-                    $"память: `{statistics.MemoryUsage.UsedMemory / 1024 / 1024}` / `{statistics.MemoryUsage.AllocatedMemory / 1024 / 1024}` MB",
+                    $"нагрузка: `{statistics.ProcessorUsage.LavalinkLoad:P1}` из `{statistics.ProcessorUsage.SystemLoad:P1}`\n" +
+                    $"память: `{statistics.MemoryUsage.UsedMemory / 1024 / 1024}` / `{statistics.MemoryUsage.AllocatedMemory / 1024 / 1024}`MB",
                     true)
             };
 
@@ -263,8 +261,7 @@ namespace sblngavnav6.Audio8
                 Description = $"данные Lavalink обновлены {FormatAge(age)} назад",
                 Color = Color.Purple,
                 Fields = fields,
-                Footer = $"{EmbedHandler.MusicFooter} & sbln статистикс🔭",
-                Timestamp = true
+                Footer = $"{EmbedHandler.MusicFooter} & sbln статистикс🔭"
             });
         }
 

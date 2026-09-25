@@ -75,10 +75,10 @@ namespace sblngavnav6.Audio8
                     await LoggingService.LogErrorAsync(
                         Audio8Constants.LogSource,
                         $"Lavalink не видит {audio.Path}. Смонтируй каталог аудио в Lavalink и включи local source, " +
-                        "а если путь внутри Lavalink другой — задай Lava:AudioPath (или SBLN_AUDIO_DIR_LAVA).");
+                        "а если путь внутри Lavalink другой - задай Lava:AudioPath (или SBLN_AUDIO_DIR_LAVA).");
 
                     await _service.ModifyAsync(statusMessage, Audio8Embeds.Vote(
-                        "❌ Lavalink не видит аудиофайл голосования — озвучка недоступна, голосование отменено",
+                        "❌ Lavalink не видит аудиофайл голосования - озвучка недоступна, голосование отменено",
                         Color.Red)).ConfigureAwait(false);
                     return;
                 }
