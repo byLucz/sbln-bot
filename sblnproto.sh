@@ -46,6 +46,9 @@ case "$cmd" in
       mkdir -p "$BASE"
       git clone --branch proto --recurse-submodules "$REPO" "$PROTO"
     fi
+    if [[ -z "${1:-}" ]]; then
+      exec bash "$PROTO/sblnproto.sh" hotswap "$PROTO"
+    fi
     [[ -d "$PROTO/.git" ]] && git -C "$PROTO" submodule update --init --recursive
     if command -v jq >/dev/null 2>&1 && [[ -f "$PCONFIG" ]]; then
       tmp=$(mktemp)
@@ -58,6 +61,7 @@ case "$cmd" in
     install -m 0755 "$PROTO/sblnproto.sh" /usr/local/bin/sblnproto
     HELPER=/usr/local/bin/sbln
     network=$(bash "$HELPER" network "$PCONFIG")
+    echo "Сеть proto: $network (конфиг: $PCONFIG)"
     bash "$HELPER" build "$PROTO" proto
     docker rm -f "$PBOT" >/dev/null 2>&1 || true
     net_args=(--network "$network" --add-host host.docker.internal:host-gateway)
