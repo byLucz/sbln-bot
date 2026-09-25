@@ -56,10 +56,11 @@ case "$cmd" in
     fi
     install -m 0755 "$PROTO/sbln.sh" /usr/local/bin/sbln
     install -m 0755 "$PROTO/sblnproto.sh" /usr/local/bin/sblnproto
+    HELPER=/usr/local/bin/sbln
+    network=$(bash "$HELPER" network "$PCONFIG")
     bash "$HELPER" build "$PROTO" proto
     docker rm -f "$PBOT" >/dev/null 2>&1 || true
-    net_args=(--add-host host.docker.internal:host-gateway)
-    [[ "${SBLN_NET:-}" = host ]] && net_args=(--network host)
+    net_args=(--network "$network" --add-host host.docker.internal:host-gateway)
     docker run -d --name "$PBOT" --restart no --init --stop-timeout 30 \
       -e SBLN_CONFIG=/opt/sbln/config.json -e SBLN_READY_FILE=/tmp/sbln-ready \
       -e SBLN_AUDIO_DIR=/opt/sbln/audio/proto -e SBLN_LOG_DIR=/opt/sbln/logs \

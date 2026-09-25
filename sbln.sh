@@ -24,12 +24,23 @@ wait_ready() {
   return 1
 }
 
+network_mode() {
+  local config=$1 network=${SBLN_NET:-}
+  if [[ -z "$network" ]]; then
+    command -v jq >/dev/null 2>&1 || { echo 'Для чтения Docker.NetworkMode нужен jq: apt install jq' >&2; return 1; }
+    network=$(jq -er 'if .Docker.NetworkMode == null then "bridge" else .Docker.NetworkMode end | if . == "host" or . == "bridge" then . else error("Docker.NetworkMode: expected host or bridge") end' "$config") || return 1
+  fi
+  [[ "$network" = host || "$network" = bridge ]] || { echo 'Сетевой режим должен быть host или bridge' >&2; return 1; }
+  printf '%s\n' "$network"
+}
+
 build() {
-  local source=${1:-$APP} channel=${2:-stable} version sha config="$BASE/config.json" name="$BOT" channel_arg=''
+  local source=${1:-$APP} channel=${2:-stable} version sha network config="$BASE/config.json" name="$BOT" channel_arg=''
   [[ "$channel" = stable || "$channel" = proto ]] || exit 1
   source=$(cd -- "$source" && pwd)
   if [[ "$channel" = proto ]]; then config="$BASE/config-proto.json"; name=sbln-bot-proto; channel_arg=proto; fi
   [[ -f "$config" ]] || { echo "Нет $config" >&2; exit 1; }
+  network=$(network_mode "$config")
   sha=$(git -C "$source" rev-parse HEAD)
   if [[ "$channel" = stable ]]; then
     version=$(git -C "$source" tag --points-at HEAD -l 'v*' | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' | sort -V | tail -1)
@@ -47,6 +58,7 @@ SBLN_CHANNEL=$channel_arg
 SBLN_COMMIT=$sha
 SBLN_CONTAINER=$name
 SBLN_INSTANCE=$channel
+SBLN_NETWORK_MODE=$network
 SBLN_CONFIG_FILE=$config
 SBLN_DATA_DIR=$BASE/data/$channel
 SBLN_LOG_DIR=$BASE/logs/$channel
@@ -83,6 +95,7 @@ case "$cmd" in
   stop) systemctl stop "$SVC" ;;
   wait) wait_ready "${1:-$BOT}" ;;
   build) build "${1:-$APP}" "${2:-stable}" ;;
+  network) network_mode "${1:-$BASE/config.json}" ;;
   update)
     git -C "$APP" fetch -q origin --tags
     git -C "$APP" checkout -q master
@@ -95,7 +108,7 @@ case "$cmd" in
       fi
       rm -f "$tmp"
     fi
-    build "$APP"
+    bash "$APP/sbln.sh" build "$APP"
     install -m 0755 "$APP/sbln.sh" /usr/local/bin/sbln
     [[ -e /usr/local/bin/sblnproto && -f "$APP/sblnproto.sh" ]] && install -m 0755 "$APP/sblnproto.sh" /usr/local/bin/sblnproto
     systemctl restart "$SVC"

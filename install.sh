@@ -8,7 +8,7 @@ mode=${2:-}
 BASE=${SBLN_BASE:-/opt/sbln}
 REPO=${SBLN_REPO:-https://github.com/byLucz/sblngavna.git}
 [[ "$BASE" =~ ^/[a-zA-Z0-9_./-]+$ && "$BASE" != / && "$BASE" != *..* ]] || exit 1
-for tool in docker git; do
+for tool in docker git jq; do
   command -v "$tool" >/dev/null || { echo "Нужен $tool" >&2; exit 1; }
 done
 docker info >/dev/null
@@ -37,11 +37,24 @@ install -m 0755 "$ROOT/sblnproto.sh" /usr/local/bin/sblnproto
 CONFIG="$BASE/config.json"
 example=config.example.json
 if [[ "$channel" = proto ]]; then CONFIG="$BASE/config-proto.json"; example=config-proto.example.json; fi
+config_user=${SBLN_CONFIG_USER:-${SUDO_USER:-}}
+if [[ -n "$config_user" ]]; then
+  config_uid=$(id -u -- "$config_user")
+  config_gid=$(id -g -- "$config_user")
+elif [[ -f "$CONFIG" ]]; then
+  config_uid=$(stat -c %u -- "$CONFIG")
+  config_gid=$(stat -c %g -- "$CONFIG")
+else
+  config_uid=$(id -u)
+  config_gid=$(id -g)
+fi
 if [[ ! -f "$CONFIG" ]]; then
-  install -m 0600 -o "${SUDO_UID:-0}" -g "${SUDO_GID:-0}" "$ROOT/config/$example" "$CONFIG"
+  install -m 0666 -o "$config_uid" -g "$config_gid" "$ROOT/config/$example" "$CONFIG"
   echo "Создан $CONFIG. Заполни конфиг и повтори установку."
   exit 1
 fi
+chown "$config_uid:$config_gid" "$CONFIG"
+chmod 0666 "$CONFIG"
 if command -v jq >/dev/null 2>&1; then
   tmp=$(mktemp)
   if jq -s '.[0] * .[1]' "$ROOT/config/$example" "$CONFIG" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
@@ -53,10 +66,6 @@ if command -v jq >/dev/null 2>&1; then
   rm -f "$tmp"
 else
   echo "jq не найден — авто-домёрж новых ключей конфига пропущен (поставь: apt install jq)."
-fi
-if [[ -n "${SUDO_UID:-}" && -n "${SUDO_GID:-}" ]]; then
-  chown "$SUDO_UID:$SUDO_GID" "$CONFIG"
-  chmod u+rw "$CONFIG"
 fi
 if [[ "$channel" = proto ]]; then
   exec bash /usr/local/bin/sblnproto hotswap "$ROOT"

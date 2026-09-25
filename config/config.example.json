@@ -20,6 +20,9 @@
     "PgApiBaseUrl": "",
     "PgApiToken": ""
   },
+  "Docker": {
+    "NetworkMode": "bridge"
+  },
   "Lava": {
     "LavaHost": "host.docker.internal",
     "LavaPort": "2333",
