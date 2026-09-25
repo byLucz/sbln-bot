@@ -363,18 +363,9 @@ namespace sblngavnav6.Services
             return src.ToLowerInvariant() switch
             {
                 "discord" => "DSCRD",
-                "victoria" => "VI-KA",
-                "audio" => "AUDIO",
-                "admin" => "ADMIN",
-                "gateway" => "GTWAY",
-                "lavanode_0_socket" => "LVSOC",
-                "lavanode_0" => "LVNOD",
-                "bot" => "BOTWN",
-                "comnd" => "COMND",
-                "govor" => "GOVOR",
-                "vi-ka" => "VI-KA",
+                "interactions" => "INTRA",
                 "ppm" => "PPMGR",
-                _ => src.ToUpperInvariant()
+                _ => src.Length > 5 ? src[..5].ToUpperInvariant() : src.ToUpperInvariant()
             };
         }
 

@@ -721,6 +721,7 @@ namespace sblngavnav6.Audio8
         public static readonly TimeSpan MessageStateLifetime = TimeSpan.FromMinutes(10);
         public static readonly TimeSpan ControlLifetime = TimeSpan.FromMinutes(2);
         public static readonly TimeSpan NowPlayingDedupeWindow = TimeSpan.FromMilliseconds(1200);
+        public static readonly TimeSpan LavalinkReadyTimeout = TimeSpan.FromSeconds(30);
         public static readonly TimeSpan GuildWaitTimeout = TimeSpan.FromSeconds(20);
         public static readonly TimeSpan GuildWaitStep = TimeSpan.FromSeconds(1);
         public static readonly TimeSpan SnapshotInterval = TimeSpan.FromSeconds(20);

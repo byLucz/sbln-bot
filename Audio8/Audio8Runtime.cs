@@ -1,5 +1,6 @@
 using Discord.WebSocket;
 using Lavalink4NET;
+using Lavalink4NET.Events;
 using Lavalink4NET.Extensions;
 using Lavalink4NET.InactivityTracking;
 using Lavalink4NET.InactivityTracking.Events;
@@ -8,6 +9,7 @@ using Lavalink4NET.InactivityTracking.Trackers.Users;
 using Lavalink4NET.Players.Queued;
 using Lavalink4NET.Tracks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using sblngavnav6.Core;
 using sblngavnav6.Data;
@@ -45,6 +47,29 @@ namespace sblngavnav6.Audio8
             _stats = stats;
 
             _inactivity.PlayerInactive += OnPlayerInactiveAsync;
+            _audio.ConnectionReady += OnConnectionReadyAsync;
+            _audio.ConnectionClosed += OnConnectionClosedAsync;
+        }
+
+        private Task OnConnectionReadyAsync(object sender, ConnectionReadyEventArgs args) =>
+            LoggingService.LogInformationAsync(
+                Audio8Constants.LogSource,
+                $"Lavalink подключен: {Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}");
+
+        private Task OnConnectionClosedAsync(object sender, ConnectionClosedEventArgs args)
+        {
+            var reason = args.Exception?.Message
+                ?? args.CloseStatusDescription
+                ?? args.CloseStatus?.ToString()
+                ?? "причина неизвестна";
+
+            var message =
+                $"Lavalink отключен ({Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}): {reason}. " +
+                $"Переподключение {(args.AllowReconnect ? "будет" : "не планируется")}";
+
+            return args.AllowReconnect
+                ? LoggingService.LogWarningAsync(Audio8Constants.LogSource, message, args.Exception)
+                : LoggingService.LogCriticalAsync(Audio8Constants.LogSource, message, args.Exception);
         }
 
         private async Task OnPlayerInactiveAsync(object sender, PlayerInactiveEventArgs args)
@@ -65,6 +90,16 @@ namespace sblngavnav6.Audio8
             _started = true;
 
             await _audio.StartAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!await WaitForLavalinkAsync(cancellationToken).ConfigureAwait(false))
+            {
+                await LoggingService.LogCriticalAsync(
+                    Audio8Constants.LogSource,
+                    $"Lavalink не ответил за {Audio8Constants.LavalinkReadyTimeout.TotalSeconds:0}с " +
+                    $"({Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}). " +
+                    "Музыка не заработает: проверь, что Lavalink запущен, пароль совпадает и порт доступен из контейнера бота.");
+            }
+
             await _inactivity.StartAsync(cancellationToken).ConfigureAwait(false);
             _service.StartCleanup(cancellationToken);
 
@@ -74,6 +109,27 @@ namespace sblngavnav6.Audio8
             _snapshotTask = SnapshotLoopAsync(_snapshotCts.Token);
 
             await LoggingService.LogInformationAsync(Audio8Constants.LogSource, "Audio8 запущен");
+        }
+
+        private async Task<bool> WaitForLavalinkAsync(CancellationToken cancellationToken)
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(Audio8Constants.LavalinkReadyTimeout);
+
+            try
+            {
+                await _audio.WaitForReadyAsync(timeout.Token).ConfigureAwait(false);
+                return true;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogCriticalAsync(Audio8Constants.LogSource, "Ошибка подключения к Lavalink", ex);
+                return false;
+            }
         }
 
         private async Task RestoreAsync(CancellationToken cancellationToken)
@@ -162,6 +218,8 @@ namespace sblngavnav6.Audio8
 
             _disposed = true;
             _inactivity.PlayerInactive -= OnPlayerInactiveAsync;
+            _audio.ConnectionReady -= OnConnectionReadyAsync;
+            _audio.ConnectionClosed -= OnConnectionClosedAsync;
 
             await StopAsync().ConfigureAwait(false);
 
@@ -204,6 +262,7 @@ namespace sblngavnav6.Audio8
                 });
 
             return services
+                .AddLogging(builder => builder.AddProvider(new Audio8LoggerProvider()))
                 .AddSingleton<Audio8MessageStates>()
                 .AddSingleton<Audio8Persistence>()
                 .AddSingleton<Audio8StatsTracker>()
@@ -358,6 +417,63 @@ namespace sblngavnav6.Audio8
                 directory = AppContext.BaseDirectory;
 
             return Path.Combine(directory, FileName);
+        }
+    }
+
+    internal sealed class Audio8LoggerProvider : ILoggerProvider
+    {
+        public ILogger CreateLogger(string categoryName) => new Audio8Logger(Shorten(categoryName));
+
+        public void Dispose() { }
+
+        private static string Shorten(string categoryName)
+        {
+            if (string.IsNullOrWhiteSpace(categoryName))
+                return "lavalink";
+
+            var lastDot = categoryName.LastIndexOf('.');
+            return lastDot >= 0 && lastDot < categoryName.Length - 1
+                ? categoryName[(lastDot + 1)..]
+                : categoryName;
+        }
+    }
+
+    internal sealed class Audio8Logger : ILogger
+    {
+        private readonly string _category;
+
+        public Audio8Logger(string category) => _category = category;
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NullScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception exception,
+            Func<TState, Exception, string> formatter)
+        {
+            if (!IsEnabled(logLevel))
+                return;
+
+            var message = $"[{_category}] {formatter(state, exception)}";
+
+            _ = logLevel switch
+            {
+                LogLevel.Critical => LoggingService.LogCriticalAsync(Audio8Constants.LogSource, message, exception),
+                LogLevel.Error => LoggingService.LogErrorAsync(Audio8Constants.LogSource, message, exception),
+                LogLevel.Warning => LoggingService.LogWarningAsync(Audio8Constants.LogSource, message, exception),
+                _ => LoggingService.LogInformationAsync(Audio8Constants.LogSource, message)
+            };
+        }
+
+        private sealed class NullScope : IDisposable
+        {
+            public static readonly NullScope Instance = new();
+
+            public void Dispose() { }
         }
     }
 }
