@@ -23,7 +23,8 @@
   "Lava": {
     "LavaHost": "host.docker.internal",
     "LavaPort": "2333",
-    "LavaPass": "youshallnotpass"
+    "LavaPass": "youshallnotpass",
+    "AudioPath": ""
   },
   "Mail": {
     "MailImapHost": "host.docker.internal",
