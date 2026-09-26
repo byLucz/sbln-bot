@@ -219,14 +219,23 @@ namespace sblngavnav6.Audio8
                         playlistIndex = parsedIndex - 1;
                     }
 
-                    if (parameters.TryGetValue("v", out var videoId) && !string.IsNullOrWhiteSpace(videoId))
+                    parameters.TryGetValue("v", out var videoId);
+
+                    if (!string.IsNullOrWhiteSpace(videoId))
                     {
                         selectedTrackId = videoId;
                         fallback = $"https://www.youtube.com/watch?v={videoId}";
                     }
 
-                    if (!IsGeneratedList(listId))
+                    if (IsPersonalMix(listId) && !string.IsNullOrWhiteSpace(videoId))
+                    {
+                        playlistIndex = 0;
+                        query = $"https://www.youtube.com/watch?v={videoId}&list=RD{videoId}";
+                    }
+                    else if (!IsGeneratedList(listId))
+                    {
                         query = $"https://www.youtube.com/playlist?list={listId}";
+                    }
                 }
             }
 
@@ -241,6 +250,10 @@ namespace sblngavnav6.Audio8
 
             return new Audio8QueryPlan(query, playlistIndex, fallback, selectedTrackId);
         }
+
+        private static bool IsPersonalMix(string listId) =>
+            listId.Equals("RDMM", StringComparison.OrdinalIgnoreCase) ||
+            listId.StartsWith("RDMM", StringComparison.OrdinalIgnoreCase);
 
         private static bool IsGeneratedList(string listId) =>
             listId.StartsWith("RD", StringComparison.OrdinalIgnoreCase) ||
