@@ -24,7 +24,7 @@ menu() {
     read -r -p 'Выбери пункт: ' choice || break
     case "$choice" in
       1) action=(status) ;; 2) action=(logs) ;; 3) action=(update) ;; 4) action=(down) ;;
-      5) action=(restart) ;; 6) action=(start) ;; 7) action=(stop) ;;
+      5) action=(restart) ;; 6) action=(start) ;; 7) action=(stop) ;; 8) action=(prune) ;;
       0|q) break ;; *) continue ;;
     esac
     if bash "${BASH_SOURCE[0]}" "${action[@]}"; then :; else echo 'Команда не завершилась успешно.' >&2; fi
@@ -82,6 +82,7 @@ case "$cmd" in
   restart) docker restart "$PBOT"; bash "$HELPER" wait "$PBOT" ;;
   logs) docker logs -f --tail "${1:-100}" "$PBOT" ;;
   status|pstatus) docker ps -a --filter "name=^/$PBOT$" --format 'proto: {{.Status}}' ;;
-  help) echo 'Без аргументов — меню proto. Команды: status | logs [N] | start | stop | restart | update [checkout] | hotswap [checkout] | down' ;;
+  prune) bash "$HELPER" prune "${1:-72h}" ;;
+  help) echo 'Без аргументов — меню proto. Команды: status | logs [N] | start | stop | restart | update [checkout] | hotswap [checkout] | down | prune [until]' ;;
   *) echo "Неизвестная команда proto: $cmd. Используй help." >&2; exit 1 ;;
 esac

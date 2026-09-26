@@ -34,6 +34,51 @@ network_mode() {
   printf '%s\n' "$network"
 }
 
+docker_root() {
+  local dir
+  dir=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null | head -1) || dir=''
+  [[ -n "$dir" && -d "$dir" ]] || dir=/var/lib/docker
+  printf '%s
+' "$dir"
+}
+
+free_kb() {
+  local dir
+  dir=$(docker_root)
+  [[ -d "$dir" ]] || return 0
+  df -P "$dir" 2>/dev/null | awk 'NR==2 {print $4}'
+}
+
+prune() {
+  local keep=${1:-72h} before after freed
+  before=$(free_kb)
+  docker image prune -f >/dev/null 2>&1 || true
+  docker builder prune -f --filter "until=$keep" >/dev/null 2>&1 || true
+  after=$(free_kb)
+
+  if [[ -z "$after" ]]; then
+    echo '>> очистка docker выполнена'
+    return 0
+  fi
+
+  if [[ -n "$before" ]] && (( after > before )); then
+    freed=$(( (after - before) / 1024 ))
+    echo ">> очистка docker: освобождено ${freed} МБ, свободно $(( after / 1024 / 1024 )) ГБ"
+  else
+    echo ">> очистка docker: удалять нечего, свободно $(( after / 1024 / 1024 )) ГБ"
+  fi
+}
+
+check_space() {
+  local need_mb=${1:-3072} free
+  free=$(free_kb)
+  [[ -n "$free" ]] || return 0
+  if (( free / 1024 < need_mb )); then
+    echo ">> мало места под docker: $(( free / 1024 )) МБ, чищу перед сборкой" >&2
+    prune 24h
+  fi
+}
+
 build() {
   local source=${1:-$APP} channel=${2:-stable} version sha network config="$BASE/config.json" name="$BOT" channel_arg=''
   [[ "$channel" = stable || "$channel" = proto ]] || exit 1
@@ -64,7 +109,9 @@ SBLN_DATA_DIR=$BASE/data/$channel
 SBLN_LOG_DIR=$BASE/logs/$channel
 SBLN_AUDIO_ROOT=$BASE/audio
 EOF
+  check_space
   (cd "$source" && docker compose --project-name "sbln-$channel" build)
+  prune
 }
 
 menu() {
@@ -77,6 +124,7 @@ menu() {
     case "$choice" in
       1) action=(status) ;; 2) action=(logs) ;; 3) action=(start) ;; 4) action=(stop) ;;
       5) action=(restart) ;; 6) action=(update) ;; 7) action=(lava status) ;; 8) action=(lava restart) ;;
+      9) action=(prune) ;;
       0|q) break ;; *) continue ;;
     esac
     if bash "${BASH_SOURCE[0]}" "${action[@]}"; then :; else echo 'Команда не завершилась успешно.' >&2; fi
@@ -95,6 +143,7 @@ case "$cmd" in
   stop) systemctl stop "$SVC" ;;
   wait) wait_ready "${1:-$BOT}" ;;
   build) build "${1:-$APP}" "${2:-stable}" ;;
+  prune) prune "${1:-72h}" ;;
   network) network_mode "${1:-$BASE/config.json}" ;;
   update)
     git -C "$APP" fetch -q origin --tags
@@ -123,6 +172,6 @@ case "$cmd" in
       *) echo 'lava status|restart' >&2; exit 1 ;;
     esac
     ;;
-  help) echo 'sbln: меню | status | logs [N] | start | stop | restart | update | lava status|restart' ;;
+  help) echo 'sbln: меню | status | logs [N] | start | stop | restart | update | prune [until] | lava status|restart' ;;
   *) echo "Неизвестная команда: $cmd" >&2; exit 1 ;;
 esac
