@@ -602,7 +602,7 @@ namespace sblngavnav6.Audio8
                 if (!result.HasMatches)
                 {
                     await component.FollowupAsync(
-                        embed: await Audio8Embeds.Error("недавние", $"не смог загрузить {chosen.Name}"),
+                        embed: await Audio8Embeds.Error("недавние плейлисты", $"не смог загрузить {chosen.Name}"),
                         ephemeral: true);
                     return;
                 }
@@ -624,7 +624,7 @@ namespace sblngavnav6.Audio8
             {
                 await LoggingService.LogErrorAsync(Audio8Constants.LogSource, $"Недавний плейлист не запустился g={Context.Guild.Id}", ex);
                 await component.FollowupAsync(
-                    embed: await Audio8Embeds.Error("недавние", "не смог поставить плейлист, детали в логах"),
+                    embed: await Audio8Embeds.Error("недавние плейлисты", "не смог поставить плейлист, детали в логах"),
                     ephemeral: true);
             }
         }

@@ -26,35 +26,39 @@ namespace sblngavnav6.Audio8
         {
             var (sourceName, isUrl) = Audio8Query.Detect(normalizedQuery);
 
-            if (initial.IsFailed)
-            {
-                var reason = initial.Exception?.Message;
-                await _service.SendAsync(channel, await Audio8Embeds.Error(
-                    sourceName,
-                    $"источник недоступен или ошибка загрузки:\n{Truncate(string.IsNullOrWhiteSpace(reason) ? "неизвестно" : reason, 300)}"))
-                    .ConfigureAwait(false);
-            }
-
             if (isUrl)
             {
-                if (!initial.IsFailed)
-                {
-                    await _service.SendAsync(channel, await Audio8Embeds.Error("играй", "по ссылке ничего не открылось (TOTAL)"))
-                        .ConfigureAwait(false);
-                }
+                await _service.SendAsync(channel, await Audio8Embeds.Error(
+                    sourceName,
+                    initial.IsFailed
+                        ? $"источник отказал: {FailureReason(initial)}"
+                        : "по ссылке ничего не открылось")).ConfigureAwait(false);
 
                 return true;
             }
 
             var rawText = Audio8Query.StripPrefix(normalizedQuery);
-            if (string.IsNullOrWhiteSpace(rawText))
-                return initial.IsFailed;
 
-            var picks = await CollectPicksAsync(rawText, cancellationToken).ConfigureAwait(false);
+            if (!string.IsNullOrWhiteSpace(rawText))
+            {
+                var picks = await CollectPicksAsync(rawText, cancellationToken).ConfigureAwait(false);
 
-            return await PresentAsync(guildId, channel, requestedByUserId, picks, "бро, там не нашел, но есть интересное здесь:")
-                .ConfigureAwait(false);
+                if (await PresentAsync(guildId, channel, requestedByUserId, picks, "бро, там не нашел, но есть интересное здесь:").ConfigureAwait(false))
+                    return true;
+            }
+
+            if (!initial.IsFailed)
+                return false;
+
+            await _service.SendAsync(channel, await Audio8Embeds.Error(
+                sourceName,
+                $"источник недоступен: {FailureReason(initial)}")).ConfigureAwait(false);
+
+            return true;
         }
+
+        private static string FailureReason(TrackLoadResult result) =>
+            Audio8Embeds.DescribeFailure(result.Exception?.Message);
 
         private async Task<List<LavalinkTrack>> CollectPicksAsync(string rawText, CancellationToken cancellationToken)
         {

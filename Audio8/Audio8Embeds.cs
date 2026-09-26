@@ -145,7 +145,57 @@ namespace sblngavnav6.Audio8
         public static Task<Embed> TrackFailed(LavalinkTrack track, string reason) =>
             EmbedHandler.MusicError(
                 "трек",
-                $"не смог доиграть {TrackLink(track?.Title, track?.Uri?.ToString())}\n{reason}");
+                $"не смог доиграть {TrackLink(track?.Title, track?.Uri?.ToString())}\n{DescribeFailure(reason)}");
+
+        public static string DescribeFailure(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+                return "причина неизвестна";
+
+            if (Mentions(raw, "confirm your age", "age-restricted", "inappropriate for some users"))
+                return "🔞 видео с возрастным ограничением, YouTube отдаёт его только по авторизации";
+
+            if (Mentions(raw, "requires login", "sign in to"))
+                return "🔒 видео доступно только по авторизации";
+
+            if (Mentions(raw, "private video"))
+                return "🔒 видео приватное";
+
+            if (Mentions(raw, "not available in your country", "geo", "blocked in"))
+                return "🌍 видео заблокировано в регионе сервера";
+
+            if (Mentions(raw, "copyright", "removed by the uploader", "terms of service"))
+                return "🚫 видео удалено или закрыто правообладателем";
+
+            if (Mentions(raw, "video is unavailable", "unavailable"))
+                return "🚫 видео недоступно";
+
+            if (Mentions(raw, "no playable", "could not find playable", "format"))
+                return "🎚️ нет подходящей аудиодорожки";
+
+            if (Mentions(raw, "timeout", "timed out"))
+                return "⏳ источник не ответил вовремя";
+
+            return Truncate(FirstMeaningfulLine(raw), 200);
+        }
+
+        private static bool Mentions(string text, params string[] markers) =>
+            markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
+
+        private static string FirstMeaningfulLine(string raw)
+        {
+            foreach (var line in raw.Split('\n'))
+            {
+                var trimmed = line.Trim();
+
+                if (trimmed.Length == 0 || trimmed.StartsWith("at ", StringComparison.Ordinal))
+                    continue;
+
+                return trimmed;
+            }
+
+            return "причина неизвестна";
+        }
 
         public static Task<Embed> Enqueued(LavalinkTrack track) =>
             EmbedHandler.Music(
@@ -156,9 +206,9 @@ namespace sblngavnav6.Audio8
         public static Task<Embed> RecentPlaylists(IReadOnlyList<Audio8RecentPlaylist> recent)
         {
             var lines = recent.Select((item, index) =>
-                $"`{index + 1}.` {TrackLink(item.Name, item.Url)}");
+                $"{Audio8Constants.EmojiNumbers[index]} {TrackLink(item.Name, item.Url)}");
 
-            return EmbedHandler.Music("недавние", string.Join("\n", lines), Color.DarkOrange);
+            return EmbedHandler.Music("недавние плейлисты", string.Join("\n", lines), Color.DarkOrange);
         }
 
         public static Task<Embed> PlaylistEnqueued(Audio8PlayResult result)
@@ -204,7 +254,7 @@ namespace sblngavnav6.Audio8
         public static Task<Embed> Picks(IReadOnlyList<LavalinkTrack> picks, string header)
         {
             var lines = picks.Select((track, index) =>
-                $"{Audio8Constants.EmojiPicks[index]} " +
+                $"{Audio8Constants.EmojiNumbers[index]} " +
                 $"{TrackLink(Truncate(track.Title ?? "track", 80), track.Uri?.ToString())} - " +
                 $"{Truncate(track.Author ?? "unknown", 40)} - {FormatTime(track.Duration)} - " +
                 $"**{SourceLabel(track)}**");

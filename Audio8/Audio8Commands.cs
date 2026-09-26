@@ -161,7 +161,7 @@ namespace sblngavnav6.Audio8
 
             if (recent.Count == 0)
             {
-                await ReplyAsync(embed: await Audio8Embeds.Error("недавние", "плейлистов ещё не было"));
+                await ReplyAsync(embed: await Audio8Embeds.Error("недавние плейлисты", "плейлистов ещё не было"));
                 return;
             }
 

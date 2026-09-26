@@ -831,6 +831,6 @@ namespace sblngavnav6.Audio8
 
         public const string EmojiLoop = "🔁";
         public const string EmojiHoist = "🔼";
-        public static readonly string[] EmojiPicks = ["1️⃣", "2️⃣", "3️⃣"];
+        public static readonly string[] EmojiNumbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
     }
 }
