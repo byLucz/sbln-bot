@@ -161,7 +161,7 @@ namespace sblngavnav6.Common
                 Title = title,
                 Description = description,
                 Color = color,
-                Footer = $"{footer} • powered by {AudioEngine}"
+                Footer = $"{footer} / powered by {AudioEngine}"
             });
 
         public static Task<Embed> CreateErrorEmbed(string source, string error)

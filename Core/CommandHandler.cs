@@ -229,12 +229,24 @@ namespace sblngavnav6.Core
                 CommandError.UnmetPrecondition when !string.IsNullOrWhiteSpace(result.ErrorReason) =>
                     result.ErrorReason,
 
+                CommandError.Exception =>
+                    "🔴 Внутренняя ошибка, детали в логах",
+
+                CommandError.Unsuccessful =>
+                    "🔴 Команда не выполнилась",
+
                 _ => string.IsNullOrWhiteSpace(result.ErrorReason)
                     ? $"🔴ОШИБКА🔴 - {result.Error}"
-                    : $"🔴ОШИБКА🔴 - {result.ErrorReason}"
+                    : $"🔴ОШИБКА🔴 - {FirstLine(result.ErrorReason)}"
             };
 
             await context.Channel.SendMessageAsync(reply);
+        }
+
+        private static string FirstLine(string text)
+        {
+            var line = text.Split('\n', 2)[0].Trim();
+            return line.Length > 300 ? line[..300] + "…" : line;
         }
 
         private static string BuildUsageHint(CommandInfo cmd)

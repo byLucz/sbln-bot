@@ -377,33 +377,37 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("версия")]
     public async Task BotVersionInfo()
     {
-        var packages = DataBase.GetAllPackageVersions();
+        const string footer = "part of Lois Media Group😋 \ndev by lucz@lois.media🏃";
+        const string footerIcon = "https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x";
 
-        var botzname = new EmbedAuthorBuilder()
-            .WithName($"sblngavna {Versioning.Full}");
+        var packages = new List<EmbedFieldSpec> { new("Среда", $"`{Versioning.Runtime}`") };
 
-        var copy = new EmbedFooterBuilder()
-            .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
-            .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
+        packages.AddRange(Versioning.Packages.Select(package =>
+            new EmbedFieldSpec(package.Name, $"`{package.Version}`", true)));
 
-        const int maxFieldsPerEmbed = 15;
-
-        for (int i = 0; i < packages.Count; i += maxFieldsPerEmbed)
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            var chunk = packages.Skip(i).Take(maxFieldsPerEmbed);
+            AuthorName = $"sblngavna {Versioning.Full}",
+            Color = Color.LighterGrey,
+            Fields = packages,
+            Footer = footer,
+            FooterIconUrl = footerIcon
+        }));
 
-            var embedBuilder = new EmbedBuilder()
-                .WithAuthor(botzname)
-                .WithFooter(copy)
-                .WithColor(Color.LighterGrey);
+        var external = DataBase.GetAllPackageVersions();
+        if (external.Count == 0)
+            return;
 
-            foreach (var item in chunk)
-            {
-                embedBuilder.AddField(item.PackageName, $"***{item.PackageVersion}***", false);
-            }
-
-            await ReplyAsync(embed: embedBuilder.Build());
-        }
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            AuthorName = "внешние сервисы",
+            Color = Color.DarkGrey,
+            Fields = external
+                .Select(item => new EmbedFieldSpec(item.PackageName, $"`{item.PackageVersion}`", true))
+                .ToList(),
+            Footer = footer,
+            FooterIconUrl = footerIcon
+        }));
     }
 
     [Command("позови")]
