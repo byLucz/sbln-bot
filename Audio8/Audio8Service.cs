@@ -37,6 +37,7 @@ namespace sblngavnav6.Audio8
         private readonly Audio8StatsTracker _stats;
         private readonly Audio8Persistence _persistence;
         private readonly ConcurrentDictionary<ulong, string> _searchPrefixes = new();
+        private readonly ConcurrentDictionary<ulong, List<Audio8RecentPlaylist>> _recentPlaylists = new();
 
         private CancellationTokenSource _cleanupCts;
         private Task _cleanupTask = Task.CompletedTask;
@@ -66,6 +67,32 @@ namespace sblngavnav6.Audio8
         public void SetSearchPrefix(ulong guildId, string prefix) => _searchPrefixes[guildId] = prefix;
 
         public bool IsVoteRunning(ulong guildId) => _states.IsVoteRunning(guildId);
+
+        public void RememberPlaylist(ulong guildId, string name, string url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+
+            var recent = _recentPlaylists.GetOrAdd(guildId, _ => []);
+
+            lock (recent)
+            {
+                recent.RemoveAll(item => string.Equals(item.Url, url, StringComparison.OrdinalIgnoreCase));
+                recent.Insert(0, new Audio8RecentPlaylist(name, url, DateTimeOffset.UtcNow));
+
+                if (recent.Count > Audio8Constants.RecentPlaylistBuffer)
+                    recent.RemoveRange(Audio8Constants.RecentPlaylistBuffer, recent.Count - Audio8Constants.RecentPlaylistBuffer);
+            }
+        }
+
+        public IReadOnlyList<Audio8RecentPlaylist> GetRecentPlaylists(ulong guildId)
+        {
+            if (!_recentPlaylists.TryGetValue(guildId, out var recent))
+                return [];
+
+            lock (recent)
+                return recent.ToArray();
+        }
 
         public void StartCleanup(CancellationToken cancellationToken = default)
         {
@@ -224,7 +251,9 @@ namespace sblngavnav6.Audio8
                     }
 
                     var name = string.IsNullOrWhiteSpace(result.Playlist?.Name) ? "плейлист" : result.Playlist.Name;
-                    return Audio8PlayResult.Playlist(name, items.Length, available - take);
+                    var url = Uri.TryCreate(plan.Identifier, UriKind.Absolute, out _) ? plan.Identifier : null;
+
+                    return Audio8PlayResult.Playlist(name, url, items.Length, available - take);
                 }
 
                 var index = Math.Clamp(plan.PlaylistIndex, 0, tracks.Length - 1);
@@ -557,6 +586,56 @@ namespace sblngavnav6.Audio8
                 _persistence.LastSavedGuilds);
         }
 
+        internal Audio8State CaptureState() => new()
+        {
+            Guilds = CaptureGuildSettings(),
+            Players = CaptureSnapshots().ToList()
+        };
+
+        internal void RestoreGuildSettings(IReadOnlyList<Audio8GuildSettings> settings)
+        {
+            foreach (var entry in settings)
+            {
+                if (!string.IsNullOrWhiteSpace(entry.SearchPrefix))
+                    _searchPrefixes[entry.GuildId] = entry.SearchPrefix;
+
+                if (entry.RecentPlaylists is not { Count: > 0 })
+                    continue;
+
+                var recent = _recentPlaylists.GetOrAdd(entry.GuildId, _ => []);
+
+                lock (recent)
+                {
+                    recent.Clear();
+                    recent.AddRange(entry.RecentPlaylists.Take(Audio8Constants.RecentPlaylistBuffer));
+                }
+            }
+        }
+
+        private List<Audio8GuildSettings> CaptureGuildSettings()
+        {
+            var guildIds = _searchPrefixes.Keys.Concat(_recentPlaylists.Keys).Distinct();
+            var settings = new List<Audio8GuildSettings>();
+
+            foreach (var guildId in guildIds)
+            {
+                var prefix = GetSearchPrefix(guildId);
+                var recent = GetRecentPlaylists(guildId);
+
+                if (prefix == Audio8Query.YouTubePrefix && recent.Count == 0)
+                    continue;
+
+                settings.Add(new Audio8GuildSettings
+                {
+                    GuildId = guildId,
+                    SearchPrefix = prefix,
+                    RecentPlaylists = recent.ToList()
+                });
+            }
+
+            return settings;
+        }
+
         internal IReadOnlyList<Audio8GuildSnapshot> CaptureSnapshots()
         {
             var snapshots = new List<Audio8GuildSnapshot>();
@@ -569,7 +648,7 @@ namespace sblngavnav6.Audio8
                 if (player.CurrentTrack is null && player.Queue.IsEmpty)
                     continue;
 
-                snapshots.Add(Audio8Persistence.Capture(player, GetSearchPrefix(player.GuildId)));
+                snapshots.Add(Audio8Persistence.Capture(player));
             }
 
             return snapshots;
@@ -582,10 +661,6 @@ namespace sblngavnav6.Audio8
                 return false;
 
             var player = await JoinAsync(voiceChannel, snapshot.TextChannelId, cancellationToken).ConfigureAwait(false);
-
-            if (!string.IsNullOrWhiteSpace(snapshot.SearchPrefix))
-                SetSearchPrefix(snapshot.GuildId, snapshot.SearchPrefix);
-
             player.SilentMode = true;
 
             try
@@ -681,6 +756,8 @@ namespace sblngavnav6.Audio8
         }
     }
 
+    public readonly record struct Audio8RecentPlaylist(string Name, string Url, DateTimeOffset AddedAt);
+
     public readonly record struct Audio8Skip(bool Ok, LavalinkTrack Replaced, LavalinkTrack Upcoming)
     {
         public static Audio8Skip Nothing => new(false, null, null);
@@ -696,6 +773,8 @@ namespace sblngavnav6.Audio8
 
     public readonly record struct Audio8PlayResult(Audio8PlayKind Kind, LavalinkTrack Track, string PlaylistName)
     {
+        public string PlaylistUrl { get; init; }
+
         public int Added { get; init; }
 
         public int Skipped { get; init; }
@@ -706,8 +785,8 @@ namespace sblngavnav6.Audio8
 
         public static Audio8PlayResult Enqueued(LavalinkTrack track) => new(Audio8PlayKind.Enqueued, track, null);
 
-        public static Audio8PlayResult Playlist(string name, int added, int skipped) =>
-            new(Audio8PlayKind.Playlist, null, name) { Added = added, Skipped = skipped };
+        public static Audio8PlayResult Playlist(string name, string url, int added, int skipped) =>
+            new(Audio8PlayKind.Playlist, null, name) { PlaylistUrl = url, Added = added, Skipped = skipped };
     }
 
     public enum Audio8PlayKind
@@ -726,6 +805,7 @@ namespace sblngavnav6.Audio8
         public const int MaxBassBoost = 4;
         public const int MaxPlaylistTracks = 250;
         public const int MinQueueForPick = 2;
+        public const int RecentPlaylistBuffer = 5;
         public const int HistoryCapacity = 25;
         public const int QueuePageSize = 10;
         public const int MaxVoteItems = 50;
@@ -738,6 +818,7 @@ namespace sblngavnav6.Audio8
         public static readonly TimeSpan LavalinkReadyTimeout = TimeSpan.FromSeconds(30);
         public static readonly TimeSpan GuildWaitTimeout = TimeSpan.FromSeconds(20);
         public static readonly TimeSpan GuildWaitStep = TimeSpan.FromSeconds(1);
+        public static readonly TimeSpan PositionRefreshInterval = TimeSpan.FromMinutes(1);
         public static readonly TimeSpan SnapshotInterval = TimeSpan.FromSeconds(20);
         public static readonly TimeSpan StateCleanupInterval = TimeSpan.FromMinutes(5);
         public static readonly TimeSpan TrackStartTimeout = TimeSpan.FromSeconds(10);

@@ -134,13 +134,23 @@ namespace sblngavnav6.Audio8
 
         private async Task RestoreAsync(CancellationToken cancellationToken)
         {
-            var snapshots = await _persistence.LoadAsync(cancellationToken).ConfigureAwait(false);
-            if (snapshots.Count == 0)
+            var state = await _persistence.LoadAsync(cancellationToken).ConfigureAwait(false);
+            if (state.IsEmpty)
+                return;
+
+            _service.RestoreGuildSettings(state.Guilds);
+
+            if (state.Guilds.Count > 0)
+                await LoggingService.LogInformationAsync(
+                    Audio8Constants.LogSource,
+                    $"Настройки восстановлены для гильдий: {state.Guilds.Count}");
+
+            if (state.Players.Count == 0)
                 return;
 
             var restored = 0;
 
-            foreach (var snapshot in snapshots)
+            foreach (var snapshot in state.Players)
             {
                 try
                 {
@@ -157,7 +167,7 @@ namespace sblngavnav6.Audio8
 
             await LoggingService.LogInformationAsync(
                 Audio8Constants.LogSource,
-                $"Восстановлено плееров: {restored} из {snapshots.Count}");
+                $"Восстановлено плееров: {restored} из {state.Players.Count}");
         }
 
         private async Task SnapshotLoopAsync(CancellationToken cancellationToken)
@@ -167,7 +177,7 @@ namespace sblngavnav6.Audio8
             try
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
-                    await _persistence.SaveAsync(_service.CaptureSnapshots(), cancellationToken).ConfigureAwait(false);
+                    await _persistence.SaveAsync(_service.CaptureState(), cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         }
@@ -187,7 +197,7 @@ namespace sblngavnav6.Audio8
                 _snapshotCts = null;
             }
 
-            try { await _persistence.SaveAsync(_service.CaptureSnapshots()).ConfigureAwait(false); }
+            try { await _persistence.SaveAsync(_service.CaptureState()).ConfigureAwait(false); }
             catch (Exception ex)
             {
                 await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Снимок состояния не сохранён: {ex.Message}");
@@ -287,6 +297,22 @@ namespace sblngavnav6.Audio8
         }
     }
 
+    internal sealed class Audio8State
+    {
+        public List<Audio8GuildSettings> Guilds { get; set; } = [];
+
+        public List<Audio8GuildSnapshot> Players { get; set; } = [];
+
+        public bool IsEmpty => Guilds.Count == 0 && Players.Count == 0;
+    }
+
+    internal sealed class Audio8GuildSettings
+    {
+        public ulong GuildId { get; set; }
+        public string SearchPrefix { get; set; } = Audio8Query.YouTubePrefix;
+        public List<Audio8RecentPlaylist> RecentPlaylists { get; set; } = [];
+    }
+
     internal sealed class Audio8GuildSnapshot
     {
         public ulong GuildId { get; set; }
@@ -299,7 +325,6 @@ namespace sblngavnav6.Audio8
         public float Volume { get; set; } = 1f;
         public int BassBoostLevel { get; set; } = Audio8Constants.MinBassBoost;
         public string FilterPreset { get; set; } = Audio8Constants.NoFilterPreset;
-        public string SearchPrefix { get; set; } = Audio8Query.YouTubePrefix;
         public bool Paused { get; set; }
     }
 
@@ -313,16 +338,21 @@ namespace sblngavnav6.Audio8
         private readonly SemaphoreSlim _gate = new(1, 1);
         private readonly string _path = ResolvePath();
 
+        private int? _lastFingerprint;
+
         public DateTimeOffset? LastSavedAtUtc { get; private set; }
 
         public int LastSavedGuilds { get; private set; }
 
-        public async Task SaveAsync(IReadOnlyList<Audio8GuildSnapshot> snapshots, CancellationToken cancellationToken = default)
+        public async Task SaveAsync(Audio8State state, CancellationToken cancellationToken = default)
         {
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                if (snapshots.Count == 0)
+                if (!ShouldWrite(state))
+                    return;
+
+                if (state.IsEmpty)
                 {
                     if (File.Exists(_path))
                         File.Delete(_path);
@@ -335,15 +365,16 @@ namespace sblngavnav6.Audio8
                 Directory.CreateDirectory(Path.GetDirectoryName(_path));
 
                 var temp = _path + ".tmp";
-                await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(snapshots, Json), cancellationToken).ConfigureAwait(false);
+                await File.WriteAllTextAsync(temp, JsonSerializer.Serialize(state, Json), cancellationToken).ConfigureAwait(false);
                 File.Move(temp, _path, overwrite: true);
 
                 LastSavedAtUtc = DateTimeOffset.UtcNow;
-                LastSavedGuilds = snapshots.Count;
+                LastSavedGuilds = Math.Max(state.Players.Count, state.Guilds.Count);
+                _lastFingerprint = Fingerprint(state);
             }
             catch (Exception ex) when (IsIoFailure(ex))
             {
-                await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Не удалось сохранить состояние плееров: {ex.Message}");
+                await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Не удалось сохранить состояние Audio8: {ex.Message}");
             }
             finally
             {
@@ -351,21 +382,28 @@ namespace sblngavnav6.Audio8
             }
         }
 
-        public async Task<List<Audio8GuildSnapshot>> LoadAsync(CancellationToken cancellationToken = default)
+        public async Task<Audio8State> LoadAsync(CancellationToken cancellationToken = default)
         {
             await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (!File.Exists(_path))
-                    return [];
+                    return new Audio8State();
 
-                var raw = await File.ReadAllTextAsync(_path, cancellationToken).ConfigureAwait(false);
-                return JsonSerializer.Deserialize<List<Audio8GuildSnapshot>>(raw, Json) ?? [];
+                var raw = (await File.ReadAllTextAsync(_path, cancellationToken).ConfigureAwait(false)).TrimStart();
+
+                if (raw.StartsWith('['))
+                {
+                    var legacy = JsonSerializer.Deserialize<List<Audio8GuildSnapshot>>(raw, Json) ?? [];
+                    return new Audio8State { Players = legacy };
+                }
+
+                return JsonSerializer.Deserialize<Audio8State>(raw, Json) ?? new Audio8State();
             }
             catch (Exception ex) when (IsIoFailure(ex) || ex is JsonException)
             {
-                await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Состояние плееров не прочитано: {ex.Message}");
-                return [];
+                await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Состояние Audio8 не прочитано: {ex.Message}");
+                return new Audio8State();
             }
             finally
             {
@@ -373,7 +411,55 @@ namespace sblngavnav6.Audio8
             }
         }
 
-        public static Audio8GuildSnapshot Capture(Audio8Player player, string searchPrefix)
+        private bool ShouldWrite(Audio8State state)
+        {
+            var fingerprint = Fingerprint(state);
+
+            if (fingerprint != _lastFingerprint)
+                return true;
+
+            var playing = state.Players.Any(player => !player.Paused && player.CurrentTrack is not null);
+            if (!playing)
+                return false;
+
+            return LastSavedAtUtc is null
+                || DateTimeOffset.UtcNow - LastSavedAtUtc.Value >= Audio8Constants.PositionRefreshInterval;
+        }
+
+        private static int Fingerprint(Audio8State state)
+        {
+            var hash = new HashCode();
+
+            foreach (var guild in state.Guilds)
+            {
+                hash.Add(guild.GuildId);
+                hash.Add(guild.SearchPrefix);
+
+                foreach (var recent in guild.RecentPlaylists)
+                    hash.Add(recent.Url);
+            }
+
+            foreach (var player in state.Players)
+            {
+                hash.Add(player.GuildId);
+                hash.Add(player.VoiceChannelId);
+                hash.Add(player.TextChannelId);
+                hash.Add(player.CurrentTrack);
+                hash.Add(player.RepeatMode);
+                hash.Add(player.Volume);
+                hash.Add(player.BassBoostLevel);
+                hash.Add(player.FilterPreset);
+                hash.Add(player.Paused);
+                hash.Add(player.Queue.Count);
+
+                foreach (var track in player.Queue)
+                    hash.Add(track);
+            }
+
+            return hash.ToHashCode();
+        }
+
+        public static Audio8GuildSnapshot Capture(Audio8Player player)
         {
             var queue = player.Queue
                 .Select(item => item.Track)
@@ -394,7 +480,6 @@ namespace sblngavnav6.Audio8
                 Volume = player.Volume,
                 BassBoostLevel = player.BassBoostLevel,
                 FilterPreset = player.FilterPreset,
-                SearchPrefix = searchPrefix,
                 Paused = player.State is Lavalink4NET.Players.PlayerState.Paused
             };
         }

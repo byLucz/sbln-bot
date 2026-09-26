@@ -126,10 +126,12 @@ namespace sblngavnav6.Audio8
         public const string SkipToTrackId = "a8skipnow";
         public const string QueuePickId = "a8qpick";
         public const string QueuePickModalId = "a8qpickmodal";
+        public const string RecentPlaylistId = "a8recent";
 
         public static Action<ComponentBuilder, int> NowPlaying(bool repeatEnabled) => (builder, _) =>
         {
             builder.WithButton("Скип", $"{NowPlayingId}:skip", ButtonStyle.Secondary, new Emoji("⏭️"));
+            builder.WithButton("Лист", $"{NowPlayingId}:queue", ButtonStyle.Secondary, new Emoji("📜"));
             builder.WithButton(
                 repeatEnabled ? "Луп вкл" : "Луп выкл",
                 $"{NowPlayingId}:loop",
@@ -151,6 +153,12 @@ namespace sblngavnav6.Audio8
 
         public static Action<ComponentBuilder, int> SkipToTrack() => (builder, _) =>
             builder.WithButton("Скипнуть текущий", SkipToTrackId, ButtonStyle.Secondary, new Emoji("⏭️"));
+
+        public static Action<ComponentBuilder, int> RecentPlaylists(int count) => (builder, _) =>
+        {
+            for (var index = 0; index < count; index++)
+                builder.WithButton($"{index + 1}", $"{RecentPlaylistId}:{index}", ButtonStyle.Secondary);
+        };
 
         public static Action<ComponentBuilder, int> QueuePick() => (builder, _) =>
             builder.WithButton("Выбрать трек", QueuePickId, ButtonStyle.Secondary, new Emoji("🎯"), row: 1);
@@ -302,6 +310,16 @@ namespace sblngavnav6.Audio8
             {
                 await component.DeferAsync();
                 await _service.SkipAsync(player, position: null);
+                return;
+            }
+
+            if (action == "queue")
+            {
+                await component.DeferAsync();
+
+                if (Context.Channel is ITextChannel channel)
+                    await _service.SendQueueAsync(player, channel);
+
                 return;
             }
 
@@ -536,6 +554,79 @@ namespace sblngavnav6.Audio8
 
             var cleared = _service.BuildControls(null);
             await component.UpdateAsync(message => message.Components = cleared);
+        }
+
+        [ComponentInteraction($"{Audio8Controls.RecentPlaylistId}:*")]
+        public async Task RecentPlaylistAsync(string indexRaw)
+        {
+            if (Context.Interaction is not SocketMessageComponent component)
+                return;
+
+            if (_service.IsVoteRunning(Context.Guild.Id))
+            {
+                await RespondAsync("идёт голосование, дождись конца", ephemeral: true);
+                return;
+            }
+
+            var recent = _service.GetRecentPlaylists(Context.Guild.Id);
+
+            if (!int.TryParse(indexRaw, out var index) || index < 0 || index >= recent.Count)
+            {
+                await RespondAsync("этого плейлиста больше нет в списке", ephemeral: true);
+                return;
+            }
+
+            if (Context.User is not IVoiceState { VoiceChannel: { } voiceChannel })
+            {
+                await RespondAsync("надо быть в войсе", ephemeral: true);
+                return;
+            }
+
+            var player = _service.GetPlayer(Context.Guild.Id);
+
+            if (player is not null && !Audio8Service.IsInSameVoice(Context.User, player))
+            {
+                await RespondAsync("ты не в том войсе где я", ephemeral: true);
+                return;
+            }
+
+            await component.DeferAsync();
+
+            var chosen = recent[index];
+
+            try
+            {
+                player ??= await _service.JoinAsync(voiceChannel, component.Channel.Id);
+
+                var result = await _service.LoadAsync(chosen.Url);
+                if (!result.HasMatches)
+                {
+                    await component.FollowupAsync(
+                        embed: await Audio8Embeds.Error("недавние", $"не смог загрузить {chosen.Name}"),
+                        ephemeral: true);
+                    return;
+                }
+
+                var plan = new Audio8QueryPlan(chosen.Url, 0, null, null);
+                var outcome = await _service.EnqueueAsync(player, result, plan);
+
+                if (outcome.Kind is Audio8PlayKind.Playlist)
+                {
+                    _service.RememberPlaylist(Context.Guild.Id, outcome.PlaylistName, outcome.PlaylistUrl);
+                    await component.FollowupAsync(embed: await Audio8Embeds.PlaylistEnqueued(outcome));
+                    return;
+                }
+
+                if (outcome.Track is not null)
+                    await component.FollowupAsync(embed: await Audio8Embeds.Enqueued(outcome.Track));
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogErrorAsync(Audio8Constants.LogSource, $"Недавний плейлист не запустился g={Context.Guild.Id}", ex);
+                await component.FollowupAsync(
+                    embed: await Audio8Embeds.Error("недавние", "не смог поставить плейлист, детали в логах"),
+                    ephemeral: true);
+            }
         }
 
         [ComponentInteraction(Audio8Controls.QueuePickId)]

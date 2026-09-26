@@ -70,6 +70,7 @@ namespace sblngavnav6.Audio8
             switch (outcome.Kind)
             {
                 case Audio8PlayKind.Playlist:
+                    _service.RememberPlaylist(Context.Guild.Id, outcome.PlaylistName, outcome.PlaylistUrl);
                     await ReplyAsync(embed: await Audio8Embeds.PlaylistEnqueued(outcome));
                     break;
 
@@ -150,6 +151,24 @@ namespace sblngavnav6.Audio8
             }
 
             await ReplyAsync(embed: await Audio8Embeds.Skipped(skip));
+        }
+
+        [Command("недавние", RunMode = RunMode.Async)]
+        [Alias("нед", "последние")]
+        public async Task RecentPlaylistsAsync()
+        {
+            var recent = _service.GetRecentPlaylists(Context.Guild.Id);
+
+            if (recent.Count == 0)
+            {
+                await ReplyAsync(embed: await Audio8Embeds.Error("недавние", "плейлистов ещё не было"));
+                return;
+            }
+
+            await _service.SendWithControlsAsync(
+                Context.Channel,
+                await Audio8Embeds.RecentPlaylists(recent),
+                Audio8Controls.RecentPlaylists(recent.Count));
         }
 
         [Command("плейлист", RunMode = RunMode.Async)]

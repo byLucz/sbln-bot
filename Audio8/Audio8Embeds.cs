@@ -153,11 +153,19 @@ namespace sblngavnav6.Audio8
                 $"{TrackLink(track.Title, track.Uri?.ToString())} **добавлен в очередь** 🤙",
                 Color.Orange);
 
+        public static Task<Embed> RecentPlaylists(IReadOnlyList<Audio8RecentPlaylist> recent)
+        {
+            var lines = recent.Select((item, index) =>
+                $"`{index + 1}.` {TrackLink(item.Name, item.Url)}");
+
+            return EmbedHandler.Music("недавние", string.Join("\n", lines), Color.DarkOrange);
+        }
+
         public static Task<Embed> PlaylistEnqueued(Audio8PlayResult result)
         {
             var lines = new List<string>
             {
-                $"**{result.PlaylistName}** - добавлено треков: **{result.Added}** 🤙"
+                $"{TrackLink(result.PlaylistName, result.PlaylistUrl)} **добавлено в очередь - {result.Added}** 🤙"
             };
 
             if (result.Skipped > 0)
