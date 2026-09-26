@@ -26,6 +26,10 @@ namespace sblngavnav6.Audio8
         private readonly Audio8StatsTracker _stats;
         private readonly Audio8Persistence _persistence;
 
+        private DateTimeOffset? _disconnectedSinceUtc;
+        private DateTimeOffset? _lastDisconnectLogUtc;
+        private int _reconnectAttempts;
+
         private CancellationTokenSource _snapshotCts;
         private Task _snapshotTask = Task.CompletedTask;
         private bool _started;
@@ -51,10 +55,25 @@ namespace sblngavnav6.Audio8
             _audio.ConnectionClosed += OnConnectionClosedAsync;
         }
 
-        private Task OnConnectionReadyAsync(object sender, ConnectionReadyEventArgs args) =>
-            LoggingService.LogInformationAsync(
+        private static string Node => $"{Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}";
+
+        private Task OnConnectionReadyAsync(object sender, ConnectionReadyEventArgs args)
+        {
+            var attempts = Interlocked.Exchange(ref _reconnectAttempts, 0);
+            var downSince = _disconnectedSinceUtc;
+
+            _disconnectedSinceUtc = null;
+            _lastDisconnectLogUtc = null;
+
+            if (attempts == 0 || downSince is null)
+                return LoggingService.LogInformationAsync(Audio8Constants.LogSource, $"Lavalink подключен: {Node}");
+
+            var downtime = DateTimeOffset.UtcNow - downSince.Value;
+
+            return LoggingService.LogInformationAsync(
                 Audio8Constants.LogSource,
-                $"Lavalink подключен: {Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}");
+                $"Lavalink снова на связи: {Node}, был недоступен {downtime.TotalSeconds:0}с, попыток: {attempts}");
+        }
 
         private Task OnConnectionClosedAsync(object sender, ConnectionClosedEventArgs args)
         {
@@ -63,13 +82,36 @@ namespace sblngavnav6.Audio8
                 ?? args.CloseStatus?.ToString()
                 ?? "причина неизвестна";
 
-            var message =
-                $"Lavalink отключен ({Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}): {reason}. " +
-                $"Переподключение {(args.AllowReconnect ? "будет" : "не планируется")}";
+            if (!args.AllowReconnect)
+            {
+                _disconnectedSinceUtc = null;
+                _lastDisconnectLogUtc = null;
+                Interlocked.Exchange(ref _reconnectAttempts, 0);
 
-            return args.AllowReconnect
-                ? LoggingService.LogWarningAsync(Audio8Constants.LogSource, message, args.Exception)
-                : LoggingService.LogCriticalAsync(Audio8Constants.LogSource, message, args.Exception);
+                return LoggingService.LogCriticalAsync(
+                    Audio8Constants.LogSource,
+                    $"Lavalink отключен ({Node}): {reason}. Переподключение не планируется");
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            var attempts = Interlocked.Increment(ref _reconnectAttempts);
+
+            _disconnectedSinceUtc ??= now;
+
+            var quiet = _lastDisconnectLogUtc is { } last && now - last < Audio8Constants.ReconnectLogInterval;
+            if (quiet)
+                return Task.CompletedTask;
+
+            _lastDisconnectLogUtc = now;
+
+            return attempts == 1
+                ? LoggingService.LogWarningAsync(
+                    Audio8Constants.LogSource,
+                    $"Lavalink недоступен ({Node}): {reason}. Переподключаюсь")
+                : LoggingService.LogWarningAsync(
+                    Audio8Constants.LogSource,
+                    $"Lavalink всё ещё недоступен ({Node}): {reason}. " +
+                    $"Попыток: {attempts}, не отвечает {(now - _disconnectedSinceUtc.Value).TotalSeconds:0}с");
         }
 
         private async Task OnPlayerInactiveAsync(object sender, PlayerInactiveEventArgs args)

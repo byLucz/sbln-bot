@@ -818,6 +818,7 @@ namespace sblngavnav6.Audio8
         public static readonly TimeSpan LavalinkReadyTimeout = TimeSpan.FromSeconds(30);
         public static readonly TimeSpan GuildWaitTimeout = TimeSpan.FromSeconds(20);
         public static readonly TimeSpan GuildWaitStep = TimeSpan.FromSeconds(1);
+        public static readonly TimeSpan ReconnectLogInterval = TimeSpan.FromSeconds(30);
         public static readonly TimeSpan PositionRefreshInterval = TimeSpan.FromMinutes(1);
         public static readonly TimeSpan SnapshotInterval = TimeSpan.FromSeconds(20);
         public static readonly TimeSpan StateCleanupInterval = TimeSpan.FromMinutes(5);

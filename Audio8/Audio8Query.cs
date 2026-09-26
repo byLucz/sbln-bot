@@ -227,12 +227,24 @@ namespace sblngavnav6.Audio8
                         fallback = $"https://www.youtube.com/watch?v={videoId}";
                     }
 
-                    if (IsPersonalMix(listId) && !string.IsNullOrWhiteSpace(videoId))
+                    if (IsPrivateList(listId))
                     {
-                        playlistIndex = 0;
-                        query = $"https://www.youtube.com/watch?v={videoId}&list=RD{videoId}";
+                        if (!string.IsNullOrWhiteSpace(videoId))
+                        {
+                            playlistIndex = 0;
+                            fallback = null;
+                            query = $"https://www.youtube.com/watch?v={videoId}";
+                        }
                     }
-                    else if (!IsGeneratedList(listId))
+                    else if (IsPersonalMix(listId))
+                    {
+                        if (!string.IsNullOrWhiteSpace(videoId))
+                        {
+                            playlistIndex = 0;
+                            query = $"https://www.youtube.com/watch?v={videoId}&list=RD{videoId}";
+                        }
+                    }
+                    else if (!IsMix(listId))
                     {
                         query = $"https://www.youtube.com/playlist?list={listId}";
                     }
@@ -251,12 +263,13 @@ namespace sblngavnav6.Audio8
             return new Audio8QueryPlan(query, playlistIndex, fallback, selectedTrackId);
         }
 
+        private static bool IsMix(string listId) =>
+            listId.StartsWith("RD", StringComparison.OrdinalIgnoreCase);
+
         private static bool IsPersonalMix(string listId) =>
-            listId.Equals("RDMM", StringComparison.OrdinalIgnoreCase) ||
             listId.StartsWith("RDMM", StringComparison.OrdinalIgnoreCase);
 
-        private static bool IsGeneratedList(string listId) =>
-            listId.StartsWith("RD", StringComparison.OrdinalIgnoreCase) ||
+        private static bool IsPrivateList(string listId) =>
             listId.StartsWith("UL", StringComparison.OrdinalIgnoreCase) ||
             listId.Equals("LL", StringComparison.OrdinalIgnoreCase) ||
             listId.Equals("WL", StringComparison.OrdinalIgnoreCase);
