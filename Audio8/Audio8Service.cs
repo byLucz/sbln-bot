@@ -440,7 +440,7 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
-            var hasQueue = !player.Queue.IsEmpty;
+            var canPick = player.Queue.Count >= Audio8Constants.MinQueueForPick;
 
             if (player.QueueMessage is { } previous)
             {
@@ -452,9 +452,9 @@ namespace sblngavnav6.Audio8
             var message = await _pager.SendAsync(
                 channel,
                 pages,
-                decorate: hasQueue ? Audio8Controls.QueuePick() : null).ConfigureAwait(false);
+                decorate: canPick ? Audio8Controls.QueuePick() : null).ConfigureAwait(false);
 
-            if (hasQueue)
+            if (canPick)
                 player.QueueMessage = message;
         }
 
@@ -725,6 +725,7 @@ namespace sblngavnav6.Audio8
         public const int MinBassBoost = 1;
         public const int MaxBassBoost = 4;
         public const int MaxPlaylistTracks = 250;
+        public const int MinQueueForPick = 2;
         public const int HistoryCapacity = 25;
         public const int QueuePageSize = 10;
         public const int MaxVoteItems = 50;

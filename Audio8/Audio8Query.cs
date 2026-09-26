@@ -225,7 +225,8 @@ namespace sblngavnav6.Audio8
                         fallback = $"https://www.youtube.com/watch?v={videoId}";
                     }
 
-                    query = $"https://www.youtube.com/playlist?list={listId}";
+                    if (!IsGeneratedList(listId))
+                        query = $"https://www.youtube.com/playlist?list={listId}";
                 }
             }
 
@@ -240,6 +241,12 @@ namespace sblngavnav6.Audio8
 
             return new Audio8QueryPlan(query, playlistIndex, fallback, selectedTrackId);
         }
+
+        private static bool IsGeneratedList(string listId) =>
+            listId.StartsWith("RD", StringComparison.OrdinalIgnoreCase) ||
+            listId.StartsWith("UL", StringComparison.OrdinalIgnoreCase) ||
+            listId.Equals("LL", StringComparison.OrdinalIgnoreCase) ||
+            listId.Equals("WL", StringComparison.OrdinalIgnoreCase);
 
         private static bool IsYouTubeHost(string host) =>
             host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||

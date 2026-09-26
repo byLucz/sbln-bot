@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Runtime.InteropServices;
 
 namespace sblngavnav6.Common
 {
@@ -32,8 +31,6 @@ namespace sblngavnav6.Common
             $"v{Version}"
             + (string.IsNullOrEmpty(Channel) ? "" : $" {Channel}")
             + (string.IsNullOrEmpty(Commit) ? "" : $" / {Commit}");
-
-        public static string Runtime => RuntimeInformation.FrameworkDescription;
 
         public static IReadOnlyList<PackageVersion> Packages { get; } = BuildPackages();
 

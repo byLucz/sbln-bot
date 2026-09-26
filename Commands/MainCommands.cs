@@ -377,36 +377,30 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("версия")]
     public async Task BotVersionInfo()
     {
-        const string footer = "part of Lois Media Group😋 \ndev by lucz@lois.media🏃";
-        const string footerIcon = "https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x";
+        const string separator = "​";
 
-        var packages = new List<EmbedFieldSpec> { new("Среда", $"`{Versioning.Runtime}`") };
+        var fields = new List<EmbedFieldSpec> { new("Пакеты", separator) };
 
-        packages.AddRange(Versioning.Packages.Select(package =>
-            new EmbedFieldSpec(package.Name, $"`{package.Version}`", true)));
+        fields.AddRange(Versioning.Packages.Select(package =>
+            new EmbedFieldSpec(package.Name, $"***{package.Version}***")));
+
+        var external = DataBase.GetAllPackageVersions();
+
+        if (external.Count > 0)
+        {
+            fields.Add(new EmbedFieldSpec("Внешние сервисы", separator));
+
+            fields.AddRange(external.Select(item =>
+                new EmbedFieldSpec(item.PackageName, $"***{item.PackageVersion}***")));
+        }
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
             AuthorName = $"sblngavna {Versioning.Full}",
             Color = Color.LighterGrey,
-            Fields = packages,
-            Footer = footer,
-            FooterIconUrl = footerIcon
-        }));
-
-        var external = DataBase.GetAllPackageVersions();
-        if (external.Count == 0)
-            return;
-
-        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
-        {
-            AuthorName = "внешние сервисы",
-            Color = Color.DarkGrey,
-            Fields = external
-                .Select(item => new EmbedFieldSpec(item.PackageName, $"`{item.PackageVersion}`", true))
-                .ToList(),
-            Footer = footer,
-            FooterIconUrl = footerIcon
+            Fields = fields,
+            Footer = "part of Lois Media Group😋 \ndev by lucz@lois.media🏃",
+            FooterIconUrl = "https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x"
         }));
     }
 

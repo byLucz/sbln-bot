@@ -1,6 +1,7 @@
 using Discord;
 using Lavalink4NET.Rest.Entities.Usage;
 using Lavalink4NET.Tracks;
+using System.Globalization;
 using System.Text;
 using sblngavnav6.Common;
 using static sblngavnav6.Common.CommonUtils.Text;
@@ -264,6 +265,9 @@ namespace sblngavnav6.Audio8
                 Footer = $"{EmbedHandler.MusicFooter} & sbln статистикс🔭"
             });
         }
+
+        private static string Percent(double value, int digits) =>
+            (value * 100).ToString($"0.{new string('0', digits)}", CultureInfo.InvariantCulture) + "%";
 
         private static string FormatAge(TimeSpan age) => age switch
         {
