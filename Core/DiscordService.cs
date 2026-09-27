@@ -1,8 +1,9 @@
-using Discord;
+﻿using Discord;
 using Discord.WebSocket;
 using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Audio8;
+using sblngavnav6.Common;
 using sblngavnav6.Data;
 using sblngavnav6.PPM;
 using sblngavnav6.Services;
@@ -26,8 +27,12 @@ namespace sblngavnav6.Core
         private FrontierService _frontier;
         private WelcomeService _welcome;
         private PaginatorService _pager;
+        private Task _frontierTask = Task.CompletedTask;
         private bool _started;
         private int _running;
+
+        private static readonly TimeSpan FrontierRetryDelay = TimeSpan.FromMinutes(1);
+        private static readonly TimeSpan FrontierReportInterval = TimeSpan.FromMinutes(10);
 
         public async Task RunAsync(CancellationToken cancellationToken = default)
         {
@@ -72,6 +77,7 @@ namespace sblngavnav6.Core
                 _client.Log += LogAsync;
                 _client.Ready += OnReadyAsync;
                 _client.Disconnected += OnDisconnectedAsync;
+                _client.PresenceUpdated += OnPresenceUpdatedAsync;
 
                 _commandHandler = _services.GetRequiredService<CommandHandler>();
                 _interHandler = _services.GetRequiredService<InteractionHandler>();
@@ -108,7 +114,7 @@ namespace sblngavnav6.Core
                 await _audio.StartAsync(stopping.Token);
                 _pager.StartCleanup(stopping.Token);
                 await _ppm.StartSweeperAsync(stopping.Token);
-                await _frontier.StartAsync();
+                _frontierTask = KeepFrontierAsync(stopping.Token);
 
                 lock (_readyLock)
                 {
@@ -153,6 +159,7 @@ namespace sblngavnav6.Core
                 {
                     _client.Ready -= OnReadyAsync;
                     _client.Disconnected -= OnDisconnectedAsync;
+                    _client.PresenceUpdated -= OnPresenceUpdatedAsync;
                 }
 
                 foreach (var (name, stop) in BuildShutdownSequence())
@@ -168,8 +175,51 @@ namespace sblngavnav6.Core
             }
         }
 
+        private async Task KeepFrontierAsync(CancellationToken cancellationToken)
+        {
+            var since = DateTimeOffset.UtcNow;
+            var reported = DateTimeOffset.MinValue;
+            var attempt = 0;
+
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                try
+                {
+                    await _frontier.StartAsync();
+
+                    if (attempt > 0)
+                        await LoggingService.LogInformationAsync("EXSRV",
+                            $"Telegram-мост поднялся, попыток {attempt + 1}, простой {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - since)}");
+
+                    return;
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    attempt++;
+                    var now = DateTimeOffset.UtcNow;
+
+                    if (now - reported >= FrontierReportInterval)
+                    {
+                        reported = now;
+                        await LoggingService.LogWarningAsync("EXSRV",
+                            $"Telegram-мост недоступен, попыток {attempt}, простой {CommonUtils.Time.FormatAge(now - since)}, повтор через минуту",
+                            attempt == 1 ? ex : null);
+                    }
+                }
+
+                try { await Task.Delay(FrontierRetryDelay, cancellationToken); }
+                catch (OperationCanceledException) { return; }
+            }
+        }
+
         private IEnumerable<(string Name, Func<Task> Stop)> BuildShutdownSequence()
         {
+            yield return ("Telegram retry", () => _frontierTask);
+
             if (_frontier != null)
                 yield return ("Telegram", _frontier.StopAsync);
 
@@ -222,6 +272,8 @@ namespace sblngavnav6.Core
             lock (_readyLock) SetReady(false);
             return Task.CompletedTask;
         }
+
+        private Task OnPresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after) => Task.CompletedTask;
 
         private void SetReady(bool value)
         {

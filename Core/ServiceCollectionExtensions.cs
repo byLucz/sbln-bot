@@ -21,7 +21,14 @@ namespace sblngavnav6.Core
         {
             var config = new DiscordSocketConfig
             {
-                GatewayIntents = GatewayIntents.All
+                GatewayIntents = GatewayIntents.Guilds
+                    | GatewayIntents.GuildMembers
+                    | GatewayIntents.GuildMessages
+                    | GatewayIntents.MessageContent
+                    | GatewayIntents.GuildVoiceStates
+                    | GatewayIntents.GuildEmojis
+                    | GatewayIntents.GuildPresences
+                    | GatewayIntents.DirectMessages
             };
 
             return services
