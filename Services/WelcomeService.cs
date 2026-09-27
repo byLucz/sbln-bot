@@ -1,5 +1,6 @@
-using Discord;
+﻿using Discord;
 using Discord.WebSocket;
+using sblngavnav6.Common;
 using sblngavnav6.Data;
 
 namespace sblngavnav6.Services
@@ -48,14 +49,13 @@ namespace sblngavnav6.Services
 
             var message = string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? DefaultMessage : gs.WelcomeMessage;
 
-            var embed = new EmbedBuilder()
-                .WithColor(Color.Green)
-                .WithTitle($"Добро пожаловать, {user.Username}!")
-                .WithDescription(message)
-                .WithThumbnailUrl(user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl())
-                .Build();
-
-            await channel.SendMessageAsync(embed: embed);
+            await channel.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                Title = $"Добро пожаловать, {user.Username}!",
+                Description = message,
+                Color = Color.Green,
+                ThumbnailUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
+            }));
         }
     }
 }

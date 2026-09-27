@@ -1,232 +1,115 @@
 using Discord;
+using sblngavnav6.Common;
 
-public class HelpEmbedService
+public static class HelpEmbedService
 {
-    public static List<Embed> GetHelpPages()
-    {
-        var pages = new List<Embed>
+    private const string AuthorIcon = "https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png";
+    private const string FooterIcon = "https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x";
+    private const string FooterText = "dev by lucz@lois.media🏃";
+
+    private static readonly (string Title, (string Command, string About)[] Commands)[] Sections =
+    [
+        ("Zдарова я сын гавна и это мои основные команды",
+        [
+            ("инфа", "инфа о сервере"),
+            ("пинг", "пинг бота к серверу"),
+            ("позови", "позвать любого кентика"),
+            ("эхо", "дублирует сообщение в войс"),
+            ("ролл", "рандом число в диапазоне"),
+            ("погода", "погода в горАде"),
+            ("биток|монетки|мон", "стоимость популярной крипты"),
+            ("курс|кс", "курс рубля к доллару/евро/тенге"),
+            ("напомни|н", "напоминалка в ЛС"),
+            ("выбери", "выбор из нескольких вариантов"),
+            ("памаги", "команда для помощи (тут тут щас находишься)"),
+            ("почта @ник", "отправить челиксу в лс сообщеньку"),
+            ("клуб", "модуль книжного клуба"),
+            ("паста", "рандомная паста из карбонары"),
+            ("кит|кот", "показать рандомного котика"),
+            ("кал", "калькулятор выражений"),
+            ("ава", "получить аватар участника"),
+            ("чел", "случайный участник сервера")
+        ]),
+
+        ("Музыкальные команды Audio8",
+        [
+            ("играй|и", "играть песенку"),
+            ("выйди|л", "лив с канала"),
+            ("плейлист|лист", "очередь композиций"),
+            ("скип|ск", "скипнуть трек"),
+            ("останови|стоп", "остановить и очистить плейлист"),
+            ("пауза|пз", "приостановить"),
+            ("продолжи|прод", "продолжить"),
+            ("басс|бс", "басс буст, ступени 1-4 (1 — выкл)"),
+            ("громкость|гр", "громкость 1-500, без аргумента — текущая"),
+            ("перейти|пр", "перейти по таймингу"),
+            ("залупа|луп", "вкл/выкл повтор"),
+            ("назад|пред", "вернуть предыдущий трек"),
+            ("озвучь|ттс", "произнести текст в голосовом канале"),
+            ("лавастат", "статус музыкального lavalink"),
+            ("фильтр|эффект", "найткор | слоу | 8д | караоке | вибрато | выкл"),
+            ("источник|сорс", "дефолтный источник поиска"),
+            ("перемешай|шафл", "перемешать очередь"),
+            ("голосование|голос", "выбор из вариантов с озвучкой")
+        ]),
+
+        ("Команды для фанчика",
+        [
+            ("шутка|анек", "рандомная шутка по категории (1-3)"),
+            ("цитаты|цит", "рандом цитата"),
+            ("сапер (1-9)", "классический сапёр"),
+            ("сетарех|дуэль", "выдача сета/дуэли в арехе"),
+            ("волк", "рандом волк"),
+            ("кот|кит", "рандом котик"),
+            ("8 яиц|?", "аналог шара-восьмерки"),
+            ("маг7", "какой ты сегодня максим"),
+            ("гонка", "гонка смайликов"),
+            ("андерстендебел", "андерстендебел"),
+            ("гэй", "узнать ориентацию"),
+            ("пососи", "пососи (команда SHEFFZ)"),
+            ("трап", "какой ты trapboy сегодня"),
+            ("иди нахуй", "дружелюбно послать кента"),
+            ("WW|ww", "случайный wow-ответ"),
+            ("погладить", "погладить участника"),
+            ("чмокнуть", "чмокнуть участника"),
+            ("обнять", "обнять участника"),
+            ("ф", "прожать F в чат"),
+            ("кусь", "кусануть участника"),
+            ("бухнуть", "позвать бухать"),
+            ("заткнуть|завали ебало", "жестко заткнуть кента")
+        ]),
+
+        ("Мои вип/мод команды😎",
+        [
+            ("ир", "инфа для девелоперов"),
+            ("анонс|ембед", "анонс или эмбед в любой канал"),
+            ("бан|кик", "ну итак все понятно, еп"),
+            ("удоли", "удалить сообщения <кол-во>"),
+            ("версия", "версия бота"),
+            ("апт", "аптайм бота"),
+            ("актив", "ставит активность бота"),
+            ("ст", "меняет статус бота"),
+            ("зал славы", "зал славы лучших мемберов"),
+            ("добавить стримера", "добавить twitch-стримера в отслеживание"),
+            ("убрать стримера", "убрать twitch-стримера из отслеживания"),
+            ("стримеры|стримерши", "список отслеживаемых стримеров"),
+            ("говорилка|говор", "вкл/выкл режим говорилки"),
+            ("настройкиговора", "показать текущие настройки")
+        ])
+    ];
+
+    public static List<Embed> GetHelpPages() => Sections.Select(Page).ToList();
+
+    private static Embed Page((string Title, (string Command, string About)[] Commands) section) =>
+        EmbedHandler.Build(new EmbedSpec
         {
-            BuildMainHelp(),
-            BuildMusicHelp(),
-            BuildFunHelp(),
-            BuildVipHelp()
-        };
-        return pages;
-    }
-
-    private static Embed BuildMainHelp()
-    {
-        var botzname = new EmbedAuthorBuilder()
-            .WithName("Zдарова я сын гавна и это мои основные команды")
-            .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
-        var copy = new EmbedFooterBuilder()
-            .WithText("dev by lucz@lois.media🏃")
-            .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
-
-        var q = new EmbedFieldBuilder().WithName("инфа").WithValue("инфа о сервере");
-        var w = new EmbedFieldBuilder().WithName("пинг").WithValue("пинг бота к серверу");
-        var e = new EmbedFieldBuilder().WithName("позови").WithValue("позвать любого кентика");
-        var r = new EmbedFieldBuilder().WithName("эхо").WithValue("дублирует сообщение в войс");
-        var t = new EmbedFieldBuilder().WithName("ролл").WithValue("рандом число в диапазоне");
-        var y = new EmbedFieldBuilder().WithName("погода").WithValue("погода в горАде");
-        var u = new EmbedFieldBuilder().WithName("биток|монетки|мон").WithValue("стоимость популярной крипты");
-        var i = new EmbedFieldBuilder().WithName("курс|кс").WithValue("курс рубля к доллару/евро/тенге");
-        var o = new EmbedFieldBuilder().WithName("напомни|н").WithValue("напоминалка в ЛС");
-        var p = new EmbedFieldBuilder().WithName("выбери").WithValue("выбор из нескольких вариантов");
-        var a = new EmbedFieldBuilder().WithName("памаги").WithValue("команда для помощи (тут тут щас находишься)");
-        var s = new EmbedFieldBuilder().WithName("почта @ник").WithValue("отправить челиксу в лс сообщеньку");
-        var k = new EmbedFieldBuilder().WithName("клуб").WithValue("модуль книжного клуба");
-        var x = new EmbedFieldBuilder().WithName("паста").WithValue("рандомная паста из карбонары");
-        var cat = new EmbedFieldBuilder().WithName("кит|кот").WithValue("показать рандомного котика");
-        var calc = new EmbedFieldBuilder().WithName("кал").WithValue("калькулятор выражений");
-        var ava = new EmbedFieldBuilder().WithName("ава").WithValue("получить аватар участника");
-        var chel = new EmbedFieldBuilder().WithName("чел").WithValue("случайный участник сервера");
-
-        var embed = new EmbedBuilder()
-            .WithAuthor(botzname)
-            .WithFooter(copy)
-            .WithColor(Color.DarkBlue)
-            .AddField(q)
-            .AddField(w)
-            .AddField(e)
-            .AddField(r)
-            .AddField(t)
-            .AddField(y)
-            .AddField(u)
-            .AddField(i)
-            .AddField(o)
-            .AddField(p)
-            .AddField(a)
-            .AddField(s)
-            .AddField(k)
-            .AddField(x)
-            .AddField(cat)
-            .AddField(calc)
-            .AddField(ava)
-            .AddField(chel);
-
-        return embed.Build();
-    }
-
-    private static Embed BuildMusicHelp()
-    {
-        var botzname = new EmbedAuthorBuilder()
-            .WithName("Музыкальные команды Audio8")
-            .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
-        var copy = new EmbedFooterBuilder()
-            .WithText("dev by lucz@lois.media🏃")
-            .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
-
-        var m1 = new EmbedFieldBuilder().WithName("играй|и").WithValue("играть песенку");
-        var m2 = new EmbedFieldBuilder().WithName("выйди|л").WithValue("лив с канала");
-        var m3 = new EmbedFieldBuilder().WithName("плейлист|лист").WithValue("очередь композиций");
-        var m4 = new EmbedFieldBuilder().WithName("скип|ск").WithValue("скипнуть трек");
-        var m5 = new EmbedFieldBuilder().WithName("останови|стоп").WithValue("остановить и очистить плейлист");
-        var m7 = new EmbedFieldBuilder().WithName("пауза|пз").WithValue("приостановить");
-        var m8 = new EmbedFieldBuilder().WithName("продолжи|прод").WithValue("продолжить");
-        var m9 = new EmbedFieldBuilder().WithName("басс|бс").WithValue("басс буст, ступени 1-4 (1 — выкл)");
-        var m10 = new EmbedFieldBuilder().WithName("громкость|гр").WithValue("громкость 1-500, без аргумента — текущая");
-        var m11 = new EmbedFieldBuilder().WithName("перейти|пр").WithValue("перейти по таймингу");
-        var m12 = new EmbedFieldBuilder().WithName("залупа|луп").WithValue("вкл/выкл повтор");
-        var m13 = new EmbedFieldBuilder().WithName("назад|пред").WithValue("вернуть предыдущий трек");
-        var m14 = new EmbedFieldBuilder().WithName("озвучь|ттс").WithValue("произнести текст в голосовом канале");
-        var m15 = new EmbedFieldBuilder().WithName("лавастат").WithValue("статус музыкального lavalink");
-        var m16 = new EmbedFieldBuilder().WithName("фильтр|эффект").WithValue("найткор | слоу | 8д | караоке | вибрато | выкл");
-        var m17 = new EmbedFieldBuilder().WithName("источник|сорс").WithValue("дефолтный источник поиска");
-        var m18 = new EmbedFieldBuilder().WithName("перемешай|шафл").WithValue("перемешать очередь");
-        var m19 = new EmbedFieldBuilder().WithName("голосование|голос").WithValue("выбор из вариантов с озвучкой");
-
-        var embed = new EmbedBuilder()
-            .WithAuthor(botzname)
-            .WithFooter(copy)
-            .WithColor(Color.DarkBlue)
-            .AddField(m1)
-            .AddField(m2)
-            .AddField(m3)
-            .AddField(m4)
-            .AddField(m5)
-            .AddField(m7)
-            .AddField(m8)
-            .AddField(m9)
-            .AddField(m10)
-            .AddField(m11)
-            .AddField(m12)
-            .AddField(m13)
-            .AddField(m14)
-            .AddField(m15)
-            .AddField(m16)
-            .AddField(m17)
-            .AddField(m18)
-            .AddField(m19);
-
-        return embed.Build();
-    }
-
-    private static Embed BuildFunHelp()
-    {
-        var botzname = new EmbedAuthorBuilder()
-            .WithName("Команды для фанчика")
-            .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
-        var copy = new EmbedFooterBuilder()
-            .WithText("dev by lucz@lois.media🏃")
-            .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
-
-        var r = new EmbedFieldBuilder().WithName("шутка|анек").WithValue("рандомная шутка по категории (1-3)");
-        var r2 = new EmbedFieldBuilder().WithName("цитаты|цит").WithValue("рандом цитата");
-        var t = new EmbedFieldBuilder().WithName("гэй").WithValue("узнать ориентацию");
-        var z1 = new EmbedFieldBuilder().WithName("кот|кит").WithValue("рандом котик");
-        var t2 = new EmbedFieldBuilder().WithName("маг7").WithValue("какой ты сегодня максим");
-        var t1 = new EmbedFieldBuilder().WithName("гонка").WithValue("гонка смайликов");
-        var m1 = new EmbedFieldBuilder().WithName("пососи").WithValue("пососи (команда SHEFFZ)");
-        var m2 = new EmbedFieldBuilder().WithName("сапер (1-9)").WithValue("классический сапёр");
-        var X2 = new EmbedFieldBuilder().WithName("сетарех|дуэль").WithValue("выдача сета/дуэли в арехе");
-        var z = new EmbedFieldBuilder().WithName("волк").WithValue("рандом волк");
-        var zxc = new EmbedFieldBuilder().WithName("андерстендебел").WithValue("андерстендебел");
-        var zxc1 = new EmbedFieldBuilder().WithName("8 яиц|?").WithValue("аналог шара-восьмерки");
-        var act1 = new EmbedFieldBuilder().WithName("трап").WithValue("какой ты trapboy сегодня");
-        var act2 = new EmbedFieldBuilder().WithName("иди нахуй").WithValue("дружелюбно послать кента");
-        var act3 = new EmbedFieldBuilder().WithName("WW|ww").WithValue("случайный wow-ответ");
-        var act4 = new EmbedFieldBuilder().WithName("погладить").WithValue("погладить участника");
-        var act5 = new EmbedFieldBuilder().WithName("чмокнуть").WithValue("чмокнуть участника");
-        var act6 = new EmbedFieldBuilder().WithName("обнять").WithValue("обнять участника");
-        var act7 = new EmbedFieldBuilder().WithName("ф").WithValue("прожать F в чат");
-        var act8 = new EmbedFieldBuilder().WithName("кусь").WithValue("кусануть участника");
-        var act9 = new EmbedFieldBuilder().WithName("бухнуть").WithValue("позвать бухать");
-        var act10 = new EmbedFieldBuilder().WithName("заткнуть|завали ебало").WithValue("жестко заткнуть кента");
-
-        var embed = new EmbedBuilder()
-            .WithAuthor(botzname)
-            .WithFooter(copy)
-            .WithColor(Color.DarkBlue)
-            .AddField(r)
-            .AddField(r2)
-            .AddField(m2)
-            .AddField(X2)
-            .AddField(z)
-            .AddField(z1)
-            .AddField(zxc1)
-            .AddField(t2)
-            .AddField(t1)
-            .AddField(zxc)
-            .AddField(t)
-            .AddField(m1)
-            .AddField(act1)
-            .AddField(act2)
-            .AddField(act3)
-            .AddField(act4)
-            .AddField(act5)
-            .AddField(act6)
-            .AddField(act7)
-            .AddField(act8)
-            .AddField(act9)
-            .AddField(act10);
-
-        return embed.Build();
-    }
-
-    private static Embed BuildVipHelp()
-    {
-        var botzname = new EmbedAuthorBuilder()
-            .WithName("Мои вип/мод команды😎")
-            .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
-        var copy = new EmbedFooterBuilder()
-            .WithText("dev by lucz@lois.media🏃")
-            .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
-
-        var r = new EmbedFieldBuilder().WithName("ир").WithValue("инфа для девелоперов");
-        var r2 = new EmbedFieldBuilder().WithName("анонс|ембед").WithValue("анонс или эмбед в любой канал");
-        var m1 = new EmbedFieldBuilder().WithName("бан|кик").WithValue("ну итак все понятно, еп");
-        var u = new EmbedFieldBuilder().WithName("удоли").WithValue("удалить сообщения <кол-во>");
-        var zxc1 = new EmbedFieldBuilder().WithName("версия").WithValue("версия бота");
-        var zxc2 = new EmbedFieldBuilder().WithName("апт").WithValue("аптайм бота");
-        var zxc3 = new EmbedFieldBuilder().WithName("актив").WithValue("ставит активность бота");
-        var t = new EmbedFieldBuilder().WithName("ст").WithValue("меняет статус бота");
-        var hall = new EmbedFieldBuilder().WithName("зал славы").WithValue("зал славы лучших мемберов");
-        var r3 = new EmbedFieldBuilder().WithName("добавить стримера").WithValue("добавить twitch-стримера в отслеживание");
-        var r4 = new EmbedFieldBuilder().WithName("убрать стримера").WithValue("убрать twitch-стримера из отслеживания");
-        var r5 = new EmbedFieldBuilder().WithName("стримеры|стримерши").WithValue("список отслеживаемых стримеров");
-        var g1 = new EmbedFieldBuilder().WithName("говорилка|говор").WithValue("вкл/выкл режим говорилки");
-        var g2 = new EmbedFieldBuilder().WithName("настройкиговора").WithValue("показать текущие настройки");
-
-        var embed = new EmbedBuilder()
-            .WithAuthor(botzname)
-            .WithFooter(copy)
-            .WithColor(Color.DarkBlue)
-            .AddField(r)
-            .AddField(r2)
-            .AddField(m1)
-            .AddField(u)
-            .AddField(zxc1)
-            .AddField(zxc2)
-            .AddField(zxc3)
-            .AddField(t)
-            .AddField(hall)
-            .AddField(r3)
-            .AddField(r4)
-            .AddField(r5)
-            .AddField(g1)
-            .AddField(g2);
-
-        return embed.Build();
-    }
+            AuthorName = section.Title,
+            AuthorIconUrl = AuthorIcon,
+            Color = Color.DarkBlue,
+            Fields = section.Commands
+                .Select(command => new EmbedFieldSpec(command.Command, command.About))
+                .ToArray(),
+            Footer = FooterText,
+            FooterIconUrl = FooterIcon
+        });
 }

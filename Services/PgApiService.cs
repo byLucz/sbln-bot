@@ -1,6 +1,7 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using sblngavnav6.Common;
 using sblngavnav6.Data;
 
 namespace sblngavnav6.Services;
@@ -113,8 +114,8 @@ public sealed class PgApiService
 
             if (string.IsNullOrWhiteSpace(body))
                 body = "(пустой ответ)";
-            else if (body.Length > MaxBodyLength)
-                body = body[..MaxBodyLength] + "\n... (обрезано)";
+            else
+                body = CommonUtils.Text.Truncate(body, MaxBodyLength);
 
             return new PgApiResult(
                 response.IsSuccessStatusCode,

@@ -1,53 +1,58 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using Discord.Commands;
+using static sblngavnav6.Common.CommonUtils.Time;
 
 namespace sblngavnav6.Services
 {
     public class CooldownAttribute : PreconditionAttribute
-	{
-		private readonly ConcurrentDictionary<CooldownInfo, DateTime> cooldowns =
-			new ConcurrentDictionary<CooldownInfo, DateTime>();
+    {
+        private const int PurgeThreshold = 256;
 
-		public CooldownAttribute(int seconds)
-		{
-			CooldownLength = TimeSpan.FromSeconds(seconds);
-		}
+        private readonly ConcurrentDictionary<CooldownInfo, DateTimeOffset> _cooldowns = new();
 
-		private TimeSpan CooldownLength { get; }
-		public override Task<PreconditionResult> CheckPermissionsAsync(ICommandContext context, CommandInfo command,
-			IServiceProvider services)
-		{
-			CooldownInfo key = new CooldownInfo(context.User.Id, command.GetHashCode());
-
-			if (cooldowns.TryGetValue(key, out DateTime endsAt))
-			{
-				TimeSpan difference = endsAt.Subtract(DateTime.Now);
-				if (difference.Ticks > 0)
-					return Task.FromResult(
-						PreconditionResult.FromError($"дружище, имей совесть, напишешь только через {difference:ss} секунд. Ок? Ок."));
-
-				DateTime time = DateTime.Now.Add(CooldownLength);
-				cooldowns.TryUpdate(key, time, endsAt);
-			}
-			else
-			{
-				cooldowns.TryAdd(key, DateTime.Now.Add(CooldownLength));
-			}
-
-			return Task.FromResult(PreconditionResult.FromSuccess());
-		}
-
-        public struct CooldownInfo
+        public CooldownAttribute(int seconds)
         {
-            public ulong UserId { get; }
-
-            public int CommandHashCode { get; }
-
-            public CooldownInfo(ulong userId, int commandHashCode)
-            {
-                UserId = userId;
-                CommandHashCode = commandHashCode;
-            }
+            CooldownLength = TimeSpan.FromSeconds(seconds);
         }
+
+        private TimeSpan CooldownLength { get; }
+
+        public override Task<PreconditionResult> CheckPermissionsAsync(
+            ICommandContext context,
+            CommandInfo command,
+            IServiceProvider services)
+        {
+            var key = new CooldownInfo(context.User.Id, command.GetHashCode());
+            var now = DateTimeOffset.UtcNow;
+
+            if (_cooldowns.TryGetValue(key, out var endsAt))
+            {
+                var left = endsAt - now;
+
+                if (left > TimeSpan.Zero)
+                    return Task.FromResult(PreconditionResult.FromError(
+                        $"дружище, имей совесть, напишешь только через {FormatAge(left)}. Ок? Ок."));
+
+                _cooldowns.TryUpdate(key, now.Add(CooldownLength), endsAt);
+            }
+            else
+            {
+                _cooldowns.TryAdd(key, now.Add(CooldownLength));
+            }
+
+            if (_cooldowns.Count > PurgeThreshold)
+                Purge(now);
+
+            return Task.FromResult(PreconditionResult.FromSuccess());
+        }
+
+        private void Purge(DateTimeOffset now)
+        {
+            foreach (var entry in _cooldowns)
+                if (entry.Value <= now)
+                    _cooldowns.TryRemove(entry);
+        }
+
+        public readonly record struct CooldownInfo(ulong UserId, int CommandHashCode);
     }
 }

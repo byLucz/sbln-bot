@@ -1,25 +1,27 @@
-﻿using Discord;
 using Discord.WebSocket;
+using sblngavnav6.Common;
 
 namespace sblngavnav6.Services
 {
     public static class ReminderService
-	{
-		public static async Task RemindAsyncSeconds(SocketUser guild, int time, string msg)
-		{
-			int convert = (int) TimeSpan.FromSeconds(time).TotalMilliseconds;
-			string timenow = DateTime.Now.ToString("hh:mm:ss tt");
+    {
+        public static async Task RemindAsyncSeconds(SocketUser user, int seconds, string message, CancellationToken cancellationToken = default)
+        {
+            var delay = TimeSpan.FromSeconds(Math.Clamp(seconds, 1, (int)TimeSpan.FromDays(1).TotalSeconds));
+            var placed = DateTimeOffset.Now;
 
-            await Task.Delay(convert);
+            await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
 
-			IDMChannel dm = await guild.CreateDMChannelAsync();
+            var dm = await user.CreateDMChannelAsync().ConfigureAwait(false);
 
-			EmbedBuilder embed = new EmbedBuilder();
-			embed.WithTitle("sbln напоминалка👽");
-			embed.WithDescription(msg);
-			embed.WithFooter($"была поставлена в {timenow}", guild.GetAvatarUrl());
-
-			await dm.SendMessageAsync("", false, embed.Build());
-		}
-	}
+            await dm.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                Title = "sbln напоминалка👽",
+                Description = message,
+                Color = Discord.Color.Teal,
+                Footer = $"поставлена в {placed:HH:mm:ss} / прошло {CommonUtils.Time.FormatTime(delay)}",
+                FooterIconUrl = user.GetAvatarUrl()
+            })).ConfigureAwait(false);
+        }
+    }
 }
