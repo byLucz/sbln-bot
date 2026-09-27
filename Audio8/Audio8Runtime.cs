@@ -220,7 +220,16 @@ namespace sblngavnav6.Audio8
             try
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
+                {
                     await _persistence.SaveAsync(_service.CaptureState(), cancellationToken).ConfigureAwait(false);
+
+                    try { await _service.EnforceTrackLimitsAsync(cancellationToken).ConfigureAwait(false); }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                    catch (Exception ex)
+                    {
+                        await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Проверка длительности не удалась: {ex.Message}");
+                    }
+                }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         }

@@ -4,6 +4,7 @@ using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Audio8;
 using sblngavnav6.Common;
+using static sblngavnav6.Common.CommonUtils.Time;
 using sblngavnav6.Data;
 using sblngavnav6.PPM;
 using sblngavnav6.Services;
@@ -189,7 +190,7 @@ namespace sblngavnav6.Core
 
                     if (attempt > 0)
                         await LoggingService.LogInformationAsync("EXSRV",
-                            $"Telegram-мост поднялся, попыток {attempt + 1}, простой {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - since)}");
+                            $"Telegram-мост поднялся, попыток {attempt + 1}, простой {FormatAge(DateTimeOffset.UtcNow - since)}");
 
                     return;
                 }
@@ -206,7 +207,7 @@ namespace sblngavnav6.Core
                     {
                         reported = now;
                         await LoggingService.LogWarningAsync("EXSRV",
-                            $"Telegram-мост недоступен, попыток {attempt}, простой {CommonUtils.Time.FormatAge(now - since)}, повтор через минуту",
+                            $"Telegram-мост недоступен, попыток {attempt}, простой {FormatAge(now - since)}, повтор через минуту",
                             attempt == 1 ? ex : null);
                     }
                 }

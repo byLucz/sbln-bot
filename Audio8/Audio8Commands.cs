@@ -4,6 +4,7 @@ using Lavalink4NET.Players;
 using System.Runtime.InteropServices;
 using sblngavnav6.Common;
 using sblngavnav6.Services;
+using static sblngavnav6.Common.CommonUtils.Text;
 using static sblngavnav6.Common.CommonUtils.Time;
 
 namespace sblngavnav6.Audio8
@@ -223,7 +224,7 @@ namespace sblngavnav6.Audio8
 
             await player.PauseAsync();
             await ReplyAsync(embed: await Audio8Embeds.Info("пауза",
-                $"поставил на паузу --- {CommonUtils.Text.TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ⏸️"));
+                $"поставил на паузу --- {TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ⏸️"));
         }
 
         [Command("продолжи", RunMode = RunMode.Async)]
@@ -248,7 +249,7 @@ namespace sblngavnav6.Audio8
 
             await player.ResumeAsync();
             await ReplyAsync(embed: await Audio8Embeds.Info("продолжи",
-                $"продолжаю --- {CommonUtils.Text.TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ▶️"));
+                $"продолжаю --- {TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ▶️"));
         }
 
         [Command("останови", RunMode = RunMode.Async)]

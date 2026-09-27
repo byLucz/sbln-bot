@@ -45,6 +45,14 @@ namespace sblngavnav6.Audio8
 
         public int PlayCount { get; private set; }
 
+        public string RestoredTrackId { get; set; }
+
+        public DateTimeOffset? RestoredAt { get; set; }
+
+        public bool IsRestored(LavalinkTrack track) =>
+            RestoredTrackId is not null && track is not null &&
+            string.Equals(track.Identifier, RestoredTrackId, StringComparison.OrdinalIgnoreCase);
+
         public bool RepeatEnabled => RepeatMode is TrackRepeatMode.Track;
 
         public bool QueueRepeatEnabled => RepeatMode is TrackRepeatMode.Queue;

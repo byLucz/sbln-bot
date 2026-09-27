@@ -3,6 +3,7 @@ using Discord.Commands;
 using Discord.WebSocket;
 using sblngavnav6.Core;
 using sblngavnav6.Common;
+using static sblngavnav6.Common.CommonUtils.Text;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
 using System.Diagnostics;
@@ -381,14 +382,14 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         var fields = new List<EmbedFieldSpec>
         {
-            new("📦 Пакеты", CommonUtils.Text.CodeTable(
+            new("📦 Пакеты", CodeTable(
                 Versioning.Packages.Select(package => (package.Name, package.Version)),
                 "`нет данных`"))
         };
 
         if (external.Count > 0)
         {
-            fields.Add(new EmbedFieldSpec("🛠️ Внешние сервисы", CommonUtils.Text.CodeTable(
+            fields.Add(new EmbedFieldSpec("🛠️ Внешние сервисы", CodeTable(
                 external.Select(item => (item.PackageName, item.PackageVersion)),
                 "`нет данных`")));
         }

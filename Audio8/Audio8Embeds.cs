@@ -46,6 +46,12 @@ namespace sblngavnav6.Audio8
             return pages;
         }
 
+        private static string Length(LavalinkTrack track) =>
+            track.IsLiveStream ? "прямой эфир"
+            : track.Duration <= TimeSpan.Zero ? "неизвестна"
+            : track.Duration >= Audio8Constants.SuspiciousDuration ? $"{FormatTime(track.Duration)} (источник врёт)"
+            : FormatTime(track.Duration);
+
         private static string ProgressBar(TimeSpan current, TimeSpan total)
         {
             if (total.TotalSeconds <= 0)
@@ -101,10 +107,13 @@ namespace sblngavnav6.Audio8
             if (player.FilterPreset != Audio8Constants.NoFilterPreset)
                 extra.Add($"🎛️ **Фильтр:** {player.FilterPreset}");
 
+            if (player.IsRestored(track))
+                extra.Add($"♻️ **Восстановлен:** после перезапуска, {FormatAge(DateTimeOffset.UtcNow - (player.RestoredAt ?? DateTimeOffset.UtcNow))} назад");
+
             var description =
                 $"**👺 Трек:** {TrackLink(track.Title, track.Uri?.ToString())}\n" +
                 $"**👤 Автор:** {track.Author}\n" +
-                $"**⏳ Длительность:** {FormatTime(track.Duration)}";
+                $"**⏳ Длительность:** {Length(track)}";
 
             if (extra.Count > 0)
                 description += "\n" + string.Join("\n", extra);

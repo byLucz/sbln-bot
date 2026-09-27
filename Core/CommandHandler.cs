@@ -3,6 +3,7 @@ using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Common;
+using static sblngavnav6.Common.CommonUtils.Text;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.Services;
@@ -238,7 +239,7 @@ namespace sblngavnav6.Core
 
                 _ => string.IsNullOrWhiteSpace(result.ErrorReason)
                     ? $"🔴ОШИБКА🔴 - {result.Error}"
-                    : $"🔴ОШИБКА🔴 - {CommonUtils.Text.FirstLine(result.ErrorReason)}"
+                    : $"🔴ОШИБКА🔴 - {FirstLine(result.ErrorReason)}"
             };
 
             await context.Channel.SendMessageAsync(reply);

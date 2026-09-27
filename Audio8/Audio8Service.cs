@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Net;
 using Discord.WebSocket;
 using Lavalink4NET;
@@ -11,8 +11,10 @@ using Lavalink4NET.Tracks;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
+using sblngavnav6.Common;
 using sblngavnav6.Core;
 using sblngavnav6.Services;
+using static sblngavnav6.Common.CommonUtils.Text;
 
 namespace sblngavnav6.Audio8
 {
@@ -582,6 +584,43 @@ namespace sblngavnav6.Audio8
         public MessageComponent BuildControls(Action<ComponentBuilder, int> controls) =>
             _pager.BuildControls(controls);
 
+        internal async Task EnforceTrackLimitsAsync(CancellationToken cancellationToken = default)
+        {
+            foreach (var player in _audio.Players.Players.OfType<Audio8Player>())
+            {
+                if (player.State is not PlayerState.Playing)
+                    continue;
+
+                var track = player.CurrentTrack;
+
+                if (track is null || track.IsLiveStream || track.Duration <= TimeSpan.Zero)
+                    continue;
+
+                var position = player.Position?.Position;
+
+                if (position is null || position.Value <= track.Duration + Audio8Constants.OverrunTolerance)
+                    continue;
+
+                await LoggingService.LogWarningAsync(
+                    Audio8Constants.LogSource,
+                    $"Трек переиграл длительность g={player.GuildId}: {position.Value:hh\\:mm\\:ss} из {track.Duration:hh\\:mm\\:ss}, скипаю \"{track.Title}\"");
+
+                await SkipAsync(player, null, cancellationToken).ConfigureAwait(false);
+
+                if (player.SilentMode)
+                    continue;
+
+                var channel = ResolveTextChannel(player);
+
+                if (channel is null)
+                    continue;
+
+                await SendAsync(channel, await Audio8Embeds.Error(
+                    "плеер",
+                    $"{TrackLink(track.Title, track.Uri?.ToString())} переиграл свою длительность, перехожу дальше")).ConfigureAwait(false);
+            }
+        }
+
         internal Audio8StatsContext BuildStatsContext()
         {
             var players = _audio.Players.Players.OfType<Audio8Player>().ToArray();
@@ -692,6 +731,9 @@ namespace sblngavnav6.Audio8
                     var current = Audio8Persistence.TryParseTrack(snapshot.CurrentTrack);
                     if (current is null)
                         return;
+
+                    player.RestoredTrackId = current.Identifier;
+                    player.RestoredAt = DateTimeOffset.UtcNow;
 
                     var start = TimeSpan.FromMilliseconds(Math.Max(0, snapshot.PositionMs));
                     var properties = current.IsSeekable && start > TimeSpan.Zero
@@ -829,6 +871,8 @@ namespace sblngavnav6.Audio8
         public static readonly TimeSpan ReconnectLogInterval = TimeSpan.FromSeconds(30);
         public static readonly TimeSpan PositionRefreshInterval = TimeSpan.FromMinutes(1);
         public static readonly TimeSpan SnapshotInterval = TimeSpan.FromSeconds(20);
+        public static readonly TimeSpan OverrunTolerance = TimeSpan.FromSeconds(15);
+        public static readonly TimeSpan SuspiciousDuration = TimeSpan.FromHours(12);
         public static readonly TimeSpan StateCleanupInterval = TimeSpan.FromMinutes(5);
         public static readonly TimeSpan TrackStartTimeout = TimeSpan.FromSeconds(10);
         public static readonly TimeSpan InactivityTimeout = TimeSpan.FromSeconds(2);

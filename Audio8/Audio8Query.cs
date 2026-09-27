@@ -1,7 +1,8 @@
-using Lavalink4NET.Rest.Entities.Tracks;
+﻿using Lavalink4NET.Rest.Entities.Tracks;
 using System.Text;
 using System.Text.RegularExpressions;
 using sblngavnav6.Common;
+using static sblngavnav6.Common.CommonUtils.Text;
 
 namespace sblngavnav6.Audio8
 {
@@ -96,7 +97,7 @@ namespace sblngavnav6.Audio8
 
         public static List<string> Variants(string input)
         {
-            var source = CommonUtils.Text.CollapseSpaces(input?.Trim() ?? string.Empty);
+            var source = CollapseSpaces(input?.Trim() ?? string.Empty);
             var variants = new List<string>();
 
             Add(variants, MapChars(source, RuToEn));
@@ -107,7 +108,7 @@ namespace sblngavnav6.Audio8
                 Add(variants, prefix);
 
             return variants
-                .Select(CommonUtils.Text.CollapseSpaces)
+                .Select(CollapseSpaces)
                 .Where(value => !string.IsNullOrWhiteSpace(value))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .Take(MaxVariants)
@@ -123,7 +124,7 @@ namespace sblngavnav6.Audio8
 
         private static void Add(List<string> target, string value)
         {
-            value = CommonUtils.Text.CollapseSpaces(value);
+            value = CollapseSpaces(value);
             if (string.IsNullOrWhiteSpace(value))
                 return;
 
@@ -293,7 +294,7 @@ namespace sblngavnav6.Audio8
             try { textPart = Uri.UnescapeDataString(textPart); }
             catch (UriFormatException) { }
 
-            textPart = CommonUtils.Text.CollapseSpaces(textPart);
+            textPart = CollapseSpaces(textPart);
 
             return prefix + Uri.EscapeDataString(textPart) + optionsPart;
         }
