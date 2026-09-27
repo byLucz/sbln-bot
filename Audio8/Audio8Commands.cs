@@ -1,9 +1,10 @@
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using Lavalink4NET.Players;
 using System.Runtime.InteropServices;
 using sblngavnav6.Common;
 using sblngavnav6.Services;
+using static sblngavnav6.Common.CommonUtils.Time;
 
 namespace sblngavnav6.Audio8
 {
@@ -540,32 +541,5 @@ namespace sblngavnav6.Audio8
             return false;
         }
 
-        private static bool TryParseTimecode(string input, out TimeSpan result)
-        {
-            result = default;
-
-            if (string.IsNullOrWhiteSpace(input))
-                return false;
-
-            var parts = input.Trim().Split(':', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length is < 2 or > 3)
-                return false;
-
-            int hours = 0, minutes, seconds;
-
-            if (parts.Length == 3 && !int.TryParse(parts[0], out hours))
-                return false;
-
-            var offset = parts.Length == 3 ? 1 : 0;
-
-            if (!int.TryParse(parts[offset], out minutes) || !int.TryParse(parts[offset + 1], out seconds))
-                return false;
-
-            if (hours < 0 || minutes is < 0 or > 59 || seconds is < 0 or > 59)
-                return false;
-
-            result = new TimeSpan(hours, minutes, seconds);
-            return true;
-        }
     }
 }

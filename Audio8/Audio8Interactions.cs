@@ -130,13 +130,12 @@ namespace sblngavnav6.Audio8
 
         public static Action<ComponentBuilder, int> NowPlaying(bool repeatEnabled) => (builder, _) =>
         {
-            builder.WithButton("Скип", $"{NowPlayingId}:skip", ButtonStyle.Secondary, new Emoji("⏭️"));
-            builder.WithButton("Лист", $"{NowPlayingId}:queue", ButtonStyle.Secondary, new Emoji("📜"));
+            builder.WithButton("Скип", $"{NowPlayingId}:skip", ButtonStyle.Secondary);
+            builder.WithButton("Лист", $"{NowPlayingId}:queue", ButtonStyle.Secondary);
             builder.WithButton(
-                repeatEnabled ? "Луп вкл" : "Луп выкл",
+                "Луп",
                 $"{NowPlayingId}:loop",
-                repeatEnabled ? ButtonStyle.Success : ButtonStyle.Secondary,
-                new Emoji(Audio8Constants.EmojiLoop));
+                repeatEnabled ? ButtonStyle.Success : ButtonStyle.Secondary);
         };
 
         public static Action<ComponentBuilder, int> Hoist() => (builder, _) =>
@@ -149,10 +148,10 @@ namespace sblngavnav6.Audio8
         };
 
         public static Action<ComponentBuilder, int> VoteSkip() => (builder, _) =>
-            builder.WithButton("Пропустить озвучку", VoteSkipId, ButtonStyle.Secondary, new Emoji("⏭️"));
+            builder.WithButton("Пропустить озвучку", VoteSkipId, ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiSkip));
 
         public static Action<ComponentBuilder, int> SkipToTrack() => (builder, _) =>
-            builder.WithButton("Скипнуть текущий", SkipToTrackId, ButtonStyle.Secondary, new Emoji("⏭️"));
+            builder.WithButton("Скипнуть текущий", SkipToTrackId, ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiSkip));
 
         public static Action<ComponentBuilder, int> RecentPlaylists(int count) => (builder, _) =>
         {

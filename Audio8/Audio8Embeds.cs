@@ -1,7 +1,6 @@
-using Discord;
+﻿using Discord;
 using Lavalink4NET.Rest.Entities.Usage;
 using Lavalink4NET.Tracks;
-using System.Globalization;
 using System.Text;
 using sblngavnav6.Common;
 using static sblngavnav6.Common.CommonUtils.Text;
@@ -176,26 +175,11 @@ namespace sblngavnav6.Audio8
             if (Mentions(raw, "timeout", "timed out"))
                 return "⏳ источник не ответил вовремя";
 
-            return Truncate(FirstMeaningfulLine(raw), 200);
+            return Truncate(FirstMeaningfulLine(raw, "причина неизвестна"), 200);
         }
 
         private static bool Mentions(string text, params string[] markers) =>
             markers.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
-
-        private static string FirstMeaningfulLine(string raw)
-        {
-            foreach (var line in raw.Split('\n'))
-            {
-                var trimmed = line.Trim();
-
-                if (trimmed.Length == 0 || trimmed.StartsWith("at ", StringComparison.Ordinal))
-                    continue;
-
-                return trimmed;
-            }
-
-            return "причина неизвестна";
-        }
 
         public static Task<Embed> Enqueued(LavalinkTrack track) =>
             EmbedHandler.Music(
@@ -290,7 +274,7 @@ namespace sblngavnav6.Audio8
                     true),
                 new("🖥️ Lavalink",
                     $"аптайм: `{statistics.Uptime:d\\.hh\\:mm\\:ss}`\n" +
-                    $"нагрузка: `{statistics.ProcessorUsage.LavalinkLoad:P1}` из `{statistics.ProcessorUsage.SystemLoad:P1}`\n" +
+                    $"нагрузка: `{Percent(statistics.ProcessorUsage.LavalinkLoad, 1)}` из `{Percent(statistics.ProcessorUsage.SystemLoad, 1)}`\n" +
                     $"память: `{statistics.MemoryUsage.UsedMemory / 1024 / 1024}` / `{statistics.MemoryUsage.AllocatedMemory / 1024 / 1024}`MB",
                     true)
             };
@@ -302,7 +286,7 @@ namespace sblngavnav6.Audio8
                 var lossRate = total > 0 ? (double)lost / total : 0;
 
                 fields.Add(new EmbedFieldSpec("📶 Качество звука",
-                    $"потери: `{lossRate:P2}` ({lost} из {total})\n" +
+                    $"потери: `{Percent(lossRate, 2)}` ({lost} из {total})\n" +
                     $"{(lossRate > 0.02 ? "⚠️ заикания вероятны" : "✅ в норме")}",
                     true));
             }
@@ -323,16 +307,6 @@ namespace sblngavnav6.Audio8
                 Footer = $"{EmbedHandler.MusicFooter} & sbln статистикс🔭"
             });
         }
-
-        private static string Percent(double value, int digits) =>
-            (value * 100).ToString($"0.{new string('0', digits)}", CultureInfo.InvariantCulture) + "%";
-
-        private static string FormatAge(TimeSpan age) => age switch
-        {
-            { TotalSeconds: < 60 } => $"{age.TotalSeconds:0}с",
-            { TotalMinutes: < 60 } => $"{age.TotalMinutes:0}м",
-            _ => $"{age.TotalHours:0}ч"
-        };
 
         public static Embed QueuePage(string body) =>
             EmbedHandler.Build(new EmbedSpec

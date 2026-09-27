@@ -1,7 +1,8 @@
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
+using sblngavnav6.Common;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.Services;
@@ -237,16 +238,10 @@ namespace sblngavnav6.Core
 
                 _ => string.IsNullOrWhiteSpace(result.ErrorReason)
                     ? $"🔴ОШИБКА🔴 - {result.Error}"
-                    : $"🔴ОШИБКА🔴 - {FirstLine(result.ErrorReason)}"
+                    : $"🔴ОШИБКА🔴 - {CommonUtils.Text.FirstLine(result.ErrorReason)}"
             };
 
             await context.Channel.SendMessageAsync(reply);
-        }
-
-        private static string FirstLine(string text)
-        {
-            var line = text.Split('\n', 2)[0].Trim();
-            return line.Length > 300 ? line[..300] + "…" : line;
         }
 
         private static string BuildUsageHint(CommandInfo cmd)

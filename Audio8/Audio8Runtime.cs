@@ -1,4 +1,4 @@
-using Discord.WebSocket;
+﻿using Discord.WebSocket;
 using Lavalink4NET;
 using Lavalink4NET.Events;
 using Lavalink4NET.Extensions;
@@ -11,6 +11,7 @@ using Lavalink4NET.Tracks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
+using sblngavnav6.Common;
 using sblngavnav6.Core;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
@@ -414,7 +415,7 @@ namespace sblngavnav6.Audio8
                 LastSavedGuilds = Math.Max(state.Players.Count, state.Guilds.Count);
                 _lastFingerprint = Fingerprint(state);
             }
-            catch (Exception ex) when (IsIoFailure(ex))
+            catch (Exception ex) when (CommonUtils.IsIoFailure(ex))
             {
                 await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Не удалось сохранить состояние Audio8: {ex.Message}");
             }
@@ -442,7 +443,7 @@ namespace sblngavnav6.Audio8
 
                 return JsonSerializer.Deserialize<Audio8State>(raw, Json) ?? new Audio8State();
             }
-            catch (Exception ex) when (IsIoFailure(ex) || ex is JsonException)
+            catch (Exception ex) when (CommonUtils.IsIoFailure(ex) || ex is JsonException)
             {
                 await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Состояние Audio8 не прочитано: {ex.Message}");
                 return new Audio8State();
@@ -528,9 +529,6 @@ namespace sblngavnav6.Audio8
 
         public static LavalinkTrack TryParseTrack(string raw) =>
             !string.IsNullOrWhiteSpace(raw) && LavalinkTrack.TryParse(raw, null, out var track) ? track : null;
-
-        private static bool IsIoFailure(Exception ex) =>
-            ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
 
         private static string ResolvePath()
         {

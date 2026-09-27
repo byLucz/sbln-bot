@@ -26,6 +26,30 @@ namespace sblngavnav6.Common
                 return HasVisible(url) ? $"[{label}]({url.Trim()})" : label;
             }
 
+            public static string Percent(double value, int digits) =>
+                (value * 100).ToString($"0.{new string('0', digits)}", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+            public static string FirstLine(string? s, int max = 300)
+                => string.IsNullOrWhiteSpace(s) ? "" : Truncate(s.Split('\n', 2)[0].Trim(), max);
+
+            public static string FirstMeaningfulLine(string? s, string fallback)
+            {
+                if (string.IsNullOrWhiteSpace(s))
+                    return fallback;
+
+                foreach (var line in s.Split('\n'))
+                {
+                    var trimmed = line.Trim();
+
+                    if (trimmed.Length == 0 || trimmed.StartsWith("at ", StringComparison.Ordinal))
+                        continue;
+
+                    return trimmed;
+                }
+
+                return fallback;
+            }
+
             private static bool HasVisible(string? s)
             {
                 if (string.IsNullOrEmpty(s)) return false;
@@ -56,6 +80,41 @@ namespace sblngavnav6.Common
                     return $"{(int)time.TotalDays}d {time:hh\\:mm\\:ss}";
                 return time.ToString(@"hh\:mm\:ss");
             }
+
+            public static string FormatAge(TimeSpan age) => age switch
+            {
+                { TotalSeconds: < 60 } => $"{age.TotalSeconds:0}с",
+                { TotalMinutes: < 60 } => $"{age.TotalMinutes:0}м",
+                _ => $"{age.TotalHours:0}ч"
+            };
+
+            public static bool TryParseTimecode(string input, out TimeSpan result)
+            {
+                result = default;
+
+                if (string.IsNullOrWhiteSpace(input))
+                    return false;
+
+                var parts = input.Trim().Split(':', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length is < 2 or > 3)
+                    return false;
+
+                int hours = 0, minutes, seconds;
+
+                if (parts.Length == 3 && !int.TryParse(parts[0], out hours))
+                    return false;
+
+                var offset = parts.Length == 3 ? 1 : 0;
+
+                if (!int.TryParse(parts[offset], out minutes) || !int.TryParse(parts[offset + 1], out seconds))
+                    return false;
+
+                if (hours < 0 || minutes is < 0 or > 59 || seconds is < 0 or > 59)
+                    return false;
+
+                result = new TimeSpan(hours, minutes, seconds);
+                return true;
+            }
         }
 
         public static double Round(double value, int places)
@@ -64,6 +123,9 @@ namespace sblngavnav6.Common
             long tmp = (long)Math.Round(value * factor);
             return (double)tmp / factor;
         }
+
+        public static bool IsIoFailure(Exception ex) =>
+            ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
 
         public static int RandomNumber(int min, int max) => Random.Shared.Next(min, max);
 
