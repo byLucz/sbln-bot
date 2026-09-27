@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,7 +41,7 @@ namespace sblngavnav6.Core
                 })
                 .AddSingleton<InteractionHandler>()
                 .AddSingleton<GVRMessagesHandler>()
-                .AddSingleton<WeatherHelp>()
+                .AddSingleton<WeatherClient>()
                 .AddSingleton<StreamMonoService>()
                 .AddSingleton<WelcomeService>()
                 .AddSingleton<PaginatorService>()

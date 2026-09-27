@@ -377,21 +377,20 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("версия")]
     public async Task BotVersionInfo()
     {
-        const string separator = "​";
-
-        var fields = new List<EmbedFieldSpec> { new("Пакеты", separator) };
-
-        fields.AddRange(Versioning.Packages.Select(package =>
-            new EmbedFieldSpec(package.Name, $"***{package.Version}***")));
-
         var external = DataBase.GetAllPackageVersions();
+
+        var fields = new List<EmbedFieldSpec>
+        {
+            new("📦 Пакеты", CommonUtils.Text.CodeTable(
+                Versioning.Packages.Select(package => (package.Name, package.Version)),
+                "`нет данных`"))
+        };
 
         if (external.Count > 0)
         {
-            fields.Add(new EmbedFieldSpec("Внешние сервисы", separator));
-
-            fields.AddRange(external.Select(item =>
-                new EmbedFieldSpec(item.PackageName, $"***{item.PackageVersion}***")));
+            fields.Add(new EmbedFieldSpec("🛠️ Внешние сервисы", CommonUtils.Text.CodeTable(
+                external.Select(item => (item.PackageName, item.PackageVersion)),
+                "`нет данных`")));
         }
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec

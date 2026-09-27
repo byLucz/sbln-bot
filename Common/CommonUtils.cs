@@ -50,6 +50,28 @@ namespace sblngavnav6.Common
                 return fallback;
             }
 
+            public static string CodeTable(IEnumerable<(string Name, string Value)> rows, string empty)
+                => CodeTable(rows.Select(row => (IReadOnlyList<string>)[row.Name, row.Value]), empty);
+
+            public static string CodeTable(IEnumerable<IReadOnlyList<string>> rows, string empty)
+            {
+                var items = rows.Select(row => row.ToArray()).ToList();
+
+                if (items.Count == 0)
+                    return empty;
+
+                var widths = new int[items.Max(row => row.Length)];
+
+                foreach (var row in items)
+                    for (var column = 0; column < row.Length; column++)
+                        widths[column] = Math.Max(widths[column], row[column]?.Length ?? 0);
+
+                var lines = items.Select(row => string.Join("   ", row.Select((cell, column) =>
+                    column == row.Length - 1 ? cell ?? "" : (cell ?? "").PadRight(widths[column]))).TrimEnd());
+
+                return "```\n" + string.Join("\n", lines) + "\n```";
+            }
+
             private static bool HasVisible(string? s)
             {
                 if (string.IsNullOrEmpty(s)) return false;

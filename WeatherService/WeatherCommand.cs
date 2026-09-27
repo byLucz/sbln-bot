@@ -1,57 +1,47 @@
-﻿using Discord;
 using Discord.Commands;
-using sblngavnav6.Core;
-using sblngavnav6.Common;
 using DiscordTelegramFrontier;
+using sblngavnav6.Core;
 
 namespace sblngavnav6.Commands
 {
-    public class WeatherCommand:ModuleBase<SocketCommandContext>
+    public sealed class WeatherCommand : ModuleBase<SocketCommandContext>
     {
-        private WeatherHelp _WService;
-        public DateTime sunrise;
-        public DateTime sunset;
+        private readonly WeatherClient _weather;
+        private readonly PaginatorService _pager;
 
-        public WeatherCommand(WeatherHelp wh)
+        public WeatherCommand(WeatherClient weather, PaginatorService pager)
         {
-            _WService = wh;
+            _weather = weather;
+            _pager = pager;
         }
+
         [Frontier]
-        [Command("погода")]
-        public async Task WeatherInfo(params string[] cityname)
+        [Command("погода", RunMode = RunMode.Async)]
+        public async Task WeatherInfo(params string[] cityParts)
         {
-           string city= "" ;
-           foreach(string s in cityname)
-           {
-              city += $"{s} "; 
-           }
-           WeatherSer b =  await _WService.GetCityWeather(city);
-           if(b.isValid)
-           {
-           List<WeatherModel> models= b.weather.ToList<WeatherModel>();
-                DateTime dtDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc);
-                sunrise = dtDateTime.AddSeconds(b.sysSc.sunrise).ToLocalTime();
-                sunset = dtDateTime.AddSeconds(b.sysSc.sunset).ToLocalTime();
-                string Iconurl =  $@"http://openweathermap.org/img/wn/{models[0].icon}@2x.png";
-           var e = EmbedHandler.FieldsEmbed("sbln погода🥵🥶", Color.Gold, "powered by openweathermap🗺", Iconurl);
-           e.AddField("погода на данный момент",$"в городе {city}",false);
-           e.AddField("🌡температура", $"{Convert.ToDecimal(b.main.temp)-273}°",true);
-                e.AddField("🤒ощущается как", $"{Convert.ToDecimal(b.main.feels_like)-273}°",true);
-                e.AddField("🧊мин.температура", $"{Convert.ToDecimal(b.main.temp_min)-273}°", true);
-                e.AddField("🌈детали", $"{models[0].description}",true);
-                e.AddField("🌪давление", $"{Convert.ToDecimal(b.main.pressure)}hPa", true);
-                e.AddField("🌫влажность", $"{Convert.ToDecimal(b.main.humidity)}%", true);
-                e.AddField("💨ветер", $"{Convert.ToDecimal(b.windSc.speed)}m/s", true);
-                e.AddField("🌄восход", $"{sunrise}", true);
-                e.AddField("🌆закат", $"{sunset}", true);
-                await ReplyAsync(embed: e.Build());
-           }
-           else
-           {
-                await ReplyAsync(b.Errors);
-           }
+            var city = string.Join(" ", cityParts ?? []).Trim();
+
+            if (string.IsNullOrWhiteSpace(city))
+            {
+                await ReplyAsync(embed: WeatherEmbeds.Error(city, "напиши город: `погода Москва`"));
+                return;
+            }
+
+            var result = await _weather.GetAsync(city);
+
+            if (!result.Ok)
+            {
+                await ReplyAsync(embed: WeatherEmbeds.Error(city, result.Error));
+                return;
+            }
+
+            var pages = WeatherEmbeds.Pages(result);
+
+            await _pager.SendAsync(
+                Context.Channel,
+                pages,
+                decorate: pages.Count > 1 ? WeatherControls.Views(pages.Count) : null,
+                pager: false);
         }
-
     }
-
 }

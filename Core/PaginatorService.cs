@@ -15,7 +15,8 @@ namespace sblngavnav6.Core
             int Page,
             ulong? OwnerId,
             DateTimeOffset At,
-            Action<ComponentBuilder, int> Decorate);
+            Action<ComponentBuilder, int> Decorate,
+            bool Pager);
 
         private readonly ConcurrentDictionary<ulong, View> _views = new();
         private CancellationTokenSource _cleanupCts;
@@ -58,7 +59,8 @@ namespace sblngavnav6.Core
             IReadOnlyList<Embed> pages,
             ulong? ownerId = null,
             int startPage = 0,
-            Action<ComponentBuilder, int> decorate = null)
+            Action<ComponentBuilder, int> decorate = null,
+            bool pager = true)
         {
             ArgumentNullException.ThrowIfNull(pages);
             if (pages.Count == 0)
@@ -67,12 +69,14 @@ namespace sblngavnav6.Core
             var single = pages.Count == 1;
             startPage = Math.Clamp(startPage, 0, pages.Count - 1);
 
-            var components = (single && decorate == null) ? null : Build(startPage, pages.Count, decorate);
+            var components = (single && decorate == null)
+                ? null
+                : Build(startPage, pager ? pages.Count : 1, decorate);
 
             var msg = await channel.SendMessageAsync(embed: pages[startPage], components: components);
 
             if (!single || decorate != null)
-                _views[msg.Id] = new View(pages, startPage, ownerId, DateTimeOffset.UtcNow, decorate);
+                _views[msg.Id] = new View(pages, startPage, ownerId, DateTimeOffset.UtcNow, decorate, pager);
 
             return msg;
         }
@@ -92,8 +96,37 @@ namespace sblngavnav6.Core
                 return FlipOutcome.Unchanged;
 
             embed = view.Pages[target];
-            components = Build(target, view.Pages.Count, view.Decorate);
+            components = Build(target, view.Pager ? view.Pages.Count : 1, view.Decorate);
             return FlipOutcome.Ready;
+        }
+
+        public async Task HandleFlipAsync(SocketMessageComponent component, ulong userId, int target)
+        {
+            ArgumentNullException.ThrowIfNull(component);
+
+            switch (TryPrepareFlip(component.Message.Id, userId, target, out var embed, out var components))
+            {
+                case FlipOutcome.Ready:
+                    await component.UpdateAsync(message =>
+                    {
+                        message.Embed = embed;
+                        message.Components = components;
+                    });
+                    CommitFlip(component.Message.Id, target);
+                    break;
+
+                case FlipOutcome.Expired:
+                    await component.RespondAsync("Панель устарела, вызови команду заново", ephemeral: true);
+                    break;
+
+                case FlipOutcome.Forbidden:
+                    await component.RespondAsync("Это не твоя панель", ephemeral: true);
+                    break;
+
+                default:
+                    await component.DeferAsync();
+                    break;
+            }
         }
 
         public void CommitFlip(ulong messageId, int page)
@@ -185,27 +218,7 @@ namespace sblngavnav6.Core
                 return;
             }
 
-            var outcome = _pager.TryPrepareFlip(c.Message.Id, Context.User.Id, page, out var embed, out var components);
-
-            switch (outcome)
-            {
-                case FlipOutcome.Ready:
-                    await c.UpdateAsync(m => { m.Embed = embed; m.Components = components; });
-                    _pager.CommitFlip(c.Message.Id, page);
-                    break;
-
-                case FlipOutcome.Expired:
-                    await c.RespondAsync("Панель устарела, вызови команду заново", ephemeral: true);
-                    break;
-
-                case FlipOutcome.Forbidden:
-                    await c.RespondAsync("Это не твоя панель", ephemeral: true);
-                    break;
-
-                default:
-                    await c.DeferAsync();
-                    break;
-            }
+            await _pager.HandleFlipAsync(c, Context.User.Id, page);
         }
     }
 }
