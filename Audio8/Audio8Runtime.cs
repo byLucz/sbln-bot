@@ -599,9 +599,18 @@ namespace sblngavnav6.Audio8
             };
         }
 
+        private static readonly string[] Noise =
+        [
+            "before the ready payload",
+            "default Lavalink password",
+            "error occurred during communication",
+            "Exception occurred during communication",
+            "Failed to connect to the Lavalink node",
+            "Attempting to reconnect"
+        ];
+
         private static bool IsNoise(string text) =>
-            text.Contains("before the ready payload", StringComparison.OrdinalIgnoreCase) ||
-            text.Contains("default Lavalink password", StringComparison.OrdinalIgnoreCase);
+            Noise.Any(marker => text.Contains(marker, StringComparison.OrdinalIgnoreCase));
 
         private sealed class NullScope : IDisposable
         {

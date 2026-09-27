@@ -1,5 +1,6 @@
 using Discord.Commands;
 using DiscordTelegramFrontier;
+using sblngavnav6.Common;
 using sblngavnav6.Core;
 
 namespace sblngavnav6.Commands
@@ -15,7 +16,7 @@ namespace sblngavnav6.Commands
             _pager = pager;
         }
 
-        [Frontier]
+        [FrontierAsImage]
         [Command("погода", RunMode = RunMode.Async)]
         public async Task WeatherInfo(params string[] cityParts)
         {
@@ -23,7 +24,7 @@ namespace sblngavnav6.Commands
 
             if (string.IsNullOrWhiteSpace(city))
             {
-                await ReplyAsync(embed: WeatherEmbeds.Error(city, "напиши город: `погода Москва`"));
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("погода", "напиши город: `погода Москва`"));
                 return;
             }
 
@@ -31,7 +32,7 @@ namespace sblngavnav6.Commands
 
             if (!result.Ok)
             {
-                await ReplyAsync(embed: WeatherEmbeds.Error(city, result.Error));
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("погода", result.Error));
                 return;
             }
 

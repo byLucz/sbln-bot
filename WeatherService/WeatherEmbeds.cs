@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using sblngavnav6.Common;
 using static sblngavnav6.Common.CommonUtils.Text;
 
@@ -6,7 +6,10 @@ namespace sblngavnav6.Commands
 {
     internal static class WeatherEmbeds
     {
-        private const string Footer = "powered by openweathermap🗺";
+        public static readonly string[] Views = ["сейчас", "24 часа", "5 дней"];
+
+        private const string Source = "powered by openweathermap🗺";
+        private const double MmPerHpa = 0.750062;
         private const int HoursAhead = 8;
 
         private static readonly string[] Winds = ["С", "СВ", "В", "ЮВ", "Ю", "ЮЗ", "З", "СЗ"];
@@ -25,15 +28,6 @@ namespace sblngavnav6.Commands
             return pages;
         }
 
-        public static Embed Error(string city, string error) => EmbedHandler.Build(new EmbedSpec
-        {
-            AuthorName = "sbln погода🥵🥶",
-            Title = string.IsNullOrWhiteSpace(city) ? "не вышло" : $"не вышло: {city}",
-            Description = error,
-            Color = Color.DarkRed,
-            Footer = Footer
-        });
-
         private static Embed Now(WeatherCurrent current)
         {
             var condition = Condition(current.Weather);
@@ -47,7 +41,7 @@ namespace sblngavnav6.Commands
                 new("💨 ветер", $"{current.Wind?.Speed ?? 0:0.#} м/с {Direction(current.Wind?.Deg ?? 0)}"
                     + (current.Wind?.Gust > 0 ? $"\nпорывы {current.Wind.Gust:0.#} м/с" : ""), true),
                 new("🌫️ влажность", $"{current.Main.Humidity:0}%", true),
-                new("🌪️ давление", $"{current.Main.Pressure:0} гПа", true),
+                new("🌪️ давление", $"{current.Main.Pressure * MmPerHpa:0} мм рт. ст.", true),
                 new("☁️ облачность", $"{current.Clouds?.All ?? 0}%", true),
                 new("👁️ видимость", current.Visibility >= 10000 ? "больше 10 км" : $"{current.Visibility / 1000.0:0.#} км", true),
                 new("🌄 восход", Clock(current.Sys?.Sunrise ?? 0, offset), true),
@@ -58,11 +52,10 @@ namespace sblngavnav6.Commands
             {
                 AuthorName = "sbln погода🥵🥶",
                 Title = Place(current.Name, current.Sys?.Country),
-                Description = $"сейчас, {Clock(current.Dt, offset)} по местному",
                 Color = Tint(current.Main.Temp),
                 ThumbnailUrl = Art(condition?.Icon),
                 Fields = fields,
-                Footer = Footer
+                Footer = Footer(0)
             });
         }
 
@@ -84,9 +77,9 @@ namespace sblngavnav6.Commands
             {
                 AuthorName = "sbln погода🥵🥶",
                 Title = Place(forecast.City?.Name ?? current.Name, forecast.City?.Country ?? current.Sys?.Country),
-                Description = $"на сутки вперёд, шагом 3 часа\n{CodeTable(rows, "`нет данных`")}",
+                Description = CodeTable(rows, "`нет данных`"),
                 Color = Tint(current.Main.Temp),
-                Footer = Footer
+                Footer = Footer(1)
             });
         }
 
@@ -113,11 +106,13 @@ namespace sblngavnav6.Commands
             {
                 AuthorName = "sbln погода🥵🥶",
                 Title = Place(forecast.City?.Name ?? current.Name, forecast.City?.Country ?? current.Sys?.Country),
-                Description = $"на 5 дней вперёд\n{CodeTable(rows, "`нет данных`")}",
+                Description = CodeTable(rows, "`нет данных`"),
                 Color = Tint(current.Main.Temp),
-                Footer = Footer
+                Footer = Footer(2)
             });
         }
+
+        private static string Footer(int view) => $"{Views[view]} / {Source}";
 
         private static WeatherCondition Condition(List<WeatherCondition> conditions) =>
             conditions is { Count: > 0 } ? conditions[0] : null;

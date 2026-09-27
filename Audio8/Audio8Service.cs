@@ -266,21 +266,29 @@ namespace sblngavnav6.Audio8
 
         private static int ResolvePlaylistStart(TrackLoadResult result, Audio8QueryPlan plan, ImmutableArray<LavalinkTrack> tracks)
         {
-            if (plan.PlaylistIndex > 0 && plan.PlaylistIndex < tracks.Length)
-                return plan.PlaylistIndex;
+            var wanted = string.IsNullOrWhiteSpace(plan.SelectedTrackId)
+                ? result.Playlist?.SelectedTrack?.Identifier
+                : plan.SelectedTrackId;
 
-            var wanted = result.Playlist?.SelectedTrack?.Identifier ?? plan.SelectedTrackId;
+            var hinted = plan.PlaylistIndex > 0 && plan.PlaylistIndex < tracks.Length ? plan.PlaylistIndex : 0;
+
             if (string.IsNullOrWhiteSpace(wanted))
-                return 0;
+                return hinted;
+
+            if (Matches(tracks[hinted], wanted))
+                return hinted;
 
             for (var i = 0; i < tracks.Length; i++)
             {
-                if (string.Equals(tracks[i].Identifier, wanted, StringComparison.OrdinalIgnoreCase))
+                if (Matches(tracks[i], wanted))
                     return i;
             }
 
-            return 0;
+            return hinted;
         }
+
+        private static bool Matches(LavalinkTrack track, string identifier) =>
+            string.Equals(track.Identifier, identifier, StringComparison.OrdinalIgnoreCase);
 
         public Task<Audio8Skip> SkipAsync(Audio8Player player, int? position, CancellationToken cancellationToken = default)
         {
@@ -832,6 +840,7 @@ namespace sblngavnav6.Audio8
         public const string EmojiLoop = "🔁";
         public const string EmojiHoist = "🔼";
         public const string EmojiSkip = "⏭️";
+        public const string EmojiQueue = "📜";
         public static readonly string[] EmojiNumbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
     }
 }

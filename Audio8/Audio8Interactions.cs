@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.Net;
 using Discord.WebSocket;
@@ -130,12 +130,13 @@ namespace sblngavnav6.Audio8
 
         public static Action<ComponentBuilder, int> NowPlaying(bool repeatEnabled) => (builder, _) =>
         {
-            builder.WithButton("Скип", $"{NowPlayingId}:skip", ButtonStyle.Secondary);
-            builder.WithButton("Лист", $"{NowPlayingId}:queue", ButtonStyle.Secondary);
+            builder.WithButton("Скип", $"{NowPlayingId}:skip", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiSkip));
+            builder.WithButton("Лист", $"{NowPlayingId}:queue", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiQueue));
             builder.WithButton(
                 "Луп",
                 $"{NowPlayingId}:loop",
-                repeatEnabled ? ButtonStyle.Success : ButtonStyle.Secondary);
+                repeatEnabled ? ButtonStyle.Success : ButtonStyle.Secondary,
+                new Emoji(Audio8Constants.EmojiLoop));
         };
 
         public static Action<ComponentBuilder, int> Hoist() => (builder, _) =>
@@ -144,7 +145,7 @@ namespace sblngavnav6.Audio8
         public static Action<ComponentBuilder, int> Picks(int count) => (builder, _) =>
         {
             for (var index = 0; index < count; index++)
-                builder.WithButton($"{index + 1}", $"{PickId}:{index}", ButtonStyle.Secondary);
+                builder.WithButton(null, $"{PickId}:{index}", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiNumbers[index]));
         };
 
         public static Action<ComponentBuilder, int> VoteSkip() => (builder, _) =>
@@ -156,7 +157,7 @@ namespace sblngavnav6.Audio8
         public static Action<ComponentBuilder, int> RecentPlaylists(int count) => (builder, _) =>
         {
             for (var index = 0; index < count; index++)
-                builder.WithButton($"{index + 1}", $"{RecentPlaylistId}:{index}", ButtonStyle.Secondary);
+                builder.WithButton(null, $"{RecentPlaylistId}:{index}", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiNumbers[index]));
         };
 
         public static Action<ComponentBuilder, int> QueuePick() => (builder, _) =>

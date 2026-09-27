@@ -9,16 +9,14 @@ namespace sblngavnav6.Commands
     {
         public const string ViewId = "wth_view";
 
-        private static readonly string[] Labels = ["Сейчас", "24 часа", "5 дней"];
-
         public static Action<ComponentBuilder, int> Views(int total) => (builder, page) =>
         {
-            for (var index = 0; index < Math.Min(total, Labels.Length); index++)
+            for (var index = 0; index < Math.Min(total, WeatherEmbeds.Views.Length); index++)
             {
                 if (index == page)
                     continue;
 
-                builder.WithButton(Labels[index], $"{ViewId}:{index}", ButtonStyle.Secondary);
+                builder.WithButton(WeatherEmbeds.Views[index], $"{ViewId}:{index}", ButtonStyle.Secondary);
             }
         };
     }
