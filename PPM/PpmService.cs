@@ -15,6 +15,7 @@ namespace sblngavnav6.PPM
         public string Subject { get; set; }
         public DateTime Date { get; set; }
         public string Body { get; set; }
+        public string Folder { get; set; }
     }
 
     public sealed class PpmService : IAsyncDisposable
@@ -170,24 +171,62 @@ namespace sblngavnav6.PPM
             var result = new List<PpmMessageView>();
             using var client = await ConnectAsync(box).ConfigureAwait(false);
 
-            var inbox = client.Inbox;
-            await inbox.OpenAsync(FolderAccess.ReadOnly);
+            await CollectAsync(client.Inbox, null, result, max).ConfigureAwait(false);
 
-            int count = inbox.Count;
-            for (int i = count - 1; i >= 0 && result.Count < max; i--)
+            foreach (var special in new[] { SpecialFolder.Junk, SpecialFolder.All })
             {
-                var msg = await inbox.GetMessageAsync(i);
-                result.Add(new PpmMessageView
-                {
-                    From = msg.From?.ToString() ?? "(неизвестно)",
-                    Subject = string.IsNullOrWhiteSpace(msg.Subject) ? "(без темы)" : msg.Subject,
-                    Date = msg.Date.LocalDateTime,
-                    Body = msg.TextBody ?? msg.HtmlBody ?? "(пусто)"
-                });
+                var folder = TryGetSpecial(client, special);
+
+                if (folder is null || folder.FullName == client.Inbox.FullName)
+                    continue;
+
+                await CollectAsync(folder, special is SpecialFolder.Junk ? "спам" : folder.Name, result, max)
+                    .ConfigureAwait(false);
+
+                if (special is SpecialFolder.Junk)
+                    continue;
+
+                break;
             }
 
             await client.DisconnectAsync(true);
-            return result;
+
+            return result
+                .OrderByDescending(message => message.Date)
+                .Take(max)
+                .ToList();
+        }
+
+        private static IMailFolder TryGetSpecial(ImapClient client, SpecialFolder special)
+        {
+            try { return client.GetFolder(special); }
+            catch (Exception) { return null; }
+        }
+
+        private static async Task CollectAsync(IMailFolder folder, string label, List<PpmMessageView> result, int max)
+        {
+            try
+            {
+                await folder.OpenAsync(FolderAccess.ReadOnly).ConfigureAwait(false);
+            }
+            catch (Exception)
+            {
+                return;
+            }
+
+            for (int index = folder.Count - 1, taken = 0; index >= 0 && taken < max; index--, taken++)
+            {
+                var message = await folder.GetMessageAsync(index).ConfigureAwait(false);
+
+                result.Add(new PpmMessageView
+                {
+                    From = message.From?.ToString() ?? "(неизвестно)",
+                    Subject = string.IsNullOrWhiteSpace(message.Subject) ? "(без темы)" : message.Subject,
+                    Date = message.Date.LocalDateTime,
+                    Body = message.TextBody ?? message.HtmlBody ?? "(пусто)",
+                    Folder = label
+                });
+            }
         }
 
         public Task StartSweeperAsync(CancellationToken cancellationToken = default)

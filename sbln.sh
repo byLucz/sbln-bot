@@ -79,6 +79,115 @@ check_space() {
   fi
 }
 
+L_BOT='бот       '
+L_SVC='служба    '
+L_LAVA='lavalink  '
+L_API='lava api  '
+L_LINK='связь     '
+L_DISK='диск      '
+
+row() {
+  local label=$1
+  shift
+  printf '%s%s\n' "$label" "$*"
+}
+
+human_span() {
+  local total=${1:-0} days hours mins
+  days=$(( total / 86400 ))
+  hours=$(( (total % 86400) / 3600 ))
+  mins=$(( (total % 3600) / 60 ))
+  if (( days > 0 )); then printf '%dд %02d:%02d\n' "$days" "$hours" "$mins"
+  else printf '%02d:%02d\n' "$hours" "$mins"; fi
+}
+
+container_state() {
+  docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$1" 2>/dev/null || true
+}
+
+container_span() {
+  local started epoch
+  started=$(docker inspect --format '{{.State.StartedAt}}' "$1" 2>/dev/null) || return 0
+  [[ -n "$started" && "$started" != 0001-01-01T* ]] || return 0
+  epoch=$(date -d "$started" +%s 2>/dev/null) || return 0
+  printf '%s\n' $(( $(date +%s) - epoch ))
+}
+
+lava_name() {
+  docker ps --format '{{.Names}}' | sed -n '/[Ll]avalink/{p;q;}'
+}
+
+lava_stats() {
+  local config=$1 host port pass
+  command -v jq >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || return 2
+  [[ -f "$config" ]] || return 2
+  host=$(jq -r '.Lava.LavaHost // "127.0.0.1"' "$config")
+  port=$(jq -r '.Lava.LavaPort // "2333"' "$config")
+  pass=$(jq -r '.Lava.LavaPass // ""' "$config")
+  [[ "$host" = host.docker.internal ]] && host=127.0.0.1
+  curl -fsS -m 3 -H "Authorization: $pass" "http://$host:$port/v4/stats" 2>/dev/null \
+    | jq -r '[((.uptime // 0) / 1000 | floor), (.players // 0), (.playingPlayers // 0), ((.cpu.lavalinkLoad // 0) * 100 | floor), ((.memory.used // 0) / 1048576 | floor), ((.memory.allocated // 0) / 1048576 | floor)] | @tsv'
+}
+
+lava_links() {
+  local config=$1 port=2333
+  command -v ss >/dev/null 2>&1 || return 1
+  if [[ -f "$config" ]] && command -v jq >/dev/null 2>&1; then
+    port=$(jq -r '.Lava.LavaPort // "2333"' "$config" 2>/dev/null) || port=2333
+  fi
+  ss -Htn state established "( sport = :$port )" 2>/dev/null | wc -l
+}
+
+panel() {
+  local channel=${1:-stable} name="$BOT" config="$BASE/config.json"
+  local state span image restarts lava info rc links free up players playing load used alloc
+  if [[ "$channel" = proto ]]; then name=sbln-bot-proto; config="$BASE/config-proto.json"; fi
+
+  printf '\n── состояние · %s ──\n' "$channel"
+
+  state=$(container_state "$name")
+  if [[ -z "$state" ]]; then
+    row "$L_BOT" 'контейнера нет'
+  else
+    span=$(container_span "$name")
+    image=$(docker inspect --format '{{.Config.Image}}' "$name" 2>/dev/null || true)
+    restarts=$(docker inspect --format '{{.RestartCount}}' "$name" 2>/dev/null || echo 0)
+    row "$L_BOT" "$state${span:+, аптайм $(human_span "$span")}${image:+, образ $image}$( (( restarts > 0 )) && printf ', перезапусков %s' "$restarts" )"
+  fi
+
+  if [[ "$channel" = stable ]]; then
+    row "$L_SVC" "$(systemctl is-active "$SVC" 2>/dev/null || echo 'нет данных')"
+  fi
+
+  lava=$(lava_name)
+  if [[ -n "$lava" ]]; then
+    span=$(container_span "$lava")
+    row "$L_LAVA" "$lava: $(container_state "$lava")${span:+, аптайм $(human_span "$span")}"
+  elif systemctl is-active lavalink >/dev/null 2>&1; then
+    row "$L_LAVA" 'служба active'
+  else
+    row "$L_LAVA" 'не найден'
+  fi
+
+  info=$(lava_stats "$config") && rc=0 || rc=$?
+  if (( rc == 0 )) && [[ -n "$info" ]]; then
+    IFS=$'\t' read -r up players playing load used alloc <<< "$info"
+    row "$L_API" "аптайм $(human_span "${up:-0}"), плееров ${playing:-0}/${players:-0}, cpu ${load:-0}%, память ${used:-0}/${alloc:-0} МБ"
+  elif (( rc == 2 )); then
+    row "$L_API" 'нет jq или curl'
+  else
+    row "$L_API" 'не отвечает'
+  fi
+
+  links=$(lava_links "$config") || links=''
+  [[ -n "$links" ]] && row "$L_LINK" "$( (( links > 0 )) && printf 'сессий с ботом: %s' "$links" || printf 'подключений нет' )"
+
+  free=$(free_kb)
+  [[ -n "$free" ]] && row "$L_DISK" "свободно $(( free / 1024 / 1024 )) ГБ"
+
+  return 0
+}
+
 build() {
   local source=${1:-$APP} channel=${2:-stable} version sha network config="$BASE/config.json" name="$BOT" channel_arg=''
   [[ "$channel" = stable || "$channel" = proto ]] || exit 1
@@ -119,11 +228,12 @@ menu() {
   local -a action
   trap 'printf "\n"' INT
   while true; do
-    printf '\n── sbln · production ──\n1 Статус\n2 Логи (Ctrl+C — назад)\n3 Запустить\n4 Остановить\n5 Перезапустить\n6 Обновить из master\n7 Статус Lavalink\n8 Перезапустить Lavalink\n0 Выход\n'
+    panel stable || true
+    printf '\n1 Статус\n2 Логи (Ctrl+C — назад)\n3 Запустить\n4 Остановить\n5 Перезапустить\n6 Обновить из master\n7 Логи Lavalink\n8 Перезапустить Lavalink\n9 Очистить docker\n0 Выход\n'
     read -r -p 'Выбери пункт: ' choice || break
     case "$choice" in
       1) action=(status) ;; 2) action=(logs) ;; 3) action=(start) ;; 4) action=(stop) ;;
-      5) action=(restart) ;; 6) action=(update) ;; 7) action=(lava status) ;; 8) action=(lava restart) ;;
+      5) action=(restart) ;; 6) action=(update) ;; 7) action=(lava logs) ;; 8) action=(lava restart) ;;
       9) action=(prune) ;;
       0|q) break ;; *) continue ;;
     esac
@@ -164,14 +274,18 @@ case "$cmd" in
     wait_ready
     echo 'Обновлено из master, служба перезапущена.'
     ;;
+  panel) panel "${1:-stable}" ;;
   lava)
-    name=$(docker ps --format '{{.Names}}' | sed -n '/[Ll]avalink/{p;q;}')
+    name=$(lava_name)
     case "${1:-status}" in
       status) if [[ -n "$name" ]]; then docker inspect --format '{{.State.Status}}' "$name"; else systemctl status lavalink --no-pager; fi ;;
-      restart) if [[ -n "$name" ]]; then docker restart "$name"; else systemctl restart lavalink; fi ;;
-      *) echo 'lava status|restart' >&2; exit 1 ;;
+      restart)
+        if [[ -n "$name" ]]; then docker restart "$name" >/dev/null; echo ">> $name перезапущен"; else systemctl restart lavalink; echo '>> служба lavalink перезапущена'; fi
+        ;;
+      logs) if [[ -n "$name" ]]; then docker logs -f --tail "${2:-100}" "$name"; else journalctl -u lavalink -n "${2:-100}" -f; fi ;;
+      *) echo 'lava status|restart|logs [N]' >&2; exit 1 ;;
     esac
     ;;
-  help) echo 'sbln: меню | status | logs [N] | start | stop | restart | update | prune [until] | lava status|restart' ;;
+  help) echo 'sbln: меню | panel [stable|proto] | status | logs [N] | start | stop | restart | update | prune [until] | lava status|restart|logs' ;;
   *) echo "Неизвестная команда: $cmd" >&2; exit 1 ;;
 esac

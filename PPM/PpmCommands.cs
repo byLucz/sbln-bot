@@ -1,4 +1,5 @@
 ﻿using Discord;
+using System.Collections.Concurrent;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
@@ -35,20 +36,31 @@ namespace sblngavnav6.PPM
             return pages;
         }
 
-        public static Action<ComponentBuilder, int> RootControls(IReadOnlyList<PpmMailbox> boxes) => (builder, page) =>
+        public static Action<ComponentBuilder, int> RootControls(IReadOnlyList<PpmMailbox> boxes, bool busy = false) => (builder, page) =>
         {
             foreach (var box in boxes.Skip(page * PageSize).Take(PageSize))
-                builder.WithButton($"📬 {box.Email.Split('@')[0]}", $"ppm_open:{box.Id}", ButtonStyle.Secondary, row: 1);
+                builder.WithButton($"📬 {box.Email.Split('@')[0]}", $"ppm_open:{box.Id}", ButtonStyle.Secondary, row: 1, disabled: busy);
 
-            builder.WithButton($"➕ {Global.Vars.Cfg.ppmTtlMinutes} мин", "ppm_new:temp", ButtonStyle.Success, row: 2);
-            builder.WithButton("➕ навсегда", "ppm_new:perm", ButtonStyle.Success, row: 2);
+            builder.WithButton(
+                busy ? "создаю…" : $"➕ {Global.Vars.Cfg.ppmTtlMinutes} мин",
+                "ppm_new:temp",
+                ButtonStyle.Success,
+                row: 2,
+                disabled: busy);
+
+            builder.WithButton(
+                busy ? "создаю…" : "➕ навсегда",
+                "ppm_new:perm",
+                ButtonStyle.Success,
+                row: 2,
+                disabled: busy);
         };
 
         public static Embed BuildInboxEmbed(PpmMailbox box, IReadOnlyList<PpmMessageView> msgs)
         {
             var fields = msgs
                 .Select(msg => new EmbedFieldSpec(
-                    Truncate($"✉️ {Truncate(msg.Subject, 200)} / {msg.Date:dd.MM HH:mm}", EmbedHandler.MaxFieldName),
+                    Truncate($"✉️ {Truncate(msg.Subject, 200)} / {msg.Date:dd.MM HH:mm}{(msg.Folder is null ? "" : $" / {msg.Folder}")}", EmbedHandler.MaxFieldName),
                     Truncate($"**От:** {Truncate(msg.From, 200)}\n{Truncate(msg.Body, 700)}", EmbedHandler.MaxFieldValue)))
                 .ToArray();
 
@@ -111,6 +123,8 @@ namespace sblngavnav6.PPM
 
     public class PpmInteractions : InteractionModuleBase<SocketInteractionContext>
     {
+        private static readonly ConcurrentDictionary<ulong, byte> _creating = new();
+
         private readonly PpmService _ppm;
         private readonly PaginatorService _pager;
 
@@ -126,34 +140,49 @@ namespace sblngavnav6.PPM
         {
             await DeferAsync(ephemeral: true);
 
-            bool permanent = kind == "perm";
-            var (ok, box, error, ready) = await _ppm.CreateAsync(Context.User.Id.ToString(), permanent);
-
-            if (!ok)
+            if (!_creating.TryAdd(Context.User.Id, 0))
             {
                 await FollowupAsync(embed: await EmbedHandler.CreateErrorEmbed(
-                    "печкин", $"не удалось создать ящик:\n```{Truncate(error, 500)}```"), ephemeral: true);
+                    "печкин", "ящик уже создаётся, подожди пару секунд"), ephemeral: true);
                 return;
             }
 
-            var note = ready
-                ? "готов принимать письма"
-                : "почтовик ещё применяет настройки, первые письма могут отбиться, попробуй через минуту";
+            try
+            {
+                await RepaintRoot(busy: true);
 
-            await FollowupAsync(embed: EmbedHandler.Simple(
-                "Временная почта", $"📬 **`{box.Email}`**\n\n{PpmPanelBuilder.Ttl(box)}\n{(ready ? "✅" : "⚠️")} {note}",
-                ready ? Color.Green : Color.Orange, EmbedHandler.PpmFooter), ephemeral: true);
+                bool permanent = kind == "perm";
+                var (ok, box, error, ready) = await _ppm.CreateAsync(Context.User.Id.ToString(), permanent);
 
-            await RepaintRoot();
+                if (!ok)
+                {
+                    await FollowupAsync(embed: await EmbedHandler.CreateErrorEmbed(
+                        "печкин", $"не удалось создать ящик:\n```{Truncate(error, 500)}```"), ephemeral: true);
+                    return;
+                }
+
+                var note = ready
+                    ? "готов принимать письма"
+                    : "почтовик ещё применяет настройки, первые письма могут отбиться, попробуй через минуту";
+
+                await FollowupAsync(embed: EmbedHandler.Simple(
+                    "Временная почта", $"📬 **`{box.Email}`**\n\n{PpmPanelBuilder.Ttl(box)}\n{(ready ? "✅" : "⚠️")} {note}",
+                    ready ? Color.Green : Color.Orange, EmbedHandler.PpmFooter), ephemeral: true);
+            }
+            finally
+            {
+                _creating.TryRemove(Context.User.Id, out _);
+                await RepaintRoot();
+            }
         }
 
         [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_open:*")]
-        public Task Open(string idRaw) => ShowInbox(idRaw);
+        public Task Open(string idRaw) => ShowInbox(idRaw, inPlace: false);
 
         [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_inbox:*")]
-        public Task Refresh(string idRaw) => ShowInbox(idRaw);
+        public Task Refresh(string idRaw) => ShowInbox(idRaw, inPlace: true);
 
         [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_del:*")]
@@ -164,28 +193,27 @@ namespace sblngavnav6.PPM
             var box = ResolveOwned(idRaw, out var deny);
             if (box == null)
             {
-                await FollowupAsync(embed: await EmbedHandler.CreateErrorEmbed("печкин", deny), ephemeral: true);
+                await ReportAsync(await EmbedHandler.CreateErrorEmbed("печкин", deny), inPlace: true);
                 return;
             }
 
             var (ok, error) = await _ppm.DeleteAsync(box);
-            await FollowupAsync(embed: ok
+
+            await ReportAsync(ok
                 ? EmbedHandler.Simple("🗑️ PPM", $"Ящик `{box.Email}` удалён", Color.Orange, EmbedHandler.PpmFooter)
                 : await EmbedHandler.CreateErrorEmbed("печкин", $"не удалось удалить:\n```{Truncate(error, 500)}```"),
-                ephemeral: true);
-
-            if (ok)
-                await RepaintRoot();
+                inPlace: true,
+                dropControls: ok);
         }
 
-        private async Task ShowInbox(string idRaw)
+        private async Task ShowInbox(string idRaw, bool inPlace)
         {
             await DeferAsync(ephemeral: true);
 
             var box = ResolveOwned(idRaw, out var deny);
             if (box == null)
             {
-                await FollowupAsync(embed: await EmbedHandler.CreateErrorEmbed("печкин", deny), ephemeral: true);
+                await ReportAsync(await EmbedHandler.CreateErrorEmbed("печкин", deny), inPlace);
                 return;
             }
 
@@ -196,19 +224,50 @@ namespace sblngavnav6.PPM
             }
             catch (Exception ex)
             {
-                await FollowupAsync(embed: await EmbedHandler.CreateErrorEmbed("печкин", $"IMAP отказал:\n```{Truncate(ex.Message, 500)}```"), ephemeral: true);
+                await ReportAsync(await EmbedHandler.CreateErrorEmbed("печкин", $"IMAP отказал:\n```{Truncate(ex.Message, 500)}```"), inPlace);
                 return;
             }
 
-            await FollowupAsync(
-                embed: PpmPanelBuilder.BuildInboxEmbed(box, msgs),
-                components: PpmPanelBuilder.BuildInboxComponents(box),
-                ephemeral: true);
+            var embed = PpmPanelBuilder.BuildInboxEmbed(box, msgs);
+            var controls = PpmPanelBuilder.BuildInboxComponents(box);
+
+            if (inPlace)
+            {
+                await ModifyOriginalResponseAsync(message =>
+                {
+                    message.Embed = embed;
+                    message.Components = controls;
+                });
+
+                return;
+            }
+
+            await FollowupAsync(embed: embed, components: controls, ephemeral: true);
         }
 
-        private async Task RepaintRoot()
+        private async Task ReportAsync(Embed embed, bool inPlace, bool dropControls = false)
+        {
+            if (!inPlace)
+            {
+                await FollowupAsync(embed: embed, ephemeral: true);
+                return;
+            }
+
+            await ModifyOriginalResponseAsync(message =>
+            {
+                message.Embed = embed;
+
+                if (dropControls)
+                    message.Components = new ComponentBuilder().Build();
+            });
+        }
+
+        private async Task RepaintRoot(bool busy = false)
         {
             if (Context.Interaction is not SocketMessageComponent component)
+                return;
+
+            if (component.Message.Flags?.HasFlag(MessageFlags.Ephemeral) == true)
                 return;
 
             var boxes = DataBase.GetUserPpmMailboxes(Context.User.Id.ToString());
@@ -217,7 +276,7 @@ namespace sblngavnav6.PPM
                 component.Message,
                 PpmPanelBuilder.BuildRootPages(boxes),
                 Context.User.Id,
-                decorate: PpmPanelBuilder.RootControls(boxes));
+                decorate: PpmPanelBuilder.RootControls(boxes, busy));
         }
 
         private PpmMailbox ResolveOwned(string idRaw, out string deny)

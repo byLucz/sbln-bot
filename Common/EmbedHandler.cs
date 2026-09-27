@@ -30,7 +30,7 @@ namespace sblngavnav6.Common
         public const string Name = "sbln";
         public const string MusicTag = "muzik🎸🎧";
         public const string VoteTag = "ultra-выбератор🤔⚡";
-        public const string PpmTag = "PPM";
+        public const string PpmTag = "PPM🏃📦";
         public const string AudioEngine = "Audio8";
 
         public const int MaxTitle = 256;

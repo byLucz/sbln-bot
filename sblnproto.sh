@@ -20,11 +20,13 @@ menu() {
   local -a action
   trap 'printf "\n"' INT
   while true; do
-    printf '\n── sblnproto ──\n1 Статус proto\n2 Логи proto (Ctrl+C — назад)\n3 Обновить из proto и пересобрать\n4 Удалить контейнер proto\n5 Перезапустить proto\n6 Запустить proto\n7 Остановить proto\n0 Выход\n'
+    bash "$HELPER" panel proto || true
+    printf '\n1 Статус proto\n2 Логи proto (Ctrl+C — назад)\n3 Обновить из proto и пересобрать\n4 Удалить контейнер proto\n5 Перезапустить proto\n6 Запустить proto\n7 Остановить proto\n8 Логи Lavalink\n9 Перезапустить Lavalink\n10 Очистить docker\n0 Выход\n'
     read -r -p 'Выбери пункт: ' choice || break
     case "$choice" in
       1) action=(status) ;; 2) action=(logs) ;; 3) action=(update) ;; 4) action=(down) ;;
-      5) action=(restart) ;; 6) action=(start) ;; 7) action=(stop) ;; 8) action=(prune) ;;
+      5) action=(restart) ;; 6) action=(start) ;; 7) action=(stop) ;;
+      8) action=(lava logs) ;; 9) action=(lava restart) ;; 10) action=(prune) ;;
       0|q) break ;; *) continue ;;
     esac
     if bash "${BASH_SOURCE[0]}" "${action[@]}"; then :; else echo 'Команда не завершилась успешно.' >&2; fi
@@ -82,7 +84,9 @@ case "$cmd" in
   restart) docker restart "$PBOT"; bash "$HELPER" wait "$PBOT" ;;
   logs) docker logs -f --tail "${1:-100}" "$PBOT" ;;
   status|pstatus) docker ps -a --filter "name=^/$PBOT$" --format 'proto: {{.Status}}' ;;
+  panel) bash "$HELPER" panel proto ;;
+  lava) bash "$HELPER" lava "${1:-status}" "${2:-100}" ;;
   prune) bash "$HELPER" prune "${1:-72h}" ;;
-  help) echo 'Без аргументов — меню proto. Команды: status | logs [N] | start | stop | restart | update [checkout] | hotswap [checkout] | down | prune [until]' ;;
+  help) echo 'Без аргументов — меню proto. Команды: panel | status | logs [N] | start | stop | restart | update [checkout] | hotswap [checkout] | down | lava status|restart|logs | prune [until]' ;;
   *) echo "Неизвестная команда proto: $cmd. Используй help." >&2; exit 1 ;;
 esac

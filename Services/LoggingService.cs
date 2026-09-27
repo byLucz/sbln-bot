@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using System.Net.WebSockets;
 using System.Security;
 using System.Text;
 
@@ -88,8 +89,25 @@ namespace sblngavnav6.Services
 
         public static Task LogDiscordAsync(LogMessage log)
         {
+            if (BenignReconnect(log) is { } reason)
+                return LogAsync("discord", LogSeverity.Info, reason);
+
             var severity = NormalizeDiscordSeverity(log);
             return LogAsync("discord", severity, log.Message, log.Exception);
+        }
+
+        private static string BenignReconnect(LogMessage log)
+        {
+            if (log.Exception is GatewayReconnectException)
+                return "Gateway попросил переподключиться";
+
+            if (log.Exception is WebSocketException or IOException &&
+                log.Exception.Message.Contains("WebSocket connection was closed", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Gateway закрыл соединение, переподключаюсь";
+            }
+
+            return null;
         }
 
         public static Task LogExceptionAsync(string source, Exception exc)
