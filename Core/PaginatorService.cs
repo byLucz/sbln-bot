@@ -141,6 +141,33 @@ namespace sblngavnav6.Core
         public MessageComponent BuildControls(Action<ComponentBuilder, int> controls, int page = 0)
             => Build(page, total: 1, controls);
 
+        public async Task ReplaceAsync(
+            IUserMessage message,
+            IReadOnlyList<Embed> pages,
+            ulong? ownerId = null,
+            int page = 0,
+            Action<ComponentBuilder, int> decorate = null,
+            bool pager = true)
+        {
+            ArgumentNullException.ThrowIfNull(message);
+            ArgumentNullException.ThrowIfNull(pages);
+
+            if (pages.Count == 0)
+                throw new ArgumentException("Нечего показывать: список страниц пуст", nameof(pages));
+
+            page = Math.Clamp(page, 0, pages.Count - 1);
+
+            var components = Build(page, pager ? pages.Count : 1, decorate);
+
+            _views[message.Id] = new View(pages, page, ownerId, DateTimeOffset.UtcNow, decorate, pager);
+
+            await message.ModifyAsync(properties =>
+            {
+                properties.Embed = pages[page];
+                properties.Components = components;
+            });
+        }
+
         public async Task ModifyAsync(
             IUserMessage message,
             Embed embed = null,

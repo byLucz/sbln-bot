@@ -1,4 +1,4 @@
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
 using MailKit;
 using MailKit.Net.Imap;
@@ -29,16 +29,16 @@ namespace sblngavnav6.PPM
             _mail = mail;
         }
 
-        public async Task<(bool ok, PpmMailbox box, string error)> CreateAsync(string ownerId, bool permanent)
+        public async Task<(bool ok, PpmMailbox box, string error, bool ready)> CreateAsync(string ownerId, bool permanent)
         {
-            if (!Global.Vars.Cfg.ppmEnabled) return (false, null, "PPM отключён в конфигурации");
+            if (!Global.Vars.Cfg.ppmEnabled) return (false, null, "PPM отключён в конфигурации", false);
             string local = RandomLocalPart();
             string email = $"{local}@{Global.Vars.Cfg.ppmDomain}";
             string password = RandomPassword();
 
             var (ok, output) = await _mail.AddAsync(email, password);
             if (!ok)
-                return (false, null, output);
+                return (false, null, output, false);
 
             DateTime? expiresAt = permanent ? null : DateTime.UtcNow.AddMinutes(Global.Vars.Cfg.ppmTtlMinutes);
 
@@ -51,10 +51,10 @@ namespace sblngavnav6.PPM
             {
                 await LoggingService.LogErrorAsync("ppm", $"Не удалось записать ящик {email} в БД, откатываю создание", ex);
                 await CompensateAsync(email);
-                return (false, null, "Не удалось сохранить ящик, создание отменено");
+                return (false, null, "Не удалось сохранить ящик, создание отменено", false);
             }
 
-            return (true, new PpmMailbox
+            var box = new PpmMailbox
             {
                 Id = id,
                 Email = email,
@@ -63,7 +63,67 @@ namespace sblngavnav6.PPM
                 CreatedAt = DateTime.UtcNow,
                 ExpiresAt = expiresAt,
                 IsPermanent = permanent
-            }, null);
+            };
+
+            var ready = await WaitUntilLiveAsync(box).ConfigureAwait(false);
+
+            if (!ready)
+                await LoggingService.LogWarningAsync("ppm", $"Ящик {email} создан, но почтовик не принял его за {ReadyTimeout.TotalSeconds:0}с");
+
+            return (true, box, null, ready);
+        }
+
+        private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(30);
+        private static readonly TimeSpan ReadyProbeDelay = TimeSpan.FromSeconds(3);
+
+        private async Task<bool> WaitUntilLiveAsync(PpmMailbox box, CancellationToken cancellationToken = default)
+        {
+            var deadline = DateTimeOffset.UtcNow + ReadyTimeout;
+
+            while (true)
+            {
+                try
+                {
+                    using var client = await ConnectAsync(box, cancellationToken).ConfigureAwait(false);
+                    await client.Inbox.OpenAsync(FolderAccess.ReadOnly, cancellationToken).ConfigureAwait(false);
+                    await client.DisconnectAsync(true, cancellationToken).ConfigureAwait(false);
+                    return true;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception)
+                {
+                    if (DateTimeOffset.UtcNow + ReadyProbeDelay >= deadline)
+                        return false;
+
+                    await Task.Delay(ReadyProbeDelay, cancellationToken).ConfigureAwait(false);
+                }
+            }
+        }
+
+        private async Task<ImapClient> ConnectAsync(PpmMailbox box, CancellationToken cancellationToken = default)
+        {
+            var client = new ImapClient();
+
+            if (Global.Vars.Cfg.ppmImapAllowInvalidCert)
+                client.ServerCertificateValidationCallback = (_, _, _, _) => true;
+
+            try
+            {
+                await client.ConnectAsync(
+                    Global.Vars.Cfg.ppmImapHost,
+                    Global.Vars.Cfg.ppmImapPort,
+                    SecureSocketOptions.SslOnConnect,
+                    cancellationToken).ConfigureAwait(false);
+
+                await client.AuthenticateAsync(box.Email, box.Password, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
+
+            return client;
         }
 
         public async Task<(bool ok, string error)> DeleteAsync(PpmMailbox box)
@@ -82,9 +142,9 @@ namespace sblngavnav6.PPM
             {
                 await LoggingService.LogCriticalAsync(
                     "ppm",
-                    $"Ящик {box.Email} удалён на сервере, но запись id={box.Id} осталась активной в БД — нужна ручная сверка",
+                    $"Ящик {box.Email} удалён на сервере, но запись id={box.Id} осталась активной в БД, нужна ручная сверка",
                     ex);
-                return (false, "Ящик удалён, но запись в БД не обновилась — сообщи администратору");
+                return (false, "Ящик удалён, но запись в БД не обновилась, сообщи администратору");
             }
 
             return (true, null);
@@ -108,13 +168,7 @@ namespace sblngavnav6.PPM
         {
             if (!Global.Vars.Cfg.ppmEnabled) throw new InvalidOperationException("PPM отключён в конфигурации");
             var result = new List<PpmMessageView>();
-            using var client = new ImapClient();
-
-            if (Global.Vars.Cfg.ppmImapAllowInvalidCert)
-                client.ServerCertificateValidationCallback = (_, _, _, _) => true;
-
-            await client.ConnectAsync(Global.Vars.Cfg.ppmImapHost, Global.Vars.Cfg.ppmImapPort, SecureSocketOptions.SslOnConnect);
-            await client.AuthenticateAsync(box.Email, box.Password);
+            using var client = await ConnectAsync(box).ConfigureAwait(false);
 
             var inbox = client.Inbox;
             await inbox.OpenAsync(FolderAccess.ReadOnly);
