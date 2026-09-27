@@ -8,6 +8,7 @@ using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.PPM;
 using sblngavnav6.Services;
+using sblngavnav6.Services.Twitch;
 using sblngavnav6.TelegramExtensions;
 using sblngavnav6.TwitchService;
 using DiscordTelegramFrontier;
@@ -50,6 +51,7 @@ namespace sblngavnav6.Core
                 .AddSingleton<GVRMessagesHandler>()
                 .AddSingleton<WeatherClient>()
                 .AddSingleton<StreamMonoService>()
+                .AddSingleton<StreamerFileHelper>()
                 .AddSingleton<WelcomeService>()
                 .AddSingleton<PaginatorService>()
                 .AddSingleton<PgApiService>()

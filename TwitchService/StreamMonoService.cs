@@ -2,11 +2,11 @@
 using Discord.WebSocket;
 using TwitchLib.Api;
 using TwitchLib.Api.Helix.Models.Games;
-using TwitchLib.Api.Helix.Models.Streams.GetStreams;
 using TwitchLib.Api.Helix.Models.Users.GetUsers;
 using TwitchLib.Api.Services;
 using TwitchLib.Api.Services.Events;
 using TwitchLib.Api.Services.Events.LiveStreamMonitor;
+using sblngavnav6.Common;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
 
@@ -175,8 +175,7 @@ namespace sblngavnav6.TwitchService
                 var getGamesResponse = await TwitchApi.Helix.Games.GetGamesAsync(new List<string> { e.Stream.GameId });
                 UpdateLiveStreamModelsAsync(e.Stream, getGamesResponse);
 
-                EmbedBuilder eb = CreateStreamerEmbed(StreamModels[e.Stream.UserId], e.Stream.ThumbnailUrl);
-                var embed = eb.Build();
+                var embed = CreateStreamerEmbed(StreamModels[e.Stream.UserId], e.Stream.ThumbnailUrl);
 
                 foreach (var channel in ResolveNotifChannels())
                 {
@@ -214,9 +213,9 @@ namespace sblngavnav6.TwitchService
             }
         }
 
-        private async void OnChannelsSetEvent(object sender, OnChannelsSetArgs e)
+        private static async void OnChannelsSetEvent(object sender, OnChannelsSetArgs e)
         {
-            if (_liveStreamMonitor.ChannelsToMonitor != null)
+            if (e.Channels is { Count: > 0 })
             {
                 await LoggingService.LogInformationAsync("TTVLK", "Каналы загружены");
                 return;
@@ -282,45 +281,25 @@ namespace sblngavnav6.TwitchService
             return profImages;
         }
 
-        private EmbedBuilder CreateStreamerEmbed(StreamData streamModel, string thumbnailUrl)
-        {
-            var a = new EmbedAuthorBuilder()
+        private static Embed CreateStreamerEmbed(StreamData streamModel, string thumbnailUrl) =>
+            EmbedHandler.Build(new EmbedSpec
             {
-                Name = streamModel.Stream,
-                IconUrl = streamModel.Avatar
-            };
-
-            var b = new EmbedFooterBuilder()
-            {
-                Text = "sbln твич📺   ///   powered by TwitchLib",
-            };
-
-            var eb = new EmbedBuilder()
-            {
-                Footer = b,
-                Author = a,
-                Color = new Color(191, 0, 255),
-                ImageUrl = thumbnailUrl.Replace("{width}", "1280").Replace("{height}", "720") + $"?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
+                AuthorName = streamModel.Stream,
+                AuthorIconUrl = streamModel.Avatar,
                 Title = streamModel.Title,
                 Url = streamModel.Link,
-            };
-
-            eb.AddField(x =>
-            {
-                x.IsInline = true;
-                x.Name = "**Категория:**";
-                x.Value = streamModel.Game;
+                Color = new Color(191, 0, 255),
+                ImageUrl = string.IsNullOrWhiteSpace(thumbnailUrl)
+                    ? null
+                    : thumbnailUrl.Replace("{width}", "1280").Replace("{height}", "720")
+                      + $"?t={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}",
+                Fields =
+                [
+                    new EmbedFieldSpec("Категория", streamModel.Game, true),
+                    new EmbedFieldSpec("Зрители", $"{streamModel.Viewers}", true)
+                ],
+                Footer = "sbln твич📺 / powered by TwitchLib"
             });
-
-            eb.AddField(x =>
-            {
-                x.IsInline = true;
-                x.Name = "**Зрители:**";
-                x.Value = streamModel.Viewers;
-            });
-
-            return eb;
-        }
 
         public async Task VerifyAndGetStreamIdAsync(CancellationToken cancellationToken = default)
         {

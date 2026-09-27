@@ -1,99 +1,125 @@
-﻿using Discord.Commands;
+using Discord;
+using Discord.Commands;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
 using sblngavnav6.Services.Twitch;
 using sblngavnav6.TwitchService;
+using static sblngavnav6.Common.CommonUtils.Text;
 
 namespace sblngavnav6.Commands.Twitch
 {
-    public class TwitchCommands : ModuleBase<SocketCommandContext>
+    public sealed class TwitchCommands : ModuleBase<SocketCommandContext>
     {
+        private const string Footer = "sbln твич📺 / powered by TwitchLib";
+        private const string Author = "sbln стримеры📺";
+        private const string Source = "стримеры";
+
+        private static readonly Color Tint = new(191, 0, 255);
+
         private readonly StreamMonoService _lsms;
-        public TwitchCommands(StreamMonoService lsms)
+        private readonly StreamerFileHelper _streamers;
+
+        public TwitchCommands(StreamMonoService lsms, StreamerFileHelper streamers)
         {
             _lsms = lsms;
+            _streamers = streamers;
         }
 
-        [RequireUserPermission(Discord.GuildPermission.ManageRoles)]
-        [Command("добавить стримера")]
+        [RequireUserPermission(GuildPermission.ManageRoles)]
+        [Command("добавить стримера", RunMode = RunMode.Async)]
         [Alias("добавить")]
         public async Task AddStreamerAsync(string streamer)
         {
+            if (await DisabledAsync())
+                return;
 
-            StreamerFileHelper sfh = new StreamerFileHelper(_lsms);
-            int t = await sfh.TryAddStreamerAsync(streamer);
-            try
-            {
-                if (t == 1)
-                {
-                    await ReplyAsync($"{streamer} - успешно добавлен✅");
-                    await _lsms.UpdateChannelsToMonitor();
-                }
-                else if (t == 0)
-                {
-                    await ReplyAsync("такой кентик уже есть");
-                }
-                else if (t == -1)
-                {
-                    await ReplyAsync(
-                        $"Такого кента не существует, это вообще че ебать ---> {streamer}, убери хуйню");
-                }
-                else
-                {
-                    await ReplyAsync(
-                        "чето отьебнуло и теперь не работает =(");
-                }
-            }
-            catch (Exception e)
-            {
-                await Console.Out.WriteLineAsync(e.Message);
-                await ReplyAsync("стример не загружен =(");
-            }
-            finally
+            var outcome = await _streamers.TryAddStreamerAsync(streamer);
+
+            if (outcome is StreamerChange.Done)
             {
                 await _lsms.UpdateChannelsToMonitor();
+                await ReplyAsync(embed: Report($"**{streamer}** добавлен ✅"));
+                return;
             }
+
+            await FailAsync(outcome switch
+            {
+                StreamerChange.AlreadyThere => $"**{streamer}** уже в списке",
+                StreamerChange.NotFound => $"на твиче нет такого канала: **{streamer}**",
+                _ => "не вышло, подробности в логе"
+            });
         }
 
-        [RequireUserPermission(Discord.GuildPermission.ManageRoles)]
-        [Command("убрать стримера")]
+        [RequireUserPermission(GuildPermission.ManageRoles)]
+        [Command("убрать стримера", RunMode = RunMode.Async)]
         [Alias("убрать")]
         public async Task RemoveStreamerAsync(string streamer)
         {
-            StreamerFileHelper sfh = new StreamerFileHelper(_lsms);
-            bool t = await sfh.TryRemoveStreamerAsync(streamer);
+            if (await DisabledAsync())
+                return;
 
-            try
+            var outcome = await _streamers.TryRemoveStreamerAsync(streamer);
+
+            if (outcome is StreamerChange.Done)
             {
-                if (t)
-                {
-                    await ReplyAsync($"{streamer} - успешно убран❌");
-                    await _lsms.UpdateChannelsToMonitor();
-                }
-                else
-                {
-                    await ReplyAsync($"такого кента в списке нет, лол");
-                }
+                await _lsms.UpdateChannelsToMonitor();
+                await ReplyAsync(embed: Report($"**{streamer}** убран ❌"));
+                return;
             }
-            catch (Exception e)
+
+            await FailAsync(outcome switch
             {
-                await Console.Out.WriteLineAsync(e.ToString());
-                await ReplyAsync("чето отьебнуло и теперь не работает =(");
-            }
+                StreamerChange.Missing => $"**{streamer}** в списке нет",
+                StreamerChange.NotFound => $"на твиче нет такого канала: **{streamer}**",
+                _ => "не вышло, подробности в логе"
+            });
         }
 
-        [Command("стримеры")]
+        [Command("стримеры", RunMode = RunMode.Async)]
         [Alias("стримерши")]
-
         public async Task Streamers()
         {
-            string stream_final = "```\n";
+            if (await DisabledAsync())
+                return;
 
-            for (int i = 0; i < _lsms.StreamList.Count; i++)
+            var streamers = _lsms.StreamList;
+
+            if (streamers.Count == 0)
             {
-                stream_final += $"{_lsms.StreamList[i]} ";
+                await ReplyAsync(embed: Report("список пуст, добавь кого-нибудь через `добавить стримера`"));
+                return;
             }
 
-            stream_final = stream_final.Insert(stream_final.Length - 1, "\n```");
-            await ReplyAsync(stream_final, false);
+            var online = _lsms.StreamIds
+                .Where(pair => _lsms.StreamsOnline.ContainsKey(pair.Value))
+                .Select(pair => pair.Key)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var rows = streamers
+                .OrderByDescending(online.Contains)
+                .ThenBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .Select(name => (IReadOnlyList<string>)[name, online.Contains(name) ? "в эфире" : "оффлайн"]);
+
+            await ReplyAsync(embed: EmbedHandler.Authored(
+                Author,
+                CodeTable(rows, "`нет данных`"),
+                Tint,
+                $"{online.Count} из {streamers.Count} в эфире / мониторинг: {_lsms.StatusLsm()} / {Footer}"));
         }
+
+        private async Task<bool> DisabledAsync()
+        {
+            if (Global.Vars.Cfg.streamsEnabled)
+                return false;
+
+            await FailAsync("модуль твича выключен, включается в конфиге: `System:StreamsEnabled`");
+            return true;
+        }
+
+        private async Task FailAsync(string error) =>
+            await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(Source, error));
+
+        private static Embed Report(string text) =>
+            EmbedHandler.Authored(Author, text, Tint, Footer);
     }
 }

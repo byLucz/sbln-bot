@@ -1,10 +1,17 @@
-﻿using sblngavnav6.Data;
+using sblngavnav6.Data;
 using sblngavnav6.TwitchService;
-using TwitchLib.Api.Helix.Models.Users.GetUsers;
 
 namespace sblngavnav6.Services.Twitch
 {
-    public class StreamerFileHelper
+    public enum StreamerChange
+    {
+        Done,
+        AlreadyThere,
+        Missing,
+        NotFound
+    }
+
+    public sealed class StreamerFileHelper
     {
         private readonly StreamMonoService _lsms;
 
@@ -13,60 +20,57 @@ namespace sblngavnav6.Services.Twitch
             _lsms = lsms;
         }
 
-        public async Task<int> TryAddStreamerAsync(string name)
+        public async Task<StreamerChange> TryAddStreamerAsync(string name)
         {
-            string streamer = name.ToLower();
-            string streamerId;
+            var streamer = name.Trim().ToLowerInvariant();
 
             if (_lsms.StreamList.Contains(streamer))
-                return 0;
+                return StreamerChange.AlreadyThere;
 
-            try
-            {
-                streamerId = await TryVerifyStreamerAsync(name);
-            }
-            catch (IndexOutOfRangeException e)
-            {
-                Console.WriteLine(e.Message);
-                return -1;
-            }
+            var streamerId = await TryVerifyStreamerAsync(streamer).ConfigureAwait(false);
+
+            if (streamerId is null)
+                return StreamerChange.NotFound;
 
             DataBase.AddStreamer(streamer, streamerId);
             DataBase.DownloadStreamers();
-            return 1;
+
+            return StreamerChange.Done;
         }
 
-        public async Task<bool> TryRemoveStreamerAsync(string name)
+        public async Task<StreamerChange> TryRemoveStreamerAsync(string name)
         {
-            string streamer = name.ToLower();
-            string streamerId;
+            var streamer = name.Trim().ToLowerInvariant();
 
             if (!_lsms.StreamList.Contains(streamer))
-                return false;
+                return StreamerChange.Missing;
 
-            try
-            {
-                streamerId = await TryVerifyStreamerAsync(name);
-            }
-            catch (IndexOutOfRangeException e)
-            {
-                Console.WriteLine(e.Message);
-                return false;
-            }
+            var streamerId = await TryVerifyStreamerAsync(streamer).ConfigureAwait(false);
+
+            if (streamerId is null)
+                return StreamerChange.NotFound;
 
             DataBase.DeleteStreamer(streamer, streamerId);
             DataBase.DownloadStreamers();
-            return true;
+
+            return StreamerChange.Done;
         }
 
         public async Task<string> TryVerifyStreamerAsync(string streamer)
         {
-            List<string> tmp = new() { streamer };
+            try
+            {
+                var result = await _lsms.TwitchApi.Helix.Users
+                    .GetUsersAsync(logins: [streamer], accessToken: _lsms.TwitchApi.Settings.AccessToken)
+                    .ConfigureAwait(false);
 
-            GetUsersResponse result =
-                await _lsms.TwitchApi.Helix.Users.GetUsersAsync(logins: tmp, accessToken: _lsms.TwitchApi.Settings.AccessToken);
-
-            return result.Users[0].Id;
+                return result?.Users is { Length: > 0 } users ? users[0].Id : null;
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync("TTVLK", $"Проверка стримера {streamer} не удалась: {ex.Message}").ConfigureAwait(false);
+                return null;
+            }
         }
     }
 }
