@@ -35,7 +35,9 @@
     "MailImapAllowInvalidCert": "true",
     "MailDomain": "example.com",
     "MailContainer": "CONTAINER_NAME",
-    "MailTtlMinutes": "15"
+    "MailTtlMinutes": "15",
+    "MailTempPerDay": "5",
+    "MailPermanentMax": "1"
   },
   "Books": {
     "BooksSeason": "2",

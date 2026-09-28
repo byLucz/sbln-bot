@@ -618,19 +618,19 @@ namespace sblngavnav6.Data
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
-        public static List<(int id, string email)> GetExpiredPpmMailboxes()
+        public static List<(int id, string email, string ownerId)> GetExpiredPpmMailboxes()
         {
-            var list = new List<(int, string)>();
+            var list = new List<(int, string, string)>();
             using var conn = Db();
             const string sql =
-                @"SELECT id, email FROM temp_mailboxes
+                @"SELECT id, email, owner_id FROM temp_mailboxes
                   WHERE deleted = 0 AND is_permanent = 0
                         AND expires_at IS NOT NULL AND expires_at <= @now";
             using var cmd = new MySqlCommand(sql, conn);
             cmd.Parameters.AddWithValue("@now", DateTime.UtcNow);
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                list.Add((r.GetInt32("id"), r.GetString("email")));
+                list.Add((r.GetInt32("id"), r.GetString("email"), r.GetString("owner_id")));
             return list;
         }
 
@@ -672,6 +672,37 @@ namespace sblngavnav6.Data
             if (!r.Read())
                 return null;
             return ReadPpmMailbox(r);
+        }
+
+        public static (int count, DateTime? oldest) CountPpmTempCreated(string ownerId, DateTime sinceUtc)
+        {
+            using var conn = Db();
+            const string sql =
+                @"SELECT COUNT(*) AS c, MIN(created_at) AS m FROM temp_mailboxes
+                  WHERE owner_id = @o AND is_permanent = 0 AND created_at >= @s";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@o", ownerId);
+            cmd.Parameters.AddWithValue("@s", sinceUtc);
+            using var r = cmd.ExecuteReader();
+
+            if (!r.Read())
+                return (0, null);
+
+            var count = r.GetInt32("c");
+            var oldest = r.IsDBNull(r.GetOrdinal("m")) ? (DateTime?)null : r.GetDateTime("m");
+
+            return (count, oldest);
+        }
+
+        public static int CountPpmPermanent(string ownerId)
+        {
+            using var conn = Db();
+            const string sql =
+                @"SELECT COUNT(*) FROM temp_mailboxes
+                  WHERE owner_id = @o AND is_permanent = 1 AND deleted = 0";
+            using var cmd = new MySqlCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@o", ownerId);
+            return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
         public static List<PpmMailbox> GetUserPpmMailboxes(string ownerId)

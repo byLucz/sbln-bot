@@ -56,6 +56,7 @@ namespace sblngavnav6.Core
                 .AddSingleton<PaginatorService>()
                 .AddSingleton<PgApiService>()
                 .AddSingleton<PpmServerService>()
+                .AddSingleton<PpmPanels>()
                 .AddSingleton<PpmService>()
                 .AddSingleton<GovorConfig>()
                 .AddTelegramExtensions()

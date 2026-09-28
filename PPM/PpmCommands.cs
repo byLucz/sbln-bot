@@ -100,10 +100,12 @@ namespace sblngavnav6.PPM
     public class PpmCommands : ModuleBase<SocketCommandContext>
     {
         private readonly PaginatorService _pager;
+        private readonly PpmPanels _panels;
 
-        public PpmCommands(PaginatorService pager)
+        public PpmCommands(PaginatorService pager, PpmPanels panels)
         {
             _pager = pager;
+            _panels = panels;
         }
 
         [Command("печкин")]
@@ -113,12 +115,30 @@ namespace sblngavnav6.PPM
         {
             var boxes = DataBase.GetUserPpmMailboxes(Context.User.Id.ToString());
 
-            await _pager.SendAsync(
+            var panel = await _pager.SendAsync(
                 Context.Channel,
                 PpmPanelBuilder.BuildRootPages(boxes),
                 Context.User.Id,
                 decorate: PpmPanelBuilder.RootControls(boxes));
+
+            _panels.Track(Context.User.Id, panel);
         }
+    }
+
+    public sealed class PpmNameModal : IModal
+    {
+        public const string Id = "ppm_name";
+
+        public string Title => "Постоянный ящик";
+
+        [InputLabel("Подпись до собачки")]
+        [ModalTextInput("local", placeholder: "например lucz", minLength: 3, maxLength: 32)]
+        public string Local { get; set; }
+
+        [InputLabel("Пароль")]
+        [RequiredInput(false)]
+        [ModalTextInput("pass", placeholder: "пусто - сгенерирую сам", maxLength: 64)]
+        public string Password { get; set; }
     }
 
     public class PpmInteractions : InteractionModuleBase<SocketInteractionContext>
@@ -127,16 +147,33 @@ namespace sblngavnav6.PPM
 
         private readonly PpmService _ppm;
         private readonly PaginatorService _pager;
+        private readonly PpmPanels _panels;
 
-        public PpmInteractions(PpmService ppm, PaginatorService pager)
+        public PpmInteractions(PpmService ppm, PaginatorService pager, PpmPanels panels)
         {
             _ppm = ppm;
             _pager = pager;
+            _panels = panels;
         }
 
         [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_new:*")]
         public async Task Create(string kind)
+        {
+            if (kind == "perm")
+            {
+                await RespondWithModalAsync<PpmNameModal>(PpmNameModal.Id);
+                return;
+            }
+
+            await CreateCoreAsync(false, null, null);
+        }
+
+        [RequireSuperuserInteraction]
+        [ModalInteraction(PpmNameModal.Id)]
+        public async Task Named(PpmNameModal modal) => await CreateCoreAsync(true, modal.Local, modal.Password);
+
+        private async Task CreateCoreAsync(bool permanent, string wanted, string password)
         {
             await DeferAsync(ephemeral: true);
 
@@ -151,8 +188,7 @@ namespace sblngavnav6.PPM
             {
                 await RepaintRoot(busy: true);
 
-                bool permanent = kind == "perm";
-                var (ok, box, error, ready) = await _ppm.CreateAsync(Context.User.Id.ToString(), permanent);
+                var (ok, box, error, ready) = await _ppm.CreateAsync(Context.User.Id.ToString(), permanent, wanted, password);
 
                 if (!ok)
                 {
@@ -165,8 +201,13 @@ namespace sblngavnav6.PPM
                     ? "готов принимать письма"
                     : "почтовик ещё применяет настройки, первые письма могут отбиться, попробуй через минуту";
 
+                var credentials = permanent
+                    ? $"\nпароль: ||`{box.Password}`||"
+                    : "";
+
                 await FollowupAsync(embed: EmbedHandler.Simple(
-                    "Временная почта", $"📬 **`{box.Email}`**\n\n{PpmPanelBuilder.Ttl(box)}\n{(ready ? "✅" : "⚠️")} {note}",
+                    permanent ? "Постоянная почта" : "Временная почта",
+                    $"📬 **`{box.Email}`**{credentials}\n\n{PpmPanelBuilder.Ttl(box)}\n{(ready ? "✅" : "⚠️")} {note}",
                     ready ? Color.Green : Color.Orange, EmbedHandler.PpmFooter), ephemeral: true);
             }
             finally
@@ -204,6 +245,9 @@ namespace sblngavnav6.PPM
                 : await EmbedHandler.CreateErrorEmbed("печкин", $"не удалось удалить:\n```{Truncate(error, 500)}```"),
                 inPlace: true,
                 dropControls: ok);
+
+            if (ok)
+                await _panels.RefreshAsync(Context.User.Id);
         }
 
         private async Task ShowInbox(string idRaw, bool inPlace)
@@ -264,11 +308,14 @@ namespace sblngavnav6.PPM
 
         private async Task RepaintRoot(bool busy = false)
         {
-            if (Context.Interaction is not SocketMessageComponent component)
+            if (Context.Interaction is not SocketMessageComponent component ||
+                component.Message.Flags?.HasFlag(MessageFlags.Ephemeral) == true)
+            {
+                await _panels.RefreshAsync(Context.User.Id);
                 return;
+            }
 
-            if (component.Message.Flags?.HasFlag(MessageFlags.Ephemeral) == true)
-                return;
+            _panels.Track(Context.User.Id, component.Message);
 
             var boxes = DataBase.GetUserPpmMailboxes(Context.User.Id.ToString());
 

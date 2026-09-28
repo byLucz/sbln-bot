@@ -1,4 +1,4 @@
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 
 namespace sblngavnav6.Data
 {
@@ -78,6 +78,8 @@ namespace sblngavnav6.Data
                 public static readonly string ppmDomain = Str("Mail:MailDomain", "example.com");
                 public static readonly string ppmContainer = Str("Mail:MailContainer", "mailserver");
                 public static readonly int ppmTtlMinutes = Int("Mail:MailTtlMinutes", 15);
+                public static readonly int ppmTempPerDay = Int("Mail:MailTempPerDay", 5);
+                public static readonly int ppmPermanentMax = Int("Mail:MailPermanentMax", 3);
 
                 public static readonly int booksSeason = Int("Books:BooksSeason", 2);
                 public static readonly string booksJsonPath = Str("Books:BooksJsonPath");

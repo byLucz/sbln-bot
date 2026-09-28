@@ -3,6 +3,7 @@ using System.Text;
 using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Security;
+using sblngavnav6.Common;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
 using static sblngavnav6.Data.DataRoots;
@@ -20,22 +21,58 @@ namespace sblngavnav6.PPM
 
     public sealed class PpmService : IAsyncDisposable
     {
+        private const string LogSource = "PPMAN";
+
         private readonly PpmServerService _mail;
+        private readonly PpmPanels _panels;
         private CancellationTokenSource _sweeperCts;
         private Task _sweeperTask = Task.CompletedTask;
         private bool _disposed;
 
-        public PpmService(PpmServerService mail)
+        public PpmService(PpmServerService mail, PpmPanels panels)
         {
             _mail = mail;
+            _panels = panels;
         }
 
-        public async Task<(bool ok, PpmMailbox box, string error, bool ready)> CreateAsync(string ownerId, bool permanent)
+        public async Task<(bool ok, PpmMailbox box, string error, bool ready)> CreateAsync(string ownerId, bool permanent, string wanted = null, string wantedPassword = null)
         {
             if (!Global.Vars.Cfg.ppmEnabled) return (false, null, "PPM отключён в конфигурации", false);
-            string local = RandomLocalPart();
+
+            if (CheckLimits(ownerId, permanent) is { } refusal)
+                return (false, null, refusal, false);
+
+            string local;
+
+            if (string.IsNullOrWhiteSpace(wanted))
+            {
+                local = RandomLocalPart();
+            }
+            else
+            {
+                local = wanted.Trim().ToLowerInvariant();
+
+                if (ValidateLocalPart(local) is { } complaint)
+                    return (false, null, complaint, false);
+
+                if (DataBase.GetActivePpmMailbox($"{local}@{Global.Vars.Cfg.ppmDomain}") is not null)
+                    return (false, null, $"подпись **{local}** уже занята", false);
+            }
+
             string email = $"{local}@{Global.Vars.Cfg.ppmDomain}";
-            string password = RandomPassword();
+            string password;
+
+            if (string.IsNullOrWhiteSpace(wantedPassword))
+            {
+                password = RandomPassword();
+            }
+            else
+            {
+                password = wantedPassword.Trim();
+
+                if (ValidatePassword(password) is { } weak)
+                    return (false, null, weak, false);
+            }
 
             var (ok, output) = await _mail.AddAsync(email, password);
             if (!ok)
@@ -50,7 +87,7 @@ namespace sblngavnav6.PPM
             }
             catch (Exception ex)
             {
-                await LoggingService.LogErrorAsync("ppm", $"Не удалось записать ящик {email} в БД, откатываю создание", ex);
+                await LoggingService.LogErrorAsync(LogSource, $"Не удалось записать ящик {email} в БД, откатываю создание", ex);
                 await CompensateAsync(email);
                 return (false, null, "Не удалось сохранить ящик, создание отменено", false);
             }
@@ -69,9 +106,70 @@ namespace sblngavnav6.PPM
             var ready = await WaitUntilLiveAsync(box).ConfigureAwait(false);
 
             if (!ready)
-                await LoggingService.LogWarningAsync("ppm", $"Ящик {email} создан, но почтовик не принял его за {ReadyTimeout.TotalSeconds:0}с");
+                await LoggingService.LogWarningAsync(LogSource, $"Ящик {email} создан, но почтовик не принял его за {ReadyTimeout.TotalSeconds:0}с");
 
             return (true, box, null, ready);
+        }
+
+        private static readonly string[] Reserved =
+            ["postmaster", "admin", "administrator", "root", "abuse", "noreply", "no-reply", "mailer-daemon", "hostmaster", "webmaster"];
+
+        private static string CheckLimits(string ownerId, bool permanent)
+        {
+            if (permanent)
+            {
+                var limit = Global.Vars.Cfg.ppmPermanentMax;
+                var used = DataBase.CountPpmPermanent(ownerId);
+
+                return used < limit
+                    ? null
+                    : $"лимит постоянных ящиков исчерпан: {used} из {limit}, удали лишний";
+            }
+
+            var perDay = Global.Vars.Cfg.ppmTempPerDay;
+            var (count, oldest) = DataBase.CountPpmTempCreated(ownerId, DateTime.UtcNow.AddDays(-1));
+
+            if (count < perDay)
+                return null;
+
+            var wait = oldest.HasValue
+                ? oldest.Value.AddDays(1) - DateTime.UtcNow
+                : TimeSpan.Zero;
+
+            return wait > TimeSpan.Zero
+                ? $"лимит временных ящиков исчерпан: {count} за сутки из {perDay}, следующий через {CommonUtils.Time.FormatAge(wait)}"
+                : $"лимит временных ящиков исчерпан: {count} за сутки из {perDay}";
+        }
+
+        private static string ValidatePassword(string password)
+        {
+            if (password.Length is < 8 or > 64)
+                return "пароль должен быть от 8 до 64 символов";
+
+            if (password.Any(symbol => char.IsWhiteSpace(symbol) || symbol < ' ' || symbol > '~'))
+                return "в пароле можно только видимые ASCII-символы без пробелов";
+
+            return null;
+        }
+
+        private static string ValidateLocalPart(string local)
+        {
+            if (local.Length is < 3 or > 32)
+                return "подпись должна быть от 3 до 32 символов";
+
+            if (!local.All(symbol => char.IsAsciiLetterLower(symbol) || char.IsAsciiDigit(symbol) || symbol is '.' or '-' or '_'))
+                return "в подписи можно только латиницу, цифры, точку, дефис и подчёркивание";
+
+            if (!char.IsAsciiLetterLower(local[0]) && !char.IsAsciiDigit(local[0]))
+                return "подпись должна начинаться с буквы или цифры";
+
+            if (local.Contains(".."))
+                return "две точки подряд нельзя";
+
+            if (Reserved.Contains(local))
+                return $"подпись **{local}** зарезервирована";
+
+            return null;
         }
 
         private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(30);
@@ -142,7 +240,7 @@ namespace sblngavnav6.PPM
             catch (Exception ex)
             {
                 await LoggingService.LogCriticalAsync(
-                    "ppm",
+                    LogSource,
                     $"Ящик {box.Email} удалён на сервере, но запись id={box.Id} осталась активной в БД, нужна ручная сверка",
                     ex);
                 return (false, "Ящик удалён, но запись в БД не обновилась, сообщи администратору");
@@ -156,12 +254,14 @@ namespace sblngavnav6.PPM
             try
             {
                 var (ok, output) = await _mail.DelAsync(email);
-                if (!ok)
-                    await LoggingService.LogCriticalAsync("ppm", $"Компенсация не удалась, ящик {email} остался без записи в БД: {output}");
+                if (ok)
+                    return;
+
+                throw new InvalidOperationException(output);
             }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("ppm", $"Компенсация не удалась, ящик {email} остался без записи в БД", ex);
+                await LoggingService.LogCriticalAsync(LogSource, $"Компенсация не удалась, ящик {email} остался без записи в БД", ex);
             }
         }
 
@@ -264,25 +364,30 @@ namespace sblngavnav6.PPM
                 try
                 {
                     var expired = DataBase.GetExpiredPpmMailboxes();
-                    foreach (var (id, email) in expired)
+                    var touched = new HashSet<string>();
+
+                    foreach (var (id, email, ownerId) in expired)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         var (ok, output) = await _mail.DelAsync(email, cancellationToken);
                         if (ok)
                         {
                             DataBase.MarkPpmMailboxDeleted(id);
-                            await LoggingService.LogInformationAsync("ppm", $"Удалён протухший ящик {email}");
+                            touched.Add(ownerId);
                         }
                         else
                         {
-                            await LoggingService.LogWarningAsync("ppm", $"Не удалось удалить {email}: {output}");
+                            await LoggingService.LogWarningAsync(LogSource, $"Не удалось удалить {email}: {output}");
                         }
                     }
+
+                    foreach (var ownerId in touched)
+                        await _panels.RefreshAsync(ownerId).ConfigureAwait(false);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
                 catch (Exception ex)
                 {
-                    await LoggingService.LogErrorAsync("ppm", "Ошибка sweeper-цикла", ex);
+                    await LoggingService.LogErrorAsync(LogSource, "Ошибка sweeper-цикла", ex);
                 }
 
                 await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
