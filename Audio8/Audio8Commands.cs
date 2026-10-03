@@ -170,7 +170,8 @@ namespace sblngavnav6.Audio8
             await _service.SendWithControlsAsync(
                 Context.Channel,
                 await Audio8Embeds.RecentPlaylists(recent),
-                Audio8Controls.RecentPlaylists(recent.Count));
+                Audio8Controls.RecentPlaylists(recent.Count),
+                scope: Audio8Scopes.Recent(Context.Guild.Id));
         }
 
         [Command("плейлист", RunMode = RunMode.Async)]

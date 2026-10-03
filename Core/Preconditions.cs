@@ -80,7 +80,7 @@ namespace sblngavnav6.Core
     {
         private static ulong _botOwnerId;
 
-        public static async Task<bool> IsAllowedAsync(IDiscordClient client, IGuild guild, IGuildUser user)
+        public static async Task<bool> IsBotOwnerAsync(IDiscordClient client, IUser user)
         {
             if (_botOwnerId == 0)
             {
@@ -92,7 +92,12 @@ namespace sblngavnav6.Core
                 catch { }
             }
 
-            if (_botOwnerId != 0 && user.Id == _botOwnerId)
+            return _botOwnerId != 0 && user.Id == _botOwnerId;
+        }
+
+        public static async Task<bool> IsAllowedAsync(IDiscordClient client, IGuild guild, IGuildUser user)
+        {
+            if (await IsBotOwnerAsync(client, user).ConfigureAwait(false))
                 return true;
 
             var gs = DataBase.GetGuildSettings(guild.Id);

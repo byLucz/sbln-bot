@@ -481,20 +481,13 @@ namespace sblngavnav6.Audio8
 
             var canPick = player.Queue.Count >= Audio8Constants.MinQueueForPick;
 
-            if (player.QueueMessage is { } previous)
-            {
-                player.QueueMessage = null;
-                try { await ModifyAsync(previous, clearControls: true).ConfigureAwait(false); }
-                catch (Exception ex) when (ex is HttpException or TimeoutException) { }
-            }
-
             var message = await _pager.SendAsync(
                 channel,
                 pages,
-                decorate: canPick ? Audio8Controls.QueuePick() : null).ConfigureAwait(false);
+                decorate: canPick ? Audio8Controls.QueuePick() : null,
+                scope: Audio8Scopes.Queue(player.GuildId)).ConfigureAwait(false);
 
-            if (canPick)
-                player.QueueMessage = message;
+            player.QueueMessage = canPick ? message : null;
         }
 
         public Task<bool> SkipToQueuedAsync(Audio8Player player, string trackKey, CancellationToken cancellationToken = default)
@@ -568,8 +561,9 @@ namespace sblngavnav6.Audio8
             IMessageChannel channel,
             Embed embed,
             Action<ComponentBuilder, int> controls,
-            ulong? ownerId = null) =>
-            _pager.SendAsync(channel, [embed], ownerId, decorate: controls);
+            ulong? ownerId = null,
+            string scope = null) =>
+            _pager.SendAsync(channel, [embed], ownerId, decorate: controls, scope: scope);
 
         public Task<IUserMessage> SendAsync(IMessageChannel channel, Embed embed) =>
             _pager.SendAsync(channel, [embed]);
@@ -845,6 +839,15 @@ namespace sblngavnav6.Audio8
         Started,
         Enqueued,
         Playlist
+    }
+
+    internal static class Audio8Scopes
+    {
+        public static string Queue(ulong guildId) => $"a8:queue:{guildId}";
+
+        public static string Picks(ulong guildId) => $"a8:picks:{guildId}";
+
+        public static string Recent(ulong guildId) => $"a8:recent:{guildId}";
     }
 
     internal static class Audio8Constants

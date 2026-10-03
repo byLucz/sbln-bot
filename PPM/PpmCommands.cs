@@ -132,7 +132,7 @@ namespace sblngavnav6.PPM
         public string Title => "Постоянный ящик";
 
         [InputLabel("Подпись до собачки")]
-        [ModalTextInput("local", placeholder: "например lucz", minLength: 3, maxLength: 32)]
+        [ModalTextInput("local", placeholder: "например daun", minLength: 3, maxLength: 32)]
         public string Local { get; set; }
 
         [InputLabel("Пароль")]

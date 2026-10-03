@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
 using static sblngavnav6.Common.CommonUtils.Text;
@@ -108,7 +108,8 @@ namespace sblngavnav6.Audio8
                 channel,
                 await Audio8Embeds.Picks(picks, header).ConfigureAwait(false),
                 Audio8Controls.Picks(picks.Count),
-                requestedByUserId).ConfigureAwait(false);
+                requestedByUserId,
+                Audio8Scopes.Picks(guildId)).ConfigureAwait(false);
 
             _states.AddPick(new Audio8PickState(guildId, message.Id, requestedByUserId, picks, DateTimeOffset.UtcNow));
 

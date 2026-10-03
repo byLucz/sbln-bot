@@ -19,6 +19,7 @@ namespace sblngavnav6.Core
             bool Pager);
 
         private readonly ConcurrentDictionary<ulong, View> _views = new();
+        private readonly ConcurrentDictionary<string, (IMessageChannel Channel, ulong MessageId)> _scopes = new();
         private CancellationTokenSource _cleanupCts;
         private Task _cleanupTask = Task.CompletedTask;
         private bool _disposed;
@@ -49,6 +50,10 @@ namespace sblngavnav6.Core
                     foreach (var kv in _views.ToArray())
                         if (kv.Value.At < cut)
                             _views.TryRemove(kv);
+
+                    foreach (var kv in _scopes.ToArray())
+                        if (!_views.ContainsKey(kv.Value.MessageId))
+                            _scopes.TryRemove(kv);
                 }
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -60,7 +65,8 @@ namespace sblngavnav6.Core
             ulong? ownerId = null,
             int startPage = 0,
             Action<ComponentBuilder, int> decorate = null,
-            bool pager = true)
+            bool pager = true,
+            string scope = null)
         {
             ArgumentNullException.ThrowIfNull(pages);
             if (pages.Count == 0)
@@ -78,7 +84,38 @@ namespace sblngavnav6.Core
             if (!single || decorate != null)
                 _views[msg.Id] = new View(pages, startPage, ownerId, DateTimeOffset.UtcNow, decorate, pager);
 
+            if (!string.IsNullOrEmpty(scope))
+                await RetireAsync(scope, channel, msg.Id);
+
             return msg;
+        }
+
+        public async Task RetireAsync(string scope)
+        {
+            if (string.IsNullOrEmpty(scope) || !_scopes.TryRemove(scope, out var previous))
+                return;
+
+            await ClearAsync(previous.Channel, previous.MessageId);
+        }
+
+        private async Task RetireAsync(string scope, IMessageChannel channel, ulong keepId)
+        {
+            if (_scopes.TryGetValue(scope, out var previous) && previous.MessageId != keepId)
+                await ClearAsync(previous.Channel, previous.MessageId);
+
+            _scopes[scope] = (channel, keepId);
+        }
+
+        private async Task ClearAsync(IMessageChannel channel, ulong messageId)
+        {
+            _views.TryRemove(messageId, out _);
+
+            try
+            {
+                if (await channel.GetMessageAsync(messageId) is IUserMessage message)
+                    await message.ModifyAsync(properties => properties.Components = new ComponentBuilder().Build());
+            }
+            catch (Exception) { }
         }
 
         public FlipOutcome TryPrepareFlip(ulong messageId, ulong userId, int target, out Embed embed, out MessageComponent components)
