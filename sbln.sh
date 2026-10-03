@@ -118,6 +118,31 @@ lava_name() {
     | awk 'tolower($0) ~ /lavalink|lava/ {print $1; exit}'
 }
 
+lava_pid() {
+  local config=$1 port=2333
+  command -v ss >/dev/null 2>&1 || return 1
+  if [[ -f "$config" ]] && command -v jq >/dev/null 2>&1; then
+    port=$(jq -r '.Lava.LavaPort // "2333"' "$config" 2>/dev/null) || port=2333
+  fi
+  ss -Hltnp "sport = :$port" 2>/dev/null | head -1 | sed -nE 's/.*pid=([0-9]+).*/\1/p'
+}
+
+lava_unit() {
+  local pid=$1 unit
+  [[ -n "$pid" && -r "/proc/$pid/cgroup" ]] || return 1
+  unit=$(sed -nE 's#.*/([^/]+\.service)$#\1#p' "/proc/$pid/cgroup" | head -1)
+  [[ -n "$unit" ]] || return 1
+  printf '%s\n' "$unit"
+}
+
+lava_logfile() {
+  local pid=$1 cwd
+  [[ -n "$pid" && -r "/proc/$pid/cwd" ]] || return 1
+  cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null) || return 1
+  [[ -d "$cwd/logs" ]] || return 1
+  ls -1t "$cwd"/logs/*.log 2>/dev/null | head -1
+}
+
 lava_listener() {
   local config=$1 port=2333 line
   command -v ss >/dev/null 2>&1 || return 1
@@ -291,12 +316,36 @@ case "$cmd" in
   panel) panel "${1:-stable}" ;;
   lava)
     name=$(lava_name)
+    lconfig="$BASE/config.json"
+    [[ -f "$lconfig" ]] || lconfig="$BASE/config-proto.json"
+    lpid=$(lava_pid "$lconfig") || lpid=''
+    lunit=$(lava_unit "$lpid") || lunit=''
     case "${1:-status}" in
-      status) if [[ -n "$name" ]]; then docker inspect --format '{{.State.Status}}' "$name"; else systemctl status lavalink --no-pager; fi ;;
-      restart)
-        if [[ -n "$name" ]]; then docker restart "$name" >/dev/null; echo ">> $name перезапущен"; else systemctl restart lavalink; echo '>> служба lavalink перезапущена'; fi
+      status)
+        if [[ -n "$name" ]]; then docker inspect --format '{{.State.Status}}' "$name"
+        elif [[ -n "$lunit" ]]; then systemctl status "$lunit" --no-pager
+        elif [[ -n "$lpid" ]]; then echo "вне docker и systemd: pid $lpid"
+        else echo 'Lavalink не найден' >&2; exit 1; fi
         ;;
-      logs) if [[ -n "$name" ]]; then docker logs -f --tail "${2:-100}" "$name"; else journalctl -u lavalink -n "${2:-100}" -f; fi ;;
+      restart)
+        if [[ -n "$name" ]]; then
+          docker restart "$name" >/dev/null; echo ">> $name перезапущен"
+        elif [[ -n "$lunit" ]]; then
+          systemctl restart "$lunit"; echo ">> $lunit перезапущен"
+        elif [[ -n "$lpid" ]]; then
+          echo "Lavalink запущен вручную (pid $lpid), не под systemd и не в docker." >&2
+          echo "Перезапуск вслепую опасен: процесс не поднимется сам. Останови и запусти его тем же способом, которым запускал." >&2
+          exit 1
+        else
+          echo 'Lavalink не найден' >&2; exit 1
+        fi
+        ;;
+      logs)
+        if [[ -n "$name" ]]; then docker logs -f --tail "${2:-100}" "$name"
+        elif [[ -n "$lunit" ]]; then journalctl -u "$lunit" -n "${2:-100}" -f
+        elif logfile=$(lava_logfile "$lpid") && [[ -n "$logfile" ]]; then echo ">> $logfile"; tail -n "${2:-100}" -f "$logfile"
+        else echo 'Логи Lavalink не найдены: ни контейнер, ни systemd-юнит, ни каталог logs рядом с процессом' >&2; exit 1; fi
+        ;;
       *) echo 'lava status|restart|logs [N]' >&2; exit 1 ;;
     esac
     ;;
