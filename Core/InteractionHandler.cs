@@ -1,4 +1,4 @@
-using Discord.Interactions;
+﻿using Discord.Interactions;
 using Discord.WebSocket;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
@@ -63,7 +63,7 @@ namespace sblngavnav6.Core
             catch (Exception ex)
             {
                 Interlocked.Exchange(ref _commandsRegistered, 0);
-                await LoggingService.LogCriticalAsync("Interactions", "Ошибка регистрации команд", ex);
+                await LoggingService.LogCriticalAsync("INTRS", "Ошибка регистрации команд", ex);
             }
         }
 
@@ -79,7 +79,7 @@ namespace sblngavnav6.Core
             }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("Interactions", "Ошибка обработки interaction", ex);
+                await LoggingService.LogCriticalAsync("INTRS", "Ошибка обработки interaction", ex);
                 await RespondSafeAsync(socketInteraction, "🔴 Внутренняя ошибка, попробуй позже");
             }
         }
@@ -95,7 +95,7 @@ namespace sblngavnav6.Core
             };
 
             await LoggingService.LogWarningAsync(
-                "Interactions",
+                "INTRS",
                 $"Interaction не выполнен. Type={interaction.Type}, User={interaction.User?.Id}, Error={result.Error}, Reason={result.ErrorReason}");
 
             await RespondSafeAsync(interaction, reply);
@@ -112,7 +112,7 @@ namespace sblngavnav6.Core
             }
             catch (Exception ex)
             {
-                await LoggingService.LogWarningAsync("Interactions", $"Не удалось ответить на interaction: {ex.Message}");
+                await LoggingService.LogWarningAsync("INTRS", $"Не удалось ответить на interaction: {ex.Message}");
             }
         }
 

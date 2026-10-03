@@ -114,7 +114,19 @@ container_span() {
 }
 
 lava_name() {
-  docker ps --format '{{.Names}}' | sed -n '/[Ll]avalink/{p;q;}'
+  docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null \
+    | awk 'tolower($0) ~ /lavalink|lava/ {print $1; exit}'
+}
+
+lava_listener() {
+  local config=$1 port=2333 line
+  command -v ss >/dev/null 2>&1 || return 1
+  if [[ -f "$config" ]] && command -v jq >/dev/null 2>&1; then
+    port=$(jq -r '.Lava.LavaPort // "2333"' "$config" 2>/dev/null) || port=2333
+  fi
+  line=$(ss -Hltnp "sport = :$port" 2>/dev/null | head -1)
+  [[ -n "$line" ]] || return 1
+  printf '%s\n' "$line" | sed -nE 's/.*users:\(\("([^"]+)",pid=([0-9]+).*/\1 (pid \2)/p'
 }
 
 lava_stats() {
@@ -140,7 +152,7 @@ lava_links() {
 
 panel() {
   local channel=${1:-stable} name="$BOT" config="$BASE/config.json"
-  local state span image restarts lava info rc links free up players playing load used alloc
+  local state span image restarts lava info rc links free listener up players playing load used alloc
   if [[ "$channel" = proto ]]; then name=sbln-bot-proto; config="$BASE/config-proto.json"; fi
 
   printf '\n── состояние · %s ──\n' "$channel"
@@ -165,6 +177,8 @@ panel() {
     row "$L_LAVA" "$lava: $(container_state "$lava")${span:+, аптайм $(human_span "$span")}"
   elif systemctl is-active lavalink >/dev/null 2>&1; then
     row "$L_LAVA" 'служба active'
+  elif listener=$(lava_listener "$config") && [[ -n "$listener" ]]; then
+    row "$L_LAVA" "вне docker: $listener"
   else
     row "$L_LAVA" 'не найден'
   fi

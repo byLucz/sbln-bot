@@ -147,7 +147,7 @@ namespace sblngavnav6.Audio8
 
             builder.WithButton("Назад", $"{NowPlayingId}:previous", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiPrevious), row: 1);
             builder.WithButton(
-                paused ? "Продолжить" : "Пауза",
+                paused ? "Играй" : "Пауза",
                 $"{NowPlayingId}:pause",
                 paused ? ButtonStyle.Success : ButtonStyle.Secondary,
                 new Emoji(paused ? Audio8Constants.EmojiResume : Audio8Constants.EmojiPause),
@@ -365,6 +365,8 @@ namespace sblngavnav6.Audio8
                     return;
                 }
 
+                await component.DeferAsync();
+
                 if (player.State is PlayerState.Paused)
                     await player.ResumeAsync();
                 else
@@ -376,6 +378,7 @@ namespace sblngavnav6.Audio8
 
             if (action == "menu")
             {
+                await component.DeferAsync();
                 player.NowPlayingExpanded = !player.NowPlayingExpanded;
                 await RepaintNowPlayingAsync(component, player);
                 return;
@@ -387,6 +390,7 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
+            await component.DeferAsync();
             player.ToggleRepeat();
             await RepaintNowPlayingAsync(component, player);
         }
@@ -394,16 +398,13 @@ namespace sblngavnav6.Audio8
         private async Task RepaintNowPlayingAsync(SocketMessageComponent component, Audio8Player player)
         {
             if (player.CurrentTrack is not { } track)
-            {
-                await component.DeferAsync();
                 return;
-            }
 
             var embed = await Audio8Embeds.NowPlaying(track, player);
             var controls = _service.BuildControls(
                 Audio8Controls.NowPlaying(player.RepeatEnabled, player.NowPlayingExpanded, player.State is PlayerState.Paused));
 
-            await component.UpdateAsync(message =>
+            await component.ModifyOriginalResponseAsync(message =>
             {
                 message.Embed = embed;
                 message.Components = controls;

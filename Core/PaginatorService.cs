@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using System.Collections.Concurrent;
@@ -144,7 +144,8 @@ namespace sblngavnav6.Core
             switch (TryPrepareFlip(component.Message.Id, userId, target, out var embed, out var components))
             {
                 case FlipOutcome.Ready:
-                    await component.UpdateAsync(message =>
+                    await component.DeferAsync();
+                    await component.ModifyOriginalResponseAsync(message =>
                     {
                         message.Embed = embed;
                         message.Components = components;

@@ -32,6 +32,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app ./
-HEALTHCHECK --interval=5s --timeout=3s --start-period=15s --retries=12 CMD test -f /tmp/sbln-ready || exit 1
+HEALTHCHECK --interval=10s --timeout=3s --start-period=120s --retries=6 CMD test -f /tmp/sbln-ready || exit 1
 
 ENTRYPOINT ["sh", "-eu", "-c", "rm -f /tmp/sbln-ready; mkdir -p /opt/sbln/data /opt/sbln/logs \"${SBLN_AUDIO_DIR:-/opt/sbln/audio/stable}\"; exec dotnet /app/sblngavnav6.dll \"$@\"", "sbln"]

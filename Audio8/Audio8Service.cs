@@ -920,7 +920,7 @@ namespace sblngavnav6.Audio8
         public const string EmojiHoist = "🔼";
         public const string EmojiSkip = "⏭️";
         public const string EmojiQueue = "📜";
-        public const string EmojiMenu = "⚙️";
+        public const string EmojiMenu = "☰";
         public const string EmojiPrevious = "⏮️";
         public const string EmojiPause = "⏸️";
         public const string EmojiResume = "▶️";

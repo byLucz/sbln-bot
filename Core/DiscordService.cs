@@ -29,9 +29,11 @@ namespace sblngavnav6.Core
         private WelcomeService _welcome;
         private PaginatorService _pager;
         private Task _frontierTask = Task.CompletedTask;
+        private CancellationTokenSource _readyGraceCts;
         private bool _started;
         private int _running;
 
+        private static readonly TimeSpan ReadyGrace = TimeSpan.FromSeconds(45);
         private static readonly TimeSpan FrontierRetryDelay = TimeSpan.FromMinutes(1);
         private static readonly TimeSpan FrontierReportInterval = TimeSpan.FromMinutes(10);
 
@@ -79,6 +81,7 @@ namespace sblngavnav6.Core
                 _client.Ready += OnReadyAsync;
                 _client.Disconnected += OnDisconnectedAsync;
                 _client.PresenceUpdated += OnPresenceUpdatedAsync;
+                _client.Connected += OnConnectedAsync;
 
                 _commandHandler = _services.GetRequiredService<CommandHandler>();
                 _interHandler = _services.GetRequiredService<InteractionHandler>();
@@ -135,6 +138,7 @@ namespace sblngavnav6.Core
                 try
                 {
                     Cancel();
+                    CancelNotReady();
                     lock (_readyLock)
                     {
                         _started = false;
@@ -161,6 +165,7 @@ namespace sblngavnav6.Core
                     _client.Ready -= OnReadyAsync;
                     _client.Disconnected -= OnDisconnectedAsync;
                     _client.PresenceUpdated -= OnPresenceUpdatedAsync;
+                    _client.Connected -= OnConnectedAsync;
                 }
 
                 foreach (var (name, stop) in BuildShutdownSequence())
@@ -270,8 +275,47 @@ namespace sblngavnav6.Core
 
         private Task OnDisconnectedAsync(Exception exception)
         {
-            lock (_readyLock) SetReady(false);
+            ScheduleNotReady();
             return Task.CompletedTask;
+        }
+
+        private Task OnConnectedAsync()
+        {
+            CancelNotReady();
+
+            lock (_readyLock)
+            {
+                if (_started)
+                    SetReady(_client.ConnectionState == ConnectionState.Connected);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        private void ScheduleNotReady()
+        {
+            CancelNotReady();
+
+            var cts = new CancellationTokenSource();
+            _readyGraceCts = cts;
+
+            _ = Task.Run(async () =>
+            {
+                try { await Task.Delay(ReadyGrace, cts.Token).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return; }
+
+                lock (_readyLock) SetReady(false);
+            });
+        }
+
+        private void CancelNotReady()
+        {
+            var cts = Interlocked.Exchange(ref _readyGraceCts, null);
+            if (cts is null) return;
+
+            try { cts.Cancel(); }
+            catch (ObjectDisposedException) { }
+            cts.Dispose();
         }
 
         private Task OnPresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after) => Task.CompletedTask;
