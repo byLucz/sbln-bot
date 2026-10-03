@@ -18,7 +18,7 @@ public sealed record PgApiResult(bool Ok, HttpStatusCode? Status, string Body, s
         var sb = new StringBuilder();
         sb.AppendLine($"Status: {(int)Status.Value} {Status.Value}");
         sb.AppendLine("```json");
-        sb.AppendLine(Body);
+        sb.AppendLine(Body?.Replace("```", "`‌``", StringComparison.Ordinal));
         sb.AppendLine("```");
         return sb.ToString();
     }
@@ -27,6 +27,8 @@ public sealed record PgApiResult(bool Ok, HttpStatusCode? Status, string Body, s
 public sealed class PgApiService
 {
     private const int MaxBodyLength = 1600;
+
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
 
     private readonly IHttpClientFactory _httpClientFactory;
 
@@ -94,23 +96,26 @@ public sealed class PgApiService
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Global.Vars.Cfg.pgApiToken);
         }
 
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(Timeout);
+
         HttpResponseMessage response;
         try
         {
-            response = await client.SendAsync(request, cancellationToken);
+            response = await client.SendAsync(request, cts.Token);
         }
         catch (HttpRequestException ex)
         {
             return PgApiResult.Fail($"Запрос не дошёл: {ex.Message}");
         }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return PgApiResult.Fail("Таймаут запроса");
+            return PgApiResult.Fail($"Таймаут запроса, {Timeout.TotalSeconds:0}с без ответа");
         }
 
         using (response)
         {
-            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            var body = await response.Content.ReadAsStringAsync(cts.Token);
 
             if (string.IsNullOrWhiteSpace(body))
                 body = "(пустой ответ)";

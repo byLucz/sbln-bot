@@ -467,6 +467,9 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }
         if (reason == null) reason = "воля администратора";
 
+        if (await BotProtectedAsync(user, "кикать"))
+            return;
+
         await user.KickAsync();
 
         await ReplyAsync(embed: EmbedHandler.Moderation(
@@ -488,6 +491,9 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }
         if (reason == null) reason = "воля администратора";
 
+        if (await BotProtectedAsync(user, "банить"))
+            return;
+
         await user.BanAsync();
 
         await ReplyAsync(embed: EmbedHandler.Moderation(
@@ -496,6 +502,21 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             user.GetAvatarUrl(),
             Context.User.Username,
             Context.User.GetAvatarUrl()));
+    }
+
+    private async Task<bool> BotProtectedAsync(SocketGuildUser target, string action)
+    {
+        if (!target.IsBot)
+            return false;
+
+        if (await SuperuserGate.IsBotOwnerAsync(Context.Client, Context.User))
+            return false;
+
+        await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(
+            "модерация",
+            $"{target.Mention} это бот, {action} его может только владелец"));
+
+        return true;
     }
 
     private static (bool isAnonymous, string preparedMessage) ParseMailMode(string rawMessage)
