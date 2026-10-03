@@ -409,9 +409,9 @@ namespace sblngavnav6.Audio8
         private static readonly float[][] BassBoostGains =
         [
             [],
-            [0.10f, 0.08f, 0.05f],
-            [0.20f, 0.15f, 0.10f, 0.05f],
-            [0.32f, 0.25f, 0.18f, 0.10f, 0.05f]
+            [0.18f, 0.20f, 0.22f, 0.18f, 0.12f, 0.06f],
+            [0.32f, 0.38f, 0.42f, 0.34f, 0.22f, 0.12f, 0.04f, -0.02f],
+            [0.45f, 0.55f, 0.62f, 0.52f, 0.35f, 0.20f, 0.08f, -0.04f, -0.06f]
         ];
 
         public static string BassBoostName(int level) => level switch
@@ -480,14 +480,45 @@ namespace sblngavnav6.Audio8
             }
 
             var canPick = player.Queue.Count >= Audio8Constants.MinQueueForPick;
+            var controls = canPick ? Audio8Controls.QueuePick() : null;
 
-            var message = await _pager.SendAsync(
+            if (player.QueueMessage is { } existing &&
+                existing.Channel.Id == channel.Id &&
+                await IsStillVisibleAsync(channel, existing.Id).ConfigureAwait(false))
+            {
+                try
+                {
+                    await _pager.ReplaceAsync(existing, pages, decorate: controls).ConfigureAwait(false);
+                    return;
+                }
+                catch (Exception ex) when (ex is HttpException or TimeoutException)
+                {
+                    player.QueueMessage = null;
+                }
+            }
+
+            player.QueueMessage = await _pager.SendAsync(
                 channel,
                 pages,
-                decorate: canPick ? Audio8Controls.QueuePick() : null,
+                decorate: controls,
                 scope: Audio8Scopes.Queue(player.GuildId)).ConfigureAwait(false);
+        }
 
-            player.QueueMessage = canPick ? message : null;
+        private static async Task<bool> IsStillVisibleAsync(IMessageChannel channel, ulong messageId)
+        {
+            try
+            {
+                var recent = await channel
+                    .GetMessagesAsync(Audio8Constants.QueueRefreshWindow)
+                    .FlattenAsync()
+                    .ConfigureAwait(false);
+
+                return recent.Any(message => message.Id == messageId);
+            }
+            catch (Exception ex) when (ex is HttpException or TimeoutException)
+            {
+                return false;
+            }
         }
 
         public Task<bool> SkipToQueuedAsync(Audio8Player player, string trackKey, CancellationToken cancellationToken = default)
@@ -858,6 +889,7 @@ namespace sblngavnav6.Audio8
         public const int MaxBassBoost = 4;
         public const int MaxPlaylistTracks = 250;
         public const int MinQueueForPick = 2;
+        public const int QueueRefreshWindow = 3;
         public const int RecentPlaylistBuffer = 5;
         public const int HistoryCapacity = 25;
         public const int QueuePageSize = 10;
@@ -888,6 +920,10 @@ namespace sblngavnav6.Audio8
         public const string EmojiHoist = "🔼";
         public const string EmojiSkip = "⏭️";
         public const string EmojiQueue = "📜";
+        public const string EmojiMenu = "⚙️";
+        public const string EmojiPrevious = "⏮️";
+        public const string EmojiPause = "⏸️";
+        public const string EmojiResume = "▶️";
         public static readonly string[] EmojiNumbers = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"];
     }
 }

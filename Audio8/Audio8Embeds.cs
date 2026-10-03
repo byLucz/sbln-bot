@@ -147,7 +147,7 @@ namespace sblngavnav6.Audio8
                 "фильтр",
                 preset == Audio8Constants.NoFilterPreset
                     ? "⛔ **Фильтры выключены**"
-                    : $"🎛️ **{preset}** - {Audio8Filters.Describe(preset)}",
+                    : $"🎛️ **Применён:** {preset}",
                 Color.DarkMagenta);
 
         public static Task<Embed> TrackFailed(LavalinkTrack track, string reason) =>

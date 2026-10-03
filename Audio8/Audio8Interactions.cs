@@ -128,15 +128,31 @@ namespace sblngavnav6.Audio8
         public const string QueuePickModalId = "a8qpickmodal";
         public const string RecentPlaylistId = "a8recent";
 
-        public static Action<ComponentBuilder, int> NowPlaying(bool repeatEnabled) => (builder, _) =>
+        public static Action<ComponentBuilder, int> NowPlaying(bool repeatEnabled, bool expanded = false, bool paused = false) => (builder, _) =>
         {
             builder.WithButton("Скип", $"{NowPlayingId}:skip", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiSkip));
-            builder.WithButton("Лист", $"{NowPlayingId}:queue", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiQueue));
             builder.WithButton(
                 "Луп",
                 $"{NowPlayingId}:loop",
                 repeatEnabled ? ButtonStyle.Success : ButtonStyle.Secondary,
                 new Emoji(Audio8Constants.EmojiLoop));
+            builder.WithButton(
+                null,
+                $"{NowPlayingId}:menu",
+                expanded ? ButtonStyle.Primary : ButtonStyle.Secondary,
+                new Emoji(Audio8Constants.EmojiMenu));
+
+            if (!expanded)
+                return;
+
+            builder.WithButton("Назад", $"{NowPlayingId}:previous", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiPrevious), row: 1);
+            builder.WithButton(
+                paused ? "Продолжить" : "Пауза",
+                $"{NowPlayingId}:pause",
+                paused ? ButtonStyle.Success : ButtonStyle.Secondary,
+                new Emoji(paused ? Audio8Constants.EmojiResume : Audio8Constants.EmojiPause),
+                row: 1);
+            builder.WithButton("Лист", $"{NowPlayingId}:queue", ButtonStyle.Secondary, new Emoji(Audio8Constants.EmojiQueue), row: 1);
         };
 
         public static Action<ComponentBuilder, int> Hoist() => (builder, _) =>
@@ -195,7 +211,7 @@ namespace sblngavnav6.Audio8
             try
             {
                 var embed = await Audio8Embeds.NowPlaying(args.Track, player).ConfigureAwait(false);
-                var controls = Audio8Controls.NowPlaying(player.RepeatEnabled);
+                var controls = Audio8Controls.NowPlaying(player.RepeatEnabled, player.NowPlayingExpanded, player.State is PlayerState.Paused);
 
                 if (kind is Audio8Announcement.Repeat && player.NowPlayingMessage is { } existing)
                 {
@@ -204,6 +220,8 @@ namespace sblngavnav6.Audio8
                 }
 
                 await RetireNowPlayingAsync(player).ConfigureAwait(false);
+                player.NowPlayingExpanded = false;
+                controls = Audio8Controls.NowPlaying(player.RepeatEnabled, false);
                 player.NowPlayingMessage = await _service.SendWithControlsAsync(channel, embed, controls).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -323,14 +341,58 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
+            if (action == "previous")
+            {
+                await component.DeferAsync();
+
+                var previous = await _service.PlayPreviousAsync(player);
+
+                if (Context.Channel is ITextChannel text)
+                {
+                    await _service.SendAsync(text, previous is null
+                        ? await Audio8Embeds.Error("назад", "предыдущего трека нет")
+                        : await Audio8Embeds.Previous(previous));
+                }
+
+                return;
+            }
+
+            if (action == "pause")
+            {
+                if (player.CurrentTrack is null)
+                {
+                    await RespondAsync("сейчас ничего не играет", ephemeral: true);
+                    return;
+                }
+
+                if (player.State is PlayerState.Paused)
+                    await player.ResumeAsync();
+                else
+                    await player.PauseAsync();
+
+                await RepaintNowPlayingAsync(component, player);
+                return;
+            }
+
+            if (action == "menu")
+            {
+                player.NowPlayingExpanded = !player.NowPlayingExpanded;
+                await RepaintNowPlayingAsync(component, player);
+                return;
+            }
+
             if (action != "loop")
             {
                 await component.DeferAsync();
                 return;
             }
 
-            var enabled = player.ToggleRepeat();
+            player.ToggleRepeat();
+            await RepaintNowPlayingAsync(component, player);
+        }
 
+        private async Task RepaintNowPlayingAsync(SocketMessageComponent component, Audio8Player player)
+        {
             if (player.CurrentTrack is not { } track)
             {
                 await component.DeferAsync();
@@ -338,7 +400,8 @@ namespace sblngavnav6.Audio8
             }
 
             var embed = await Audio8Embeds.NowPlaying(track, player);
-            var controls = _service.BuildControls(Audio8Controls.NowPlaying(enabled));
+            var controls = _service.BuildControls(
+                Audio8Controls.NowPlaying(player.RepeatEnabled, player.NowPlayingExpanded, player.State is PlayerState.Paused));
 
             await component.UpdateAsync(message =>
             {

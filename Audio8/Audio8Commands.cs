@@ -225,7 +225,7 @@ namespace sblngavnav6.Audio8
 
             await player.PauseAsync();
             await ReplyAsync(embed: await Audio8Embeds.Info("пауза",
-                $"поставил на паузу --- {TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ⏸️"));
+                $"Поставил на паузу: {TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ⏸️"));
         }
 
         [Command("продолжи", RunMode = RunMode.Async)]
@@ -250,7 +250,7 @@ namespace sblngavnav6.Audio8
 
             await player.ResumeAsync();
             await ReplyAsync(embed: await Audio8Embeds.Info("продолжи",
-                $"продолжаю --- {TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ▶️"));
+                $"Продолжаю: {TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ▶️"));
         }
 
         [Command("останови", RunMode = RunMode.Async)]
@@ -354,9 +354,7 @@ namespace sblngavnav6.Audio8
 
             if (string.IsNullOrWhiteSpace(preset))
             {
-                await ReplyAsync(embed: await Audio8Embeds.Accent("фильтр",
-                    $"сейчас: **{player.FilterPreset}**\n" +
-                    $"доступно: {string.Join(" / ", Audio8Filters.Presets.Select(item => $"**{item}**"))}"));
+                await ReplyAsync(embed: await Audio8Embeds.FilterList(player.FilterPreset));
                 return;
             }
 

@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Lavalink4NET.Filters;
 using Lavalink4NET.Players;
 using Lavalink4NET.Players.Queued;
@@ -40,6 +40,8 @@ namespace sblngavnav6.Audio8
         public string FilterPreset { get; set; } = Audio8Constants.NoFilterPreset;
 
         public IUserMessage NowPlayingMessage { get; set; }
+
+        public bool NowPlayingExpanded { get; set; }
 
         public IUserMessage QueueMessage { get; set; }
 
@@ -165,12 +167,12 @@ namespace sblngavnav6.Audio8
 
         public static string Describe(string preset) => preset switch
         {
-            Nightcore => "найткор - быстрее и выше",
-            Slowed => "слоу - медленнее и ниже",
-            Rotation => "8д - звук вращается вокруг головы",
-            Karaoke => "караоке - вокал приглушён",
-            Vibrato => "вибрато - плавающая высота",
-            _ => "фильтры выключены"
+            Nightcore => "быстрее и выше",
+            Slowed => "медленнее и ниже",
+            Rotation => "звук вращается вокруг головы",
+            Karaoke => "вокал приглушён",
+            Vibrato => "плавающая высота",
+            _ => "без эффектов"
         };
 
         public static void Apply(IPlayerFilters filters, string preset)
