@@ -26,6 +26,7 @@ namespace sblngavnav6.PPM
         private readonly PpmServerService _mail;
         private readonly PpmPanels _panels;
         private CancellationTokenSource _sweeperCts;
+        private CancellationTokenSource _wake = new();
         private Task _sweeperTask = Task.CompletedTask;
         private bool _disposed;
 
@@ -39,7 +40,7 @@ namespace sblngavnav6.PPM
         {
             if (!Global.Vars.Cfg.ppmEnabled) return (false, null, "PPM отключён в конфигурации", false);
 
-            if (CheckLimits(ownerId, permanent) is { } refusal)
+            if (await CheckLimits(ownerId, permanent).ConfigureAwait(false) is { } refusal)
                 return (false, null, refusal, false);
 
             string local;
@@ -55,7 +56,7 @@ namespace sblngavnav6.PPM
                 if (ValidateLocalPart(local) is { } complaint)
                     return (false, null, complaint, false);
 
-                if (DataBase.GetActivePpmMailbox($"{local}@{Global.Vars.Cfg.ppmDomain}") is not null)
+                if (await DataBase.GetActivePpmMailbox($"{local}@{Global.Vars.Cfg.ppmDomain}") is not null)
                     return (false, null, $"подпись **{local}** уже занята", false);
             }
 
@@ -83,7 +84,7 @@ namespace sblngavnav6.PPM
             int id;
             try
             {
-                id = DataBase.InsertPpmMailbox(email, password, ownerId, expiresAt, permanent);
+                id = await DataBase.InsertPpmMailbox(email, password, ownerId, expiresAt, permanent);
             }
             catch (Exception ex)
             {
@@ -103,6 +104,9 @@ namespace sblngavnav6.PPM
                 IsPermanent = permanent
             };
 
+            if (!permanent)
+                PokeSweeper();
+
             var ready = await WaitUntilLiveAsync(box).ConfigureAwait(false);
 
             if (!ready)
@@ -114,12 +118,12 @@ namespace sblngavnav6.PPM
         private static readonly string[] Reserved =
             ["postmaster", "admin", "administrator", "root", "abuse", "noreply", "no-reply", "mailer-daemon", "hostmaster", "webmaster"];
 
-        private static string CheckLimits(string ownerId, bool permanent)
+        private static async Task<string> CheckLimits(string ownerId, bool permanent)
         {
             if (permanent)
             {
                 var limit = Global.Vars.Cfg.ppmPermanentMax;
-                var used = DataBase.CountPpmPermanent(ownerId);
+                var used = await DataBase.CountPpmPermanent(ownerId);
 
                 return used < limit
                     ? null
@@ -127,7 +131,7 @@ namespace sblngavnav6.PPM
             }
 
             var perDay = Global.Vars.Cfg.ppmTempPerDay;
-            var (count, oldest) = DataBase.CountPpmTempCreated(ownerId, DateTime.UtcNow.AddDays(-1));
+            var (count, oldest) = await DataBase.CountPpmTempCreated(ownerId, DateTime.UtcNow.AddDays(-1));
 
             if (count < perDay)
                 return null;
@@ -171,6 +175,9 @@ namespace sblngavnav6.PPM
 
             return null;
         }
+
+        private static readonly TimeSpan MinSweepDelay = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan IdleSweepDelay = TimeSpan.FromMinutes(5);
 
         private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan ReadyProbeDelay = TimeSpan.FromSeconds(3);
@@ -235,7 +242,7 @@ namespace sblngavnav6.PPM
 
             try
             {
-                DataBase.MarkPpmMailboxDeleted(box.Id);
+                await DataBase.MarkPpmMailboxDeleted(box.Id);
             }
             catch (Exception ex)
             {
@@ -354,6 +361,7 @@ namespace sblngavnav6.PPM
             {
                 _disposed = true;
                 _sweeperCts?.Dispose();
+                _wake.Dispose();
             }
         }
 
@@ -363,7 +371,7 @@ namespace sblngavnav6.PPM
             {
                 try
                 {
-                    var expired = DataBase.GetExpiredPpmMailboxes();
+                    var expired = await DataBase.GetExpiredPpmMailboxes();
                     var touched = new HashSet<string>();
 
                     foreach (var (id, email, ownerId) in expired)
@@ -372,7 +380,7 @@ namespace sblngavnav6.PPM
                         var (ok, output) = await _mail.DelAsync(email, cancellationToken);
                         if (ok)
                         {
-                            DataBase.MarkPpmMailboxDeleted(id);
+                            await DataBase.MarkPpmMailboxDeleted(id);
                             touched.Add(ownerId);
                         }
                         else
@@ -390,8 +398,49 @@ namespace sblngavnav6.PPM
                     await LoggingService.LogErrorAsync(LogSource, "Ошибка sweeper-цикла", ex);
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(30), cancellationToken);
+                await WaitForNextSweepAsync(cancellationToken).ConfigureAwait(false);
             }
+        }
+
+        private async Task WaitForNextSweepAsync(CancellationToken cancellationToken)
+        {
+            TimeSpan delay;
+
+            try
+            {
+                var next = await DataBase.GetNextPpmExpiry().ConfigureAwait(false);
+
+                delay = next is null
+                    ? IdleSweepDelay
+                    : next.Value - DateTime.UtcNow;
+            }
+            catch (Exception)
+            {
+                delay = MinSweepDelay;
+            }
+
+            if (delay < MinSweepDelay)
+                delay = MinSweepDelay;
+            else if (delay > IdleSweepDelay)
+                delay = IdleSweepDelay;
+
+            using var wake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _wake.Token);
+
+            try { await Task.Delay(delay, wake.Token).ConfigureAwait(false); }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { ResetWake(); }
+        }
+
+        private void PokeSweeper()
+        {
+            try { _wake.Cancel(); }
+            catch (ObjectDisposedException) { }
+        }
+
+        private void ResetWake()
+        {
+            var fresh = new CancellationTokenSource();
+            var old = Interlocked.Exchange(ref _wake, fresh);
+            old.Dispose();
         }
 
         private static string RandomLocalPart()

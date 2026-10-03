@@ -226,7 +226,7 @@ namespace sblngavnav6.Commands
         [Command("волк")]
         public async Task WolfMeme()
         {
-            var url = DataBase.GetRandomMeme("volk");
+            var url = await DataBase.GetRandomMeme("wolfs");
             if (url == null)
                 await ReplyAsync("Мемов пока нет =(");
             else
@@ -237,7 +237,7 @@ namespace sblngavnav6.Commands
         [Alias("?")]
         public async Task EightEggs([Remainder] string args = null)
         {
-            var url = DataBase.GetRandomMeme("yaica");
+            var url = await DataBase.GetRandomMeme("quotes");
             if (url == null)
                 await ReplyAsync("Мемов пока нет =(");
             else
@@ -304,26 +304,26 @@ namespace sblngavnav6.Commands
         [Command("ф")]
         public async Task F([Remainder] string input)
         {
-            await SendMemeActionAsync("fff", $"{Context.User.Mention} дает респект {input} <:sadge:853604643456024576>");
+            await SendMemeActionAsync("pressf", $"{Context.User.Mention} дает респект {input} <:sadge:853604643456024576>");
         }
 
         [Command("кусь")]
         public async Task Kus([Remainder] string input)
         {
-            await SendMemeActionAsync("kus", $"{Context.User.Mention} куснул {input}💕");
+            await SendMemeActionAsync("bite", $"{Context.User.Mention} куснул {input}💕");
         }
 
         [Command("бухнуть")]
         public async Task Buhat([Remainder] string input)
         {
-            await SendMemeActionAsync("buhat", $"{Context.User.Mention} хочет бухнуть с {input} \U0001f974");
+            await SendMemeActionAsync("drunk", $"{Context.User.Mention} хочет бухнуть с {input} \U0001f974");
         }
 
         [Command("заткнуть")]
         [Alias("завали ебало")]
         public async Task Zavali([Remainder] string input)
         {
-            await SendMemeActionAsync("ebalo", $"{Context.User.Mention} затыкает {input} 🤐");
+            await SendMemeActionAsync("stfu", $"{Context.User.Mention} затыкает {input} 🤐");
         }
 
         private static Embed BuildJokeMenuEmbed(string description)
@@ -331,7 +331,7 @@ namespace sblngavnav6.Commands
 
         private async Task SendMemeActionAsync(string category, string title)
         {
-            var url = DataBase.GetRandomMeme(category);
+            var url = await DataBase.GetRandomMeme(category);
 
             if (string.IsNullOrWhiteSpace(url))
             {

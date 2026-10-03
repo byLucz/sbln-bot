@@ -40,7 +40,7 @@ namespace sblngavnav6.Commands
 
             var finalEmbed = new EmbedBuilder()
                 .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты 🎲 {DataBase.GetRandomEmote()}\n{SheffCommands.greetList[greetings]}")
+                .WithDescription($"сегодня ты 🎲 {await DataBase.GetRandomEmote()}\n{SheffCommands.greetList[greetings]}")
                 .WithFooter("sbln шефчик🧑‍🍳")
                 .Build();
 
@@ -126,7 +126,7 @@ namespace sblngavnav6.Commands
 
             var finalEmbed = new EmbedBuilder()
                 .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты 🎲 {DataBase.GetRandomEmote()}\n{greetList[greetings]}")
+                .WithDescription($"сегодня ты 🎲 {await DataBase.GetRandomEmote()}\n{greetList[greetings]}")
                 .WithFooter("sbln шефчик🧑‍🍳")
                 .Build();
 

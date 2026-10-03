@@ -113,7 +113,7 @@ namespace sblngavnav6.PPM
 
         public async Task Panel()
         {
-            var boxes = DataBase.GetUserPpmMailboxes(Context.User.Id.ToString());
+            var boxes = await DataBase.GetUserPpmMailboxes(Context.User.Id.ToString());
 
             var panel = await _pager.SendAsync(
                 Context.Channel,
@@ -231,7 +231,7 @@ namespace sblngavnav6.PPM
         {
             await DeferAsync(ephemeral: true);
 
-            var box = ResolveOwned(idRaw, out var deny);
+            var (box, deny) = await ResolveOwnedAsync(idRaw);
             if (box == null)
             {
                 await ReportAsync(await EmbedHandler.CreateErrorEmbed("печкин", deny), inPlace: true);
@@ -254,7 +254,7 @@ namespace sblngavnav6.PPM
         {
             await DeferAsync(ephemeral: true);
 
-            var box = ResolveOwned(idRaw, out var deny);
+            var (box, deny) = await ResolveOwnedAsync(idRaw);
             if (box == null)
             {
                 await ReportAsync(await EmbedHandler.CreateErrorEmbed("печкин", deny), inPlace);
@@ -317,7 +317,7 @@ namespace sblngavnav6.PPM
 
             _panels.Track(Context.User.Id, component.Message);
 
-            var boxes = DataBase.GetUserPpmMailboxes(Context.User.Id.ToString());
+            var boxes = await DataBase.GetUserPpmMailboxes(Context.User.Id.ToString());
 
             await _pager.ReplaceAsync(
                 component.Message,
@@ -326,27 +326,20 @@ namespace sblngavnav6.PPM
                 decorate: PpmPanelBuilder.RootControls(boxes, busy));
         }
 
-        private PpmMailbox ResolveOwned(string idRaw, out string deny)
+        private async Task<(PpmMailbox Box, string Deny)> ResolveOwnedAsync(string idRaw)
         {
-            deny = null;
             if (!int.TryParse(idRaw, out var id))
-            {
-                deny = "Некорректный идентификатор ящика";
-                return null;
-            }
+                return (null, "Некорректный идентификатор ящика");
 
-            var box = DataBase.GetPpmMailboxById(id);
-            if (box == null)
-            {
-                deny = "Ящик не найден или уже удалён";
-                return null;
-            }
+            var box = await DataBase.GetPpmMailboxById(id);
+
+            if (box is null)
+                return (null, "Ящик не найден или уже удалён");
+
             if (box.OwnerId != Context.User.Id.ToString())
-            {
-                deny = "Это не твой ящик";
-                return null;
-            }
-            return box;
+                return (null, "Это не твой ящик");
+
+            return (box, null);
         }
     }
 }

@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using sblngavnav6.Common;
@@ -9,9 +9,9 @@ namespace sblngavnav6.Commands
 {
     public static class SettingsPanel
     {
-        public static Embed Build(IGuild guild)
+        public static async Task<Embed> Build(IGuild guild)
         {
-            var gs = DataBase.GetGuildSettings(guild.Id);
+            var gs = await DataBase.GetGuildSettings(guild.Id);
 
             static string Role(ulong? id) => id is ulong r ? MentionUtils.MentionRole(r) : "`не задано`";
             static string Chan(ulong? id) => id is ulong c ? MentionUtils.MentionChannel(c) : "`не задано`";
@@ -58,7 +58,7 @@ namespace sblngavnav6.Commands
         public async Task Open()
         {
             if (!await Allowed()) return;
-            await RespondAsync(embed: SettingsPanel.Build(Context.Guild), components: SettingsPanel.Buttons(), ephemeral: true);
+            await RespondAsync(embed: await SettingsPanel.Build(Context.Guild), components: SettingsPanel.Buttons(), ephemeral: true);
         }
 
         [ComponentInteraction("setf:*")]
@@ -85,7 +85,7 @@ namespace sblngavnav6.Commands
                     return;
                 }
 
-                DataBase.SetWelcomeMessage(gid, reset ? null : raw);
+                await DataBase.SetWelcomeMessage(gid, reset ? null : raw);
                 await ShowPanelAsync(reset ? "Welcome-текст сброшен на дефолт" : "Welcome-текст обновлён");
                 return;
             }
@@ -117,10 +117,10 @@ namespace sblngavnav6.Commands
 
             switch (field)
             {
-                case "su": DataBase.SetSuperuserRole(gid, id); break;
-                case "wch": DataBase.SetWelcomeChannel(gid, id); break;
-                case "wrole": DataBase.SetWelcomeRole(gid, id); break;
-                case "stream": DataBase.SetStreamNotifChannel(gid, id); break;
+                case "su": await DataBase.SetSuperuserRole(gid, id); break;
+                case "wch": await DataBase.SetWelcomeChannel(gid, id); break;
+                case "wrole": await DataBase.SetWelcomeRole(gid, id); break;
+                case "stream": await DataBase.SetStreamNotifChannel(gid, id); break;
                 default:
                     await FailAsync($"Неизвестное поле настроек: {field}");
                     return;
@@ -161,10 +161,10 @@ namespace sblngavnav6.Commands
         private Task FailAsync(string message)
             => RespondAsync($"🔴 {message}", ephemeral: true);
 
-        private Task ShowPanelAsync(string note)
-            => RespondAsync(
+        private async Task ShowPanelAsync(string note)
+            => await RespondAsync(
                 $"✅ {note}",
-                embed: SettingsPanel.Build(Context.Guild),
+                embed: await SettingsPanel.Build(Context.Guild),
                 components: SettingsPanel.Buttons(),
                 ephemeral: true);
 

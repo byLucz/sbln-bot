@@ -18,9 +18,9 @@ namespace sblngavnav6.TwitchService
         private LiveStreamMonitorService _liveStreamMonitor;
         private bool _disposed;
 
-        private void LoadStreamOnlineState()
+        private async Task LoadStreamOnlineState()
         {
-            foreach (var id in DataBase.LoadStreamsOnline())
+            foreach (var id in await DataBase.LoadStreamsOnline())
                 StreamsOnline.TryAdd(id, 0);
         }
 
@@ -49,7 +49,7 @@ namespace sblngavnav6.TwitchService
 
             await LoggingService.LogInformationAsync("TTVLK", $"Кол-во серверов: {_discord.Guilds.Count}");
 
-            var notifChannels = ResolveNotifChannels();
+            var notifChannels = await ResolveNotifChannels();
 
             if (notifChannels.Count > 0)
                 await LoggingService.LogInformationAsync("TTVLK", $"Кол-во каналов оповещений: {notifChannels.Count}");
@@ -92,7 +92,7 @@ namespace sblngavnav6.TwitchService
                 monitor.OnStreamOnline += OnStreamOnlineEventAsync;
                 monitor.OnStreamOffline += OnStreamOfflineEvent;
 
-                LoadStreamOnlineState();
+                await LoadStreamOnlineState();
                 monitor.SetChannelsById(StreamIdList);
                 monitor.Start();
 
@@ -118,13 +118,13 @@ namespace sblngavnav6.TwitchService
             await LoggingService.LogInformationAsync("TTVLK", $"Статус мониторинга - {_liveStreamMonitor?.Enabled ?? false}");
         }
 
-        private List<SocketTextChannel> ResolveNotifChannels()
+        private async Task<List<SocketTextChannel>> ResolveNotifChannels()
         {
             var channels = new List<SocketTextChannel>();
 
             foreach (var guild in _discord.Guilds)
             {
-                var gs = DataBase.GetGuildSettings(guild.Id);
+                var gs = await DataBase.GetGuildSettings(guild.Id);
                 if (gs.StreamNotifChannelId is not ulong chId)
                     continue;
 
@@ -177,7 +177,7 @@ namespace sblngavnav6.TwitchService
 
                 var embed = CreateStreamerEmbed(StreamModels[e.Stream.UserId], e.Stream.ThumbnailUrl);
 
-                foreach (var channel in ResolveNotifChannels())
+                foreach (var channel in await ResolveNotifChannels())
                 {
                     try
                     {
@@ -189,7 +189,7 @@ namespace sblngavnav6.TwitchService
                     }
                 }
 
-                DataBase.AddStreamOnline(e.Stream.UserId);
+                await DataBase.AddStreamOnline(e.Stream.UserId);
                 await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} добавлен в лист отслеживания");
             }
             catch (Exception ex)
@@ -204,7 +204,7 @@ namespace sblngavnav6.TwitchService
             try
             {
                 StreamsOnline.TryRemove(e.Stream.UserId, out _);
-                DataBase.RemoveStreamOnline(e.Stream.UserId);
+                await DataBase.RemoveStreamOnline(e.Stream.UserId);
                 await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} оффлайн, убран из листа");
             }
             catch (Exception ex)
@@ -232,13 +232,8 @@ namespace sblngavnav6.TwitchService
 
         private async Task GetStreamerIdDictAsync()
         {
-            var tmp = DataRoots.States.StreamerIds
-                .Select(part => part.Split(':'))
-                .Where(part => part.Length == 2)
-                .ToDictionary(sp => sp[0], sp => sp[1]);
-
-            StreamIds = tmp ?? new Dictionary<string, string>();
-            StreamIdList = StreamIds.Values.ToList();
+            StreamIds = new Dictionary<string, string>(DataRoots.States.StreamerMap);
+            StreamIdList = DataRoots.States.StreamerIds.ToList();
 
             await LoggingService.LogInformationAsync("TTVLK", "ТвичМонитор включен");
         }

@@ -78,20 +78,20 @@ namespace sblngavnav6.Commands
 
             if (trimmedInput == "отмена")
             {
-                if (DataBase.GetLastBook().id == 0)
+                if ((await DataBase.GetLastBook()).id == 0)
                 {
                     await ReplyAsync("❌ Нечего отменять — книга не выбрана");
                     return;
                 }
 
-                DataBase.RemoveLastBook();
+                await DataBase.RemoveLastBook();
                 await ReplyAsync("✅ Последняя выбранная книга отменена");
                 return;
             }
 
-            if (!DataBase.CanSelectNewBook() || string.IsNullOrWhiteSpace(trimmedInput))
+            if (!await DataBase.CanSelectNewBook() || string.IsNullOrWhiteSpace(trimmedInput))
             {
-                var book = DataBase.GetLastBook();
+                var book = await DataBase.GetLastBook();
                 var embed = new EmbedBuilder()
                     .WithTitle("<:KKLOGO:1352283192014409869> Книга недели уже выбрана")
                     .WithDescription($"**{book.title}**\n✍️ Автор(ы): {book.authors}\n📅 {book.selectedDate:yyyy-MM-dd}\n👤 {book.suggestedBy}")
@@ -125,7 +125,7 @@ namespace sblngavnav6.Commands
             string authors = info["authors"] != null ? string.Join(", ", info["authors"].AsArray()) : "Автор неизвестен";
             string image = info["imageLinks"]?["thumbnail"]?.ToString() ?? "";
 
-            DataBase.AddBook(title, authors, image, Context.User.Username);
+            await DataBase.AddBook(title, authors, image, Context.User.Username);
 
             var embedNew = new EmbedBuilder()
                 .WithTitle("<:KKLOGO:1352283192014409869> Книга недели выбрана!")
@@ -152,9 +152,9 @@ namespace sblngavnav6.Commands
                 return;
             }
 
-            var book = DataBase.GetLastBook();
+            var book = await DataBase.GetLastBook();
 
-            if (DataBase.UserHasRated(Context.User.Id.ToString(), book.id))
+            if (await DataBase.UserHasRated(Context.User.Id.ToString(), book.id))
             {
                 await ReplyAsync("⚠️ Эта книга уже получала оценку");
                 return;
@@ -165,7 +165,7 @@ namespace sblngavnav6.Commands
             double finalScore = Math.Round(baseScore * multiplier, 0);
 
             string scoreEmoji = CommonUtils.GetScoreEmoji(finalScore);
-            DataBase.SaveRating(Context.User.Id.ToString(), book.id, scores, finalScore);
+            await DataBase.SaveRating(Context.User.Id.ToString(), book.id, scores, finalScore);
             TriggerBooksExport();
 
             var embed = new EmbedBuilder()
@@ -225,8 +225,8 @@ namespace sblngavnav6.Commands
         [Command("членыклуба")]
         public async Task ClubMembersAsync()
         {
-            var all = DataBase.GetAllRatings();
-            var owners = DataBase.GetBookSuggesters();
+            var all = await DataBase.GetAllRatings();
+            var owners = await DataBase.GetBookSuggesters();
             if (!all.Any())
             {
                 await ReplyAsync("❌ Пока нет ни одной оценки.");
@@ -326,9 +326,9 @@ namespace sblngavnav6.Commands
             if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath)) return;
             var userNames = Context.Guild.Users
                 .ToDictionary(u => u.Id.ToString(), u => u.Username);
-            Task.Run(() =>
+            Task.Run(async () =>
             {
-                try { DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames); }
+                try { await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames); }
                 catch (Exception ex) { _ = LoggingService.LogWarningAsync("BOOKS", $"JSON export fail: {ex.Message}"); }
             });
         }
@@ -345,7 +345,7 @@ namespace sblngavnav6.Commands
             {
                 var userNames = Context.Guild.Users
                     .ToDictionary(u => u.Id.ToString(), u => u.Username);
-                DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames);
+                await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames);
                 await ReplyAsync("✅ `books_data.json` обновлён");
             }
             catch (Exception ex)
@@ -358,7 +358,7 @@ namespace sblngavnav6.Commands
         [Command("рейтинг")]
         public async Task ShowSeasonRatingAsync(int? season = null)
         {
-            var pages = BuildSeasonEmbeds();
+            var pages = await BuildSeasonEmbeds();
             if (pages.Count == 0)
                 pages = new() { new EmbedBuilder().WithTitle("---").WithColor(Color.DarkGrey).Build() };
 
@@ -369,16 +369,16 @@ namespace sblngavnav6.Commands
             await _pager.SendAsync(Context.Channel, pages, startPage: start);
         }
 
-        private static List<Embed> BuildSeasonEmbeds()
+        private static async Task<List<Embed>> BuildSeasonEmbeds()
         {
             var list = new List<Embed>();
-            int max = DataBase.GetMaxSeason();
+            int max = await DataBase.GetMaxSeason();
             var seasons = max >= 1 ? Enumerable.Range(1, max).ToList() : new List<int> { 1 };
             int nextSeason = Math.Max(1, max) + 1;
 
             foreach (var s in seasons)
-                list.Add(BuildSeasonEmbed(s, max));
-            list.Add(BuildSeasonEmbed(nextSeason, max));
+                list.Add(await BuildSeasonEmbed(s, max));
+            list.Add(await BuildSeasonEmbed(nextSeason, max));
 
             int idx = list.FindIndex(e => e.Title?.EndsWith($"сезон {Math.Max(1, max)}") == true);
             if (idx > 0) { var first = list[idx]; list.RemoveAt(idx); list.Insert(0, first); }
@@ -386,14 +386,14 @@ namespace sblngavnav6.Commands
             return list;
         }
 
-        private static Embed BuildSeasonEmbed(int season, int maxSeason)
+        private static async Task<Embed> BuildSeasonEmbed(int season, int maxSeason)
         {
             var eb = new EmbedBuilder()
                 .WithTitle($"<:KKLOGO:1352283192014409869> Рейтинг клуба SZN#{season}")
                 .WithColor(Color.Gold)
                 .WithFooter("knizhniy klub📖");
 
-            var books = DataBase.GetBooksWithRatings(season);
+            var books = await DataBase.GetBooksWithRatings(season);
             if (books == null || books.Count == 0)
             {
                 if (season > maxSeason && maxSeason >= 0)

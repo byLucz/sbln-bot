@@ -113,7 +113,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             _ => UserStatus.Online
         };
     
-        DataBase.AddStatus(args,status,"","");
+        await DataBase.AddStatus(args,status,"","");
 
         await _client.SetStatusAsync(statustype);
         await _client.SetGameAsync(args);
@@ -149,7 +149,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             finalText = linkOrText;
             if (!string.IsNullOrWhiteSpace(extra)) finalText += " " + extra;
         }
-        DataBase.AddStatus(finalText ?? "","", finalLink ?? "", actType.ToString());
+        await DataBase.AddStatus(finalText ?? "","", finalLink ?? "", actType.ToString());
         await _client.SetGameAsync(finalText, finalLink, actType);
 
         await ReplyAsync(embed: EmbedHandler.Simple(
@@ -269,7 +269,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("зал славы")]
     public async Task HallOfGlory()
     {
-        var versions = DataBase.GetAllVersions();
+        var versions = await DataBase.GetAllVersions();
         String verText = "";   
         foreach (var v in versions)
         {
@@ -378,7 +378,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("версия")]
     public async Task BotVersionInfo()
     {
-        var external = DataBase.GetAllPackageVersions();
+        var external = await DataBase.GetAllPackageVersions();
 
         var fields = new List<EmbedFieldSpec>
         {

@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using Discord.Interactions;
 using sblngavnav6.Data;
@@ -100,7 +100,7 @@ namespace sblngavnav6.Core
             if (await IsBotOwnerAsync(client, user).ConfigureAwait(false))
                 return true;
 
-            var gs = DataBase.GetGuildSettings(guild.Id);
+            var gs = await DataBase.GetGuildSettings(guild.Id);
             return gs.SuperuserRoleId is ulong role && user.RoleIds.Contains(role);
         }
     }

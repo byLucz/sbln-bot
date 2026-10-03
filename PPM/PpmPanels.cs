@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Discord;
 using Discord.WebSocket;
 using sblngavnav6.Core;
@@ -62,7 +62,7 @@ namespace sblngavnav6.PPM
                 return;
             }
 
-            var boxes = DataBase.GetUserPpmMailboxes(ownerId.ToString());
+            var boxes = await DataBase.GetUserPpmMailboxes(ownerId.ToString());
 
             try
             {

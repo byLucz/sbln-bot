@@ -7,17 +7,9 @@ namespace sblngavnav6.Data
         public static class States
         {
             public static int RealId { get; set; }
-            public static List<string> YaicaList { get; } = new();
-            public static List<string> VolkList { get; } = new();
-            public static List<string> PatList { get; } = new();
-            public static List<string> FffList { get; } = new();
-            public static List<string> HugList { get; } = new();
-            public static List<string> KissList { get; } = new();
-            public static List<string> KusList { get; } = new();
-            public static List<string> BuhatList { get; } = new();
-            public static List<string> EbaloList { get; } = new();
             public static List<string> Streamers { get; } = new();
             public static List<string> StreamerIds { get; } = new();
+            public static Dictionary<string, string> StreamerMap { get; } = new();
             public static List<string> StatusText { get; } = new();
             public static List<string> StatusPos { get; } = new();
             public static List<string> StatusLink { get; } = new();

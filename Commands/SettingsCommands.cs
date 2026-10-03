@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using sblngavnav6.Common;
 using sblngavnav6.Core;
@@ -13,7 +13,7 @@ namespace sblngavnav6.Commands
         [Command]
         public async Task Show()
         {
-            var gs = DataBase.GetGuildSettings(Context.Guild.Id);
+            var gs = await DataBase.GetGuildSettings(Context.Guild.Id);
 
             string Role(ulong? id) => id is ulong r ? MentionUtils.MentionRole(r) : "не задано (по умолчанию)";
             string Chan(ulong? id) => id is ulong c ? MentionUtils.MentionChannel(c) : "не задано (по умолчанию)";
@@ -31,35 +31,35 @@ namespace sblngavnav6.Commands
         [Command("суперюзер")]
         public async Task SetSuperuser(IRole role = null)
         {
-            DataBase.SetSuperuserRole(Context.Guild.Id, role?.Id);
+            await DataBase.SetSuperuserRole(Context.Guild.Id, role?.Id);
             await Ack(role == null ? "Роль суперюзера сброшена" : $"Суперюзер-роль: {role.Mention}");
         }
 
         [Command("велком-канал")]
         public async Task SetWelcomeChannel(ITextChannel channel = null)
         {
-            DataBase.SetWelcomeChannel(Context.Guild.Id, channel?.Id);
+            await DataBase.SetWelcomeChannel(Context.Guild.Id, channel?.Id);
             await Ack(channel == null ? "Welcome-канал сброшен на дефолт" : $"Welcome-канал: {channel.Mention}");
         }
 
         [Command("велком-роль")]
         public async Task SetWelcomeRole(IRole role = null)
         {
-            DataBase.SetWelcomeRole(Context.Guild.Id, role?.Id);
+            await DataBase.SetWelcomeRole(Context.Guild.Id, role?.Id);
             await Ack(role == null ? "Welcome-роль сброшена на дефолт" : $"Welcome-роль: {role.Mention}");
         }
 
         [Command("велком-текст")]
         public async Task SetWelcomeMessage([Remainder] string message = null)
         {
-            DataBase.SetWelcomeMessage(Context.Guild.Id, message);
+            await DataBase.SetWelcomeMessage(Context.Guild.Id, message);
             await Ack(string.IsNullOrWhiteSpace(message) ? "Welcome-текст сброшен на дефолт" : "Welcome-текст обновлён");
         }
 
         [Command("стрим-канал")]
         public async Task SetStreamChannel(ITextChannel channel = null)
         {
-            DataBase.SetStreamNotifChannel(Context.Guild.Id, channel?.Id);
+            await DataBase.SetStreamNotifChannel(Context.Guild.Id, channel?.Id);
             await Ack(channel == null ? "Стрим-канал сброшен на дефолт (по имени twitch)" : $"Стрим-уведомления в: {channel.Mention}");
         }
 

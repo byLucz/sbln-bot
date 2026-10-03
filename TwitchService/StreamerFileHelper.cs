@@ -1,4 +1,4 @@
-using sblngavnav6.Data;
+﻿using sblngavnav6.Data;
 using sblngavnav6.TwitchService;
 
 namespace sblngavnav6.Services.Twitch
@@ -32,8 +32,8 @@ namespace sblngavnav6.Services.Twitch
             if (streamerId is null)
                 return StreamerChange.NotFound;
 
-            DataBase.AddStreamer(streamer, streamerId);
-            DataBase.DownloadStreamers();
+            await DataBase.AddStreamer(streamer, streamerId);
+            await DataBase.DownloadStreamers();
 
             return StreamerChange.Done;
         }
@@ -50,8 +50,8 @@ namespace sblngavnav6.Services.Twitch
             if (streamerId is null)
                 return StreamerChange.NotFound;
 
-            DataBase.DeleteStreamer(streamer, streamerId);
-            DataBase.DownloadStreamers();
+            await DataBase.DeleteStreamer(streamerId);
+            await DataBase.DownloadStreamers();
 
             return StreamerChange.Done;
         }

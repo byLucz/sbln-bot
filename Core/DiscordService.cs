@@ -71,7 +71,7 @@ namespace sblngavnav6.Core
                     if (!string.IsNullOrWhiteSpace(path))
                         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
 
-                if (!DataBase.CanConnect())
+                if (!await DataBase.CanConnect())
                     throw new InvalidOperationException("Старт без БД невозможен");
 
                 stopping.Token.ThrowIfCancellationRequested();
@@ -95,7 +95,7 @@ namespace sblngavnav6.Core
                 await _interHandler.InitializeAsync();
                 if (Global.Vars.Cfg.streamsEnabled)
                 {
-                    DataBase.DownloadStreamers();
+                    await DataBase.DownloadStreamers();
                     _streams = _services.GetRequiredService<StreamMonoService>();
                 }
 

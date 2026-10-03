@@ -33,7 +33,7 @@ namespace sblngavnav6.Services
 
         private async Task OnUserJoined(SocketGuildUser user)
         {
-            var gs = DataBase.GetGuildSettings(user.Guild.Id);
+            var gs = await DataBase.GetGuildSettings(user.Guild.Id);
 
             var channel = gs.WelcomeChannelId is ulong chId
                 ? user.Guild.GetTextChannel(chId)
