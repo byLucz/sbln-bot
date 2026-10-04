@@ -10,7 +10,7 @@ namespace sblngavnav6.GVR
     {
         private const string Author = "sbln говорилка🎤📓";
         private const string Footer = "powered by GovorNGN";
-        private const string Icon = "🧠";
+        private const string Icon = "https://assets.piliapp.com/s3pxy/emoji/meaning/preview/brain.png?polish=2";
         private const string Source = "говорилка";
 
         private static readonly Color Tint = Color.LighterGrey;
