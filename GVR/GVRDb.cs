@@ -10,80 +10,11 @@ namespace sblngavnav6.GVR
         private const int CommandTimeoutSeconds = 30;
         private const int BatchSize = 500;
 
-        private int _ready;
-
-        public async Task<bool> EnsureSchemaAsync(CancellationToken cancellationToken = default)
-        {
-            if (Volatile.Read(ref _ready) == 1)
-                return true;
-
-            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.connectionString) || string.IsNullOrWhiteSpace(Global.Vars.Cfg.gvrBase))
-            {
-                await LoggingService.LogWarningAsync(LogSource, "не заданы System:DbConnectionString или System:GvrBase, говорилка не работает");
-                return false;
-            }
-
-            try
-            {
-                var database = Global.Vars.Cfg.gvrBase;
-                var builder = new MySqlConnectionStringBuilder(Global.Vars.Cfg.connectionString) { Database = string.Empty };
-
-                await using (var server = new MySqlConnection(builder.ConnectionString))
-                {
-                    await server.OpenAsync(cancellationToken).ConfigureAwait(false);
-                    await using var create = Command(server, $"CREATE DATABASE IF NOT EXISTS `{database}` CHARACTER SET utf8mb4");
-                    await create.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-                }
-
-                await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-                await using var table = Command(conn, """
-                    CREATE TABLE IF NOT EXISTS messages (
-                        id        BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-                        guild_id  BIGINT UNSIGNED NOT NULL DEFAULT 0,
-                        content   VARCHAR(1024)   NOT NULL,
-                        digest    BINARY(16)      AS (UNHEX(MD5(content))) STORED,
-                        added_at  DATETIME        NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        PRIMARY KEY (id),
-                        UNIQUE KEY ux_messages_digest (digest),
-                        KEY ix_messages_guild (guild_id)
-                    ) ENGINE = InnoDB CHARACTER SET utf8mb4
-                    """);
-
-                await table.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-
-                await using var settings = Command(conn, """
-                    CREATE TABLE IF NOT EXISTS settings (
-                        id            TINYINT UNSIGNED NOT NULL DEFAULT 1,
-                        step          INT        NOT NULL DEFAULT 1,
-                        word_count    INT        NOT NULL DEFAULT 10,
-                        collection    INT        NOT NULL DEFAULT 100,
-                        chance        INT        NOT NULL DEFAULT 5,
-                        random_words  TINYINT(1) NOT NULL DEFAULT 1,
-                        verbal_abuse  TINYINT(1) NOT NULL DEFAULT 0,
-                        interval_ms   INT        NOT NULL DEFAULT 86400000,
-                        updated_at    DATETIME   NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        PRIMARY KEY (id)
-                    ) ENGINE = InnoDB
-                    """);
-
-                await settings.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-
-                await using var seed = Command(conn, "INSERT IGNORE INTO settings (id) VALUES (1)");
-                await seed.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-
-                Volatile.Write(ref _ready, 1);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                await LoggingService.LogErrorAsync(LogSource, "Не удалось подготовить базу говорилки", ex);
-                return false;
-            }
-        }
+        private int _warned;
 
         public async Task<bool> LoadSettingsAsync(GVRConfig config, CancellationToken cancellationToken = default)
         {
-            if (!await EnsureSchemaAsync(cancellationToken).ConfigureAwait(false))
+            if (!await ReadyAsync().ConfigureAwait(false))
                 return false;
 
             try
@@ -114,7 +45,7 @@ namespace sblngavnav6.GVR
 
         public async Task SaveSettingsAsync(GVRConfig config, CancellationToken cancellationToken = default)
         {
-            if (!await EnsureSchemaAsync(cancellationToken).ConfigureAwait(false))
+            if (!await ReadyAsync().ConfigureAwait(false))
                 return;
 
             try
@@ -147,7 +78,7 @@ namespace sblngavnav6.GVR
         {
             var lines = new List<string>();
 
-            if (!await EnsureSchemaAsync(cancellationToken).ConfigureAwait(false))
+            if (!await ReadyAsync().ConfigureAwait(false))
                 return lines;
 
             await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -162,7 +93,7 @@ namespace sblngavnav6.GVR
 
         public async Task<(int Count, long MaxId)> StampAsync(CancellationToken cancellationToken = default)
         {
-            if (!await EnsureSchemaAsync(cancellationToken).ConfigureAwait(false))
+            if (!await ReadyAsync().ConfigureAwait(false))
                 return (0, 0);
 
             await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -177,7 +108,7 @@ namespace sblngavnav6.GVR
 
         public async Task<int> AddAsync(ulong guildId, IReadOnlyCollection<string> contents, CancellationToken cancellationToken = default)
         {
-            if (contents.Count == 0 || !await EnsureSchemaAsync(cancellationToken).ConfigureAwait(false))
+            if (contents.Count == 0 || !await ReadyAsync().ConfigureAwait(false))
                 return 0;
 
             await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -207,7 +138,7 @@ namespace sblngavnav6.GVR
 
         public async Task<int> ReplaceAsync(ulong guildId, IReadOnlyCollection<string> contents, CancellationToken cancellationToken = default)
         {
-            if (!await EnsureSchemaAsync(cancellationToken).ConfigureAwait(false))
+            if (!await ReadyAsync().ConfigureAwait(false))
                 return 0;
 
             await using (var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false))
@@ -221,7 +152,7 @@ namespace sblngavnav6.GVR
 
         public async Task<int> CleanupAsync(CancellationToken cancellationToken = default)
         {
-            if (!await EnsureSchemaAsync(cancellationToken).ConfigureAwait(false))
+            if (!await ReadyAsync().ConfigureAwait(false))
                 return 0;
 
             await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
@@ -239,32 +170,55 @@ namespace sblngavnav6.GVR
             return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task<int> ImportFileAsync(string path, CancellationToken cancellationToken = default)
+        public async Task<ulong> GetCursorAsync(CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            if (!await ReadyAsync().ConfigureAwait(false))
                 return 0;
 
-            var (count, _) = await StampAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+                await using var cmd = Command(conn, "SELECT cursor_id FROM settings WHERE id = 1");
 
-            if (count > 0)
+                var value = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+
+                return value is null or DBNull ? 0 : Convert.ToUInt64(value);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync(LogSource, $"Курсор не прочитан: {ex.Message}");
                 return 0;
+            }
+        }
 
-            var lines = (await File.ReadAllLinesAsync(path, cancellationToken).ConfigureAwait(false))
-                .Select(Trim)
-                .Where(line => line.Length > 0)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+        public async Task SetCursorAsync(ulong messageId, CancellationToken cancellationToken = default)
+        {
+            if (!await ReadyAsync().ConfigureAwait(false))
+                return;
 
-            if (lines.Length == 0)
-                return 0;
+            try
+            {
+                await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+                await using var cmd = Command(conn, "UPDATE settings SET cursor_id = @cursor WHERE id = 1");
+                cmd.Parameters.AddWithValue("@cursor", messageId);
 
-            var added = await AddAsync(0, lines, cancellationToken).ConfigureAwait(false);
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync(LogSource, $"Курсор не сохранён: {ex.Message}");
+            }
+        }
 
-            await LoggingService.LogInformationAsync(
-                LogSource,
-                $"Корпус перенесён из {Path.GetFileName(path)}: строк в файле {lines.Length}, добавлено {added}");
+        private async Task<bool> ReadyAsync()
+        {
+            if (!string.IsNullOrWhiteSpace(Global.Vars.Cfg.connectionString) && !string.IsNullOrWhiteSpace(Global.Vars.Cfg.gvrBase))
+                return true;
 
-            return added;
+            if (Interlocked.Exchange(ref _warned, 1) == 0)
+                await LoggingService.LogWarningAsync(LogSource, "не заданы System:DbConnectionString или System:GvrBase, говорилка не работает");
+
+            return false;
         }
 
         private static string Trim(string content)

@@ -15,12 +15,15 @@ namespace sblngavnav6.GVR
 
             var kept = new List<string>();
 
-            var text = DiscordTokenRegex().Replace(raw, match =>
+            var text = InvisibleRegex().Replace(raw, string.Empty);
+
+            text = DiscordTokenRegex().Replace(text, match =>
             {
                 kept.Add(match.Value);
                 return $"{Guard}{kept.Count - 1}{Guard}";
             });
 
+            text = BulletRegex().Replace(text, " ");
             text = LinkRegex().Replace(text, " ");
             text = SnowflakeRegex().Replace(text, " ");
             text = AngleJunkRegex().Replace(text, " ");
@@ -33,10 +36,18 @@ namespace sblngavnav6.GVR
 
             var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
-            if (words.Length < MinWords || LooksLikeBotList(words))
+            if (words.Length < MinWords || LooksLikeList(text) || LooksLikeBotList(words))
                 return null;
 
             return text;
+        }
+
+        private static bool LooksLikeList(string text)
+        {
+            var pipes = text.Count(symbol => symbol is '|');
+            var handles = text.Count(symbol => symbol is '@');
+
+            return pipes >= 3 || handles >= 3;
         }
 
         private static bool LooksLikeBotList(string[] words)
@@ -79,8 +90,14 @@ namespace sblngavnav6.GVR
         [GeneratedRegex(@"[<>]", RegexOptions.Compiled)]
         private static partial Regex AngleJunkRegex();
 
+        [GeneratedRegex(@"[•·‣▪●◦⁃∙]", RegexOptions.Compiled)]
+        private static partial Regex BulletRegex();
+
         [GeneratedRegex(@"https?://\S+", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
         private static partial Regex LinkRegex();
+
+        [GeneratedRegex(@"[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F­​-‏‪-‮⁠﻿]", RegexOptions.Compiled)]
+        private static partial Regex InvisibleRegex();
 
         [GeneratedRegex(@"\u0001(\d+)\u0001", RegexOptions.Compiled)]
         private static partial Regex GuardRegex();

@@ -19,7 +19,7 @@ namespace sblngavnav6.Core
         private readonly CommandService _commands;
         private readonly IServiceProvider _services;
         private readonly GVRConfig _govorilka;
-        private readonly GVRMessagesHandler _GVRMessagesHandler;
+        private readonly GVRMessagesHandler _gvrMessages;
         private readonly GVRDb _gvrDb;
         private readonly CancellationTokenSource _stopping = new();
         private readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
@@ -46,7 +46,7 @@ namespace sblngavnav6.Core
 
             _commands = services.GetRequiredService<CommandService>();
             _client = services.GetRequiredService<DiscordSocketClient>();
-            _GVRMessagesHandler = services.GetRequiredService<GVRMessagesHandler>();
+            _gvrMessages = services.GetRequiredService<GVRMessagesHandler>();
             _gvrDb = services.GetRequiredService<GVRDb>();
 
             HookEvents();
@@ -152,7 +152,7 @@ namespace sblngavnav6.Core
                 return;
             }
 
-            await _GVRMessagesHandler.TrySendGeneratedMessageAsync(context);
+            await _gvrMessages.TrySendGeneratedMessageAsync(context);
         }
 
         private async Task<bool> TryHandleMailReplyAsync(SocketUserMessage message)
@@ -317,10 +317,8 @@ namespace sblngavnav6.Core
                     return;
                 }
 
-                var cursorPath = Global.Vars.Cfg.messagesFilePath + ".cursor";
-                ulong? oldestId = null;
-                if (File.Exists(cursorPath) && ulong.TryParse(await File.ReadAllTextAsync(cursorPath, cancellationToken), out var parsed))
-                    oldestId = parsed;
+                var cursor = await _gvrDb.GetCursorAsync(cancellationToken);
+                ulong? oldestId = cursor == 0 ? null : cursor;
 
                 var newLines = new List<string>();
                 ulong? newOldestId = null;
@@ -352,7 +350,10 @@ namespace sblngavnav6.Core
                     if (newOldestId == null || message.Id < newOldestId.Value)
                         newOldestId = message.Id;
 
-                    newLines.Add(content);
+                    var clean = GVRText.Sanitize(content);
+
+                    if (clean is not null)
+                        newLines.Add(clean);
                 }
 
                 if (newLines.Count > 0)
@@ -368,7 +369,7 @@ namespace sblngavnav6.Core
                 }
 
                 if (newOldestId.HasValue)
-                    await File.WriteAllTextAsync(cursorPath, newOldestId.Value.ToString());
+                    await _gvrDb.SetCursorAsync(newOldestId.Value, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception ex)

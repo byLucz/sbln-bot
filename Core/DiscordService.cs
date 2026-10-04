@@ -115,11 +115,9 @@ namespace sblngavnav6.Core
 
                     if (await gvrDb.LoadSettingsAsync(gvrConfig, stopping.Token))
                         _commandHandler.UpdateTimerInterval(gvrConfig.IntervalMs);
-
-                    await gvrDb.ImportFileAsync(Global.Vars.Cfg.messagesFilePath, stopping.Token);
                 }
                 catch (OperationCanceledException) when (stopping.IsCancellationRequested) { throw; }
-                catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось перенести корпус говорилки", ex); }
+                catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось загрузить настройки говорилки", ex); }
 
                 stopping.Token.ThrowIfCancellationRequested();
                 if (_streams != null)

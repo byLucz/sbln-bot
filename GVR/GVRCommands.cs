@@ -3,26 +3,25 @@ using Discord.Commands;
 using sblngavnav6.Core;
 using sblngavnav6.Common;
 using sblngavnav6.Data;
-using System.Runtime.InteropServices;
 
 namespace sblngavnav6.GVR
 {
-    public class GVRService : ModuleBase<SocketCommandContext>
+    public class GVRCommands : ModuleBase<SocketCommandContext>
     {
         private const string Author = "sbln говорилка🎤📓";
         private const string Footer = "powered by GovorNGN";
-        private const string Icon = "https://emojio.ru/images/apple-b/1f9e0.png";
+        private const string Icon = "🧠";
         private const string Source = "говорилка";
 
         private static readonly Color Tint = Color.LighterGrey;
 
-        private readonly GVRConfig _govorilka;
+        private readonly GVRConfig _config;
         private readonly CommandHandler _commandHandler;
         private readonly GVRDb _db;
 
-        public GVRService(GVRConfig govor, CommandHandler commandHandler, GVRDb db)
+        public GVRCommands(GVRConfig config, CommandHandler commandHandler, GVRDb db)
         {
-            _govorilka = govor;
+            _config = config;
             _commandHandler = commandHandler;
             _db = db;
         }
@@ -61,7 +60,7 @@ namespace sblngavnav6.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task GetSettings()
         {
-            var words = _govorilka.Rand ? "рандом" : _govorilka.Count.ToString();
+            var words = _config.Rand ? "рандом" : _config.Count.ToString();
 
             await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
@@ -70,12 +69,12 @@ namespace sblngavnav6.GVR
                 Color = Tint,
                 Fields =
                 [
-                    new EmbedFieldSpec("шаг рандома", $"**{_govorilka.Step}**", true),
+                    new EmbedFieldSpec("шаг рандома", $"**{_config.Step}**", true),
                     new EmbedFieldSpec("число слов", $"**{words}**", true),
-                    new EmbedFieldSpec("шанс ролла", $"**{_govorilka.Chance}%**", true),
-                    new EmbedFieldSpec("сообщений подзагрузки", $"**{_govorilka.Collection}**", true),
-                    new EmbedFieldSpec("время подзагрузки", $"**{_commandHandler.GetTimerInterval() / 1000:0.##} сек**", true),
-                    new EmbedFieldSpec("вербальная нищета", _govorilka.VerbalAbuseBySheff ? "**вкл**" : "**выкл**", true)
+                    new EmbedFieldSpec("шанс ролла", $"**{_config.Chance}%**", true),
+                    new EmbedFieldSpec("сообщений подзагрузки", $"**{_config.Collection}**", true),
+                    new EmbedFieldSpec("время подзагрузки", $"**{_commandHandler.GetTimerInterval() / 1000.0:0.##} сек**", true),
+                    new EmbedFieldSpec("вербальная нищета", _config.VerbalAbuseBySheff ? "**вкл**" : "**выкл**", true)
                 ],
                 Footer = Footer
             }));
@@ -100,7 +99,7 @@ namespace sblngavnav6.GVR
             }
 
             _commandHandler.UpdateTimerInterval(amount);
-            _govorilka.IntervalMs = amount;
+            _config.IntervalMs = amount;
             await SaveAsync();
             await DoneAsync("время подзагрузки", $"**{amount / 1000.0:0.##} сек**");
         }
@@ -152,7 +151,7 @@ namespace sblngavnav6.GVR
                 return;
             }
 
-            _govorilka.Step = step;
+            _config.Step = step;
             await SaveAsync();
             await DoneAsync("шаг", $"**{step}**");
         }
@@ -163,7 +162,7 @@ namespace sblngavnav6.GVR
         {
             if (value.Equals("рандом", StringComparison.OrdinalIgnoreCase) || value == "-")
             {
-                _govorilka.Rand = true;
+                _config.Rand = true;
                 await SaveAsync();
                 await DoneAsync("число слов", "**рандом**");
                 return;
@@ -175,8 +174,8 @@ namespace sblngavnav6.GVR
                 return;
             }
 
-            _govorilka.Rand = false;
-            _govorilka.Count = count;
+            _config.Rand = false;
+            _config.Count = count;
             await SaveAsync();
             await DoneAsync("число слов", $"**{count}**");
         }
@@ -185,9 +184,9 @@ namespace sblngavnav6.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SetChance(uint chance)
         {
-            _govorilka.Chance = Math.Min(chance, 100);
+            _config.Chance = Math.Min(chance, 100);
             await SaveAsync();
-            await DoneAsync("шанс выдачи", $"**{_govorilka.Chance}%**");
+            await DoneAsync("шанс выдачи", $"**{_config.Chance}%**");
         }
 
         [Command("вербальная нищета"), Alias("верни")]
@@ -207,7 +206,7 @@ namespace sblngavnav6.GVR
                 return;
             }
 
-            _govorilka.VerbalAbuseBySheff = enabled.Value;
+            _config.VerbalAbuseBySheff = enabled.Value;
             await SaveAsync();
             await DoneAsync("вербальная нищета", enabled.Value ? "**вкл**" : "**выкл**");
         }
@@ -222,7 +221,7 @@ namespace sblngavnav6.GVR
                 return;
             }
 
-            _govorilka.Collection = amount;
+            _config.Collection = amount;
             await SaveAsync();
             await DoneAsync("сообщений подзагрузки", $"**{amount}**");
         }
@@ -231,8 +230,8 @@ namespace sblngavnav6.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task Reset()
         {
-            _govorilka.Reset();
-            _commandHandler.UpdateTimerInterval(_govorilka.IntervalMs);
+            _config.Reset();
+            _commandHandler.UpdateTimerInterval(_config.IntervalMs);
             await SaveAsync();
 
             await DoneAsync("настройки", "**сброшены на дефолтыч**");
@@ -282,7 +281,7 @@ namespace sblngavnav6.GVR
             return GVRText.Sanitize(content);
         }
 
-        private Task SaveAsync() => _db.SaveSettingsAsync(_govorilka);
+        private Task SaveAsync() => _db.SaveSettingsAsync(_config);
 
         private Task DoneAsync(string what, string value) =>
             ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
@@ -295,6 +294,5 @@ namespace sblngavnav6.GVR
 
         private async Task FailAsync(string reason) =>
             await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(Source, reason));
-
     }
 }
