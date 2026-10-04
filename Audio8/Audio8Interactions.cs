@@ -182,14 +182,20 @@ namespace sblngavnav6.Audio8
 
     internal sealed class Audio8Interactions : IDisposable
     {
+        private static readonly TimeSpan RecoveryCooldown = TimeSpan.FromSeconds(60);
+
+        private readonly ConcurrentDictionary<ulong, DateTimeOffset> _lastRecovery = new();
+
         private readonly IAudioService _audio;
         private readonly Audio8Service _service;
+        private readonly Audio8SearchService _search;
         private bool _disposed;
 
-        public Audio8Interactions(IAudioService audio, Audio8Service service)
+        public Audio8Interactions(IAudioService audio, Audio8Service service, Audio8SearchService search)
         {
             _audio = audio;
             _service = service;
+            _search = search;
             _audio.TrackStarted += OnTrackStartedAsync;
             _audio.TrackException += OnTrackExceptionAsync;
             _audio.TrackStuck += OnTrackStuckAsync;
@@ -232,19 +238,77 @@ namespace sblngavnav6.Audio8
             }
         }
 
-        private Task OnTrackExceptionAsync(object sender, TrackExceptionEventArgs args) =>
-            ReportTrackProblemAsync(
-                args.Player,
-                args.Track,
-                string.IsNullOrWhiteSpace(args.Exception.Message) ? "источник отказал" : args.Exception.Message,
-                $"TrackException: {args.Exception.Severity} {args.Exception.Message}");
+        private Task OnTrackExceptionAsync(object sender, TrackExceptionEventArgs args)
+        {
+            var detail = string.IsNullOrWhiteSpace(args.Exception.Cause)
+                ? args.Exception.Message
+                : args.Exception.Cause;
 
-        private Task OnTrackStuckAsync(object sender, TrackStuckEventArgs args) =>
-            ReportTrackProblemAsync(
+            return HandleTrackFailureAsync(
                 args.Player,
                 args.Track,
-                $"трек завис больше чем на {args.Threshold.TotalSeconds:0}с",
-                $"TrackStuck: {args.Threshold}");
+                string.IsNullOrWhiteSpace(detail) ? "источник отказал" : detail,
+                $"TrackException: {args.Exception.Severity} {args.Exception.Message} | {args.Exception.Cause}");
+        }
+
+        private async Task HandleTrackFailureAsync(
+            ILavalinkPlayer source,
+            LavalinkTrack track,
+            string userReason,
+            string logReason)
+        {
+            await ReportTrackProblemAsync(source, track, userReason, logReason).ConfigureAwait(false);
+
+            if (source is not Audio8Player player || player.SilentMode || track is null)
+                return;
+
+            var now = DateTimeOffset.UtcNow;
+
+            if (_lastRecovery.TryGetValue(player.GuildId, out var last) && now - last < RecoveryCooldown)
+                return;
+
+            _lastRecovery[player.GuildId] = now;
+
+            if (_service.ResolveTextChannel(player) is not { } channel)
+                return;
+
+            try
+            {
+                await _search.OfferAlternativesAsync(player.GuildId, channel, track).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync(
+                    Audio8Constants.LogSource,
+                    $"Не смог предложить замену g={player.GuildId}: {ex.Message}");
+            }
+        }
+
+        private async Task OnTrackStuckAsync(object sender, TrackStuckEventArgs args)
+        {
+            await ReportTrackProblemAsync(
+                args.Player,
+                args.Track,
+                $"трек завис больше чем на {args.Threshold.TotalSeconds:0}с, пропускаю",
+                $"TrackStuck: {args.Threshold}").ConfigureAwait(false);
+
+            if (args.Player is not Audio8Player player)
+                return;
+
+            try
+            {
+                if (player.Queue.IsEmpty)
+                    await player.StopAsync().ConfigureAwait(false);
+                else
+                    await _service.SkipAsync(player, position: null).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync(
+                    Audio8Constants.LogSource,
+                    $"Не удалось снять зависший трек g={player.GuildId}: {ex.Message}");
+            }
+        }
 
         private async Task ReportTrackProblemAsync(
             ILavalinkPlayer source,
@@ -496,7 +560,7 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
-            if (Context.User.Id != state.RequestedByUserId)
+            if (state.RequestedByUserId != 0 && Context.User.Id != state.RequestedByUserId)
             {
                 await RespondAsync("это не твой поиск", ephemeral: true);
                 return;

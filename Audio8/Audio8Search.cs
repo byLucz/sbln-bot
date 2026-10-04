@@ -57,6 +57,44 @@ namespace sblngavnav6.Audio8
             return true;
         }
 
+        public async Task<bool> OfferAlternativesAsync(
+            ulong guildId,
+            ITextChannel channel,
+            LavalinkTrack failed,
+            CancellationToken cancellationToken = default)
+        {
+            var rawText = BuildQuery(failed);
+
+            if (string.IsNullOrWhiteSpace(rawText))
+                return false;
+
+            var picks = await CollectPicksAsync(rawText, cancellationToken).ConfigureAwait(false);
+            var failedKey = Audio8Service.TrackKey(failed);
+
+            picks.RemoveAll(track => Audio8Service.TrackKey(track) == failedKey);
+
+            return await PresentAsync(
+                guildId,
+                channel,
+                requestedByUserId: 0,
+                picks,
+                "этот трек не играется, но есть похожее:").ConfigureAwait(false);
+        }
+
+        private static string BuildQuery(LavalinkTrack track)
+        {
+            var title = track?.Title?.Trim();
+
+            if (string.IsNullOrWhiteSpace(title))
+                return null;
+
+            var author = track.Author?.Trim();
+
+            return string.IsNullOrWhiteSpace(author) || title.Contains(author, StringComparison.OrdinalIgnoreCase)
+                ? title
+                : $"{title} {author}";
+        }
+
         private static string FailureReason(TrackLoadResult result) =>
             Audio8Embeds.DescribeFailure(result.Exception?.Message);
 
@@ -65,29 +103,32 @@ namespace sblngavnav6.Audio8
             var picks = new List<LavalinkTrack>(Audio8Constants.MaxSearchPicks);
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var (prefix, _) in Audio8Query.Fallbacks)
-            {
-                if (picks.Count >= Audio8Constants.MaxSearchPicks)
-                    return picks;
+            var sources = Audio8Query.Fallbacks
+                .Select(fallback => _service.LoadFirstAsync(fallback.Prefix + rawText, cancellationToken));
 
-                await TryAddAsync(prefix + rawText).ConfigureAwait(false);
-            }
+            Absorb(await Task.WhenAll(sources).ConfigureAwait(false));
 
-            foreach (var variant in Audio8Query.Variants(rawText))
-            {
-                if (picks.Count >= Audio8Constants.MaxSearchPicks)
-                    break;
+            if (picks.Count >= Audio8Constants.MaxSearchPicks)
+                return picks;
 
-                await TryAddAsync(Audio8Query.YouTubePrefix + variant).ConfigureAwait(false);
-            }
+            var variants = Audio8Query.Variants(rawText)
+                .Take(Audio8Constants.MaxSearchVariants)
+                .Select(variant => _service.LoadFirstAsync(Audio8Query.YouTubePrefix + variant, cancellationToken));
+
+            Absorb(await Task.WhenAll(variants).ConfigureAwait(false));
 
             return picks;
 
-            async Task TryAddAsync(string identifier)
+            void Absorb(IEnumerable<LavalinkTrack> found)
             {
-                var track = await _service.LoadFirstAsync(identifier, cancellationToken).ConfigureAwait(false);
-                if (track is not null && seen.Add(Audio8Service.TrackKey(track)))
-                    picks.Add(track);
+                foreach (var track in found)
+                {
+                    if (picks.Count >= Audio8Constants.MaxSearchPicks)
+                        return;
+
+                    if (track is not null && seen.Add(Audio8Service.TrackKey(track)))
+                        picks.Add(track);
+                }
             }
         }
 

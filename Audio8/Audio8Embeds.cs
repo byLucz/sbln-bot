@@ -184,6 +184,15 @@ namespace sblngavnav6.Audio8
             if (Mentions(raw, "timeout", "timed out"))
                 return "⏳ источник не ответил вовремя";
 
+            if (Mentions(raw, "soundcloud stream: 404", "soundcloud stream: 403"))
+                return "🚫 SoundCloud не отдал поток: трек Go+ или закрыт в регионе";
+
+            if (Mentions(raw, "something broke", "internal error", "unexpected error"))
+                return "🧨 Lavalink сломался на этом треке, причина в его логах";
+
+            if (Mentions(raw, "403", "forbidden"))
+                return "⛔ источник закрыл доступ к потоку, похоже протухла расшифровка";
+
             return Truncate(FirstMeaningfulLine(raw, "причина неизвестна"), 200);
         }
 

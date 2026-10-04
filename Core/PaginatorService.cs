@@ -8,7 +8,7 @@ namespace sblngavnav6.Core
     public sealed class PaginatorService : IDisposable, IAsyncDisposable
     {
         private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5);
-        private static readonly TimeSpan ViewLifetime = TimeSpan.FromMinutes(15);
+        public static readonly TimeSpan ViewLifetime = TimeSpan.FromMinutes(15);
 
         private readonly record struct View(
             IReadOnlyList<Embed> Pages,
