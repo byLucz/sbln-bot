@@ -2,6 +2,7 @@
   "System": {
     "BotToken": "",
     "DbConnectionString": "Server=host.docker.internal;Port=3306;Database=sbln_proto;Uid=USER;Pwd=PASS;",
+    "GvrBase": "sbln_govor",
     "Prefix1": "п ",
     "Prefix2": "p ",
     "SlashScopeGuild": "",

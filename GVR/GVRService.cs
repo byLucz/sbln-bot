@@ -1,6 +1,5 @@
-using Discord;
+﻿using Discord;
 using Discord.Commands;
-using Discord.WebSocket;
 using sblngavnav6.Core;
 using sblngavnav6.Common;
 using sblngavnav6.Data;
@@ -10,82 +9,85 @@ namespace sblngavnav6.GVR
 {
     public class GVRService : ModuleBase<SocketCommandContext>
     {
-        private readonly GovorConfig _govorilka;
+        private const string Author = "sbln говорилка🎤📓";
+        private const string Footer = "powered by GovorNGN";
+        private const string Icon = "https://emojio.ru/images/apple-b/1f9e0.png";
+        private const string Source = "говорилка";
+
+        private static readonly Color Tint = Color.LighterGrey;
+
+        private readonly GVRConfig _govorilka;
         private readonly CommandHandler _commandHandler;
+        private readonly GVRDb _db;
 
-        private const string GovorAuthor = "sbln говорилка🎤📓";
-        private const string GovorFooter = "powered by GovorNGN";
-        private const string GovorIcon = "https://emojio.ru/images/apple-b/1f9e0.png";
-
-        private static EmbedBuilder GovorEmbed() =>
-            EmbedHandler.FieldsEmbed(GovorAuthor, Color.LighterGrey, GovorFooter);
-
-        public GVRService(GovorConfig govor, CommandHandler commandHandler)
+        public GVRService(GVRConfig govor, CommandHandler commandHandler, GVRDb db)
         {
             _govorilka = govor;
             _commandHandler = commandHandler;
+            _db = db;
         }
 
         [Command("говорилка"), Alias("говор")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SendHelp()
         {
-            var embed = EmbedHandler.FieldsEmbed(GovorAuthor, new Color(Color.DarkPurple), GovorFooter, authorIconUrl: GovorIcon)
-                .WithTitle("комманды для лютой нейросетки")
-                .AddField("доб+", "добавляет определенное кол-во сообщений, переписывая все что до этого было в бд")
-                .AddField("доб", "добавляет определенное кол-во сообщений в бд")
-                .AddField("чистись", "прогоняет базу через все фильтры и чистит дубли")
-                .AddField("настройкиговора", "показывает настройки нейросетки")
-                .AddField("шаг рандома", "изменение шагов цепей рандома")
-                .AddField("числов", "число слов в сообщени на выдаче")
-                .AddField("шанс", "шанс что говорилка пропиздиться, роллится каждый раз, когда ты чето писюкаешь")
-                .AddField("сообщкол", "количество сообщений для подзагрузки")
-                .AddField("вр", "интервал через который произойдет подзагрузка сообщений")
-                .AddField("верни", "включает особый режим вербальной нищеты **(идея шефа)**")
-                .AddField("сброс", "сброс настроек на дефолт")
-                .Build();
-            await Context.Channel.SendMessageAsync(null, embed: embed).ConfigureAwait(false);
+            (string Name, string About)[] commands =
+            [
+                ("доб+", "добавляет сообщения, переписывая всё что было в файле"),
+                ("доб", "добавляет сообщения к уже накопленным"),
+                ("чистись", "прогоняет базу через фильтры и чистит дубли"),
+                ("настройкиговора", "показывает настройки нейросетки"),
+                ("шаг", "изменение шагов цепей рандома"),
+                ("числов", "число слов в сообщении на выдаче"),
+                ("шанс", "шанс что говорилка пропиздиться, роллится на каждое сообщение"),
+                ("сообщкол", "количество сообщений для подзагрузки"),
+                ("вр", "интервал через который произойдёт подзагрузка"),
+                ("верни", "включает особый режим вербальной нищеты **(идея шефа)**"),
+                ("сброс", "сброс настроек на дефолт")
+            ];
+
+            await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                AuthorName = Author,
+                AuthorIconUrl = Icon,
+                Title = "комманды для лютой нейросетки",
+                Color = Color.DarkPurple,
+                Fields = commands.Select(item => new EmbedFieldSpec(item.Name, item.About)).ToArray(),
+                Footer = Footer
+            }));
         }
 
         [Command("настройкиговора")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task GetSettings()
         {
-            var chips = _govorilka.Rand ? "рандом" : _govorilka.Count.ToString();
-            var embed = EmbedHandler.FieldsEmbed("sbln говорилка/настройки🎤📓", Color.LighterGrey, GovorFooter, authorIconUrl: GovorIcon)
-                .AddField("шаг рандома", $"**{_govorilka.Step}**", true)
-                .AddField("число слов", $"**{chips}**", true)
-                .AddField("шанс ролла", $"**{_govorilka.Chance}%**", true)
-                .AddField("кол-во сообщений подзагрузки", $"**{_govorilka.Collection}**", true)
-                .AddField("время подзагрузки", $"**{_commandHandler.GetTimerInterval() / 1000:0.##} сек**", true)
-                .AddField("режим вербальной нищеты", $"**{Global.Vars.BuiltIn.govorVM}**", true)
-                .Build();
-            await ReplyAsync(embed: embed);
+            var words = _govorilka.Rand ? "рандом" : _govorilka.Count.ToString();
+
+            await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                AuthorName = "sbln говорилка/настройки🎤📓",
+                AuthorIconUrl = Icon,
+                Color = Tint,
+                Fields =
+                [
+                    new EmbedFieldSpec("шаг рандома", $"**{_govorilka.Step}**", true),
+                    new EmbedFieldSpec("число слов", $"**{words}**", true),
+                    new EmbedFieldSpec("шанс ролла", $"**{_govorilka.Chance}%**", true),
+                    new EmbedFieldSpec("сообщений подзагрузки", $"**{_govorilka.Collection}**", true),
+                    new EmbedFieldSpec("время подзагрузки", $"**{_commandHandler.GetTimerInterval() / 1000:0.##} сек**", true),
+                    new EmbedFieldSpec("вербальная нищета", _govorilka.VerbalAbuseBySheff ? "**вкл**" : "**выкл**", true)
+                ],
+                Footer = Footer
+            }));
         }
 
-        [Command("добавить"), Alias("доб")]
+        [Command("добавить", RunMode = RunMode.Async), Alias("доб")]
         [RequireUserPermission(GuildPermission.Administrator)]
-        public async Task AppendData(uint amount)
-        {
-            var messages = this.Context.Channel.GetMessagesAsync((int)amount).Flatten();
-            using (StreamWriter sw = new StreamWriter(Global.Vars.Cfg.messagesFilePath, append: true))
-            {
-                await foreach (IMessage message in messages)
-                {
-                    if (message.Author.IsBot) continue;
-                    var content = message.Content.Trim();
-                    if (string.IsNullOrWhiteSpace(content)) continue;
-                    if (content.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.Contains("https://", StringComparison.OrdinalIgnoreCase)) continue;
-                    sw.WriteLine(content);
-                }
-            }
-            await RemoveDuplicates();
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("добавлено", $"***{amount} сообщений***", true)
-                .Build());
-        }
+        public Task AppendData(uint amount) => CollectAsync(amount, append: true);
+
+        [Command("добавить+", RunMode = RunMode.Async), Alias("доб+")]
+        [RequireUserPermission(GuildPermission.Administrator)]
+        public Task SeedFile(uint amount) => CollectAsync(amount, append: false);
 
         [Command("время"), Alias("вр")]
         [RequireUserPermission(GuildPermission.Administrator)]
@@ -93,141 +95,121 @@ namespace sblngavnav6.GVR
         {
             if (amount <= 0)
             {
-                await ReplyAsync("Укажи значение больше 0.");
+                await FailAsync("укажи значение больше нуля");
                 return;
             }
+
             _commandHandler.UpdateTimerInterval(amount);
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("время подзагрузки обновлено на", $"***{amount / 1000.0:0.##} секунд***", true)
-                .Build());
+            _govorilka.IntervalMs = amount;
+            await SaveAsync();
+            await DoneAsync("время подзагрузки", $"**{amount / 1000.0:0.##} сек**");
         }
 
-        [Command("чистись"), Alias("чист")]
+        [Command("чистись", RunMode = RunMode.Async), Alias("чист")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task ClearFile()
         {
-            int before = 0, after = 0;
+            var (before, _) = await _db.StampAsync();
 
-            if (File.Exists(Global.Vars.Cfg.messagesFilePath))
+            if (before == 0)
             {
-                var lines = await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath);
-                before = lines.Length;
-
-                var cleaned = lines
-                    .Select(l => l.Trim())
-                    .Where(l => !string.IsNullOrWhiteSpace(l))
-                    .Where(l => !l.Contains("https://", StringComparison.OrdinalIgnoreCase))
-                    .Where(l => !l.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase))
-                    .Where(l => !l.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase))
-                    .Distinct()
-                    .ToArray();
-
-                after = cleaned.Length;
-                await File.WriteAllLinesAsync(Global.Vars.Cfg.messagesFilePath, cleaned);
+                await FailAsync("база пуста, собери сообщения через `доб`");
+                return;
             }
 
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("было строк", $"***{before}***", true)
-                .AddField("осталось", $"***{after}***", true)
-                .AddField("удалено говна", $"***{before - after}***", true)
-                .Build());
-        }
+            await _db.CleanupAsync();
 
-        [Command("добавить+"), Alias("доб+")]
-        [RequireUserPermission(GuildPermission.Administrator)]
-        public async Task SeedFile(uint amount)
-        {
-            var messages = this.Context.Channel.GetMessagesAsync((int)amount).Flatten();
-            using (StreamWriter sw = new StreamWriter(Global.Vars.Cfg.messagesFilePath))
+            var kept = (await _db.LoadAsync())
+                .Select(GVRText.Sanitize)
+                .Where(line => line is not null)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var after = await _db.ReplaceAsync(0, kept);
+            var removed = before - after;
+
+            await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
-                await foreach (IMessage message in messages)
-                {
-                    if (message.Author.IsBot) continue;
-                    var content = message.Content.Trim();
-                    if (string.IsNullOrWhiteSpace(content)) continue;
-                    if (content.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.Contains("https://", StringComparison.OrdinalIgnoreCase)) continue;
-                    sw.WriteLine(content);
-                }
-            }
-            await RemoveDuplicates();
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("ебнуто старое говно и добавлено", $"***{amount} сообщений***", true)
-                .Build());
+                AuthorName = Author,
+                Color = Tint,
+                Fields =
+                [
+                    new EmbedFieldSpec("было строк", $"**{before}**", true),
+                    new EmbedFieldSpec("осталось", $"**{after}**", true),
+                    new EmbedFieldSpec("удалено говна", $"**{removed}**", true)
+                ],
+                Footer = Footer
+            }));
         }
 
         [Command("шаг")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SetStep(uint step)
         {
-            if (step < 1 || step > 15)
+            if (step is < 1 or > 15)
             {
-                await ReplyAsync("в диапазоне от 1 до 15 чел");
+                await FailAsync("шаг в диапазоне от 1 до 15");
                 return;
             }
+
             _govorilka.Step = step;
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("шаг установлен на", $"***{step}***", true)
-                .Build());
+            await SaveAsync();
+            await DoneAsync("шаг", $"**{step}**");
         }
 
         [Command("числослов"), Alias("числов")]
         [RequireUserPermission(GuildPermission.Administrator)]
-        public async Task SetCount(int count, [Optional] string hui)
+        public async Task SetCount(string value)
         {
-            if (hui != null)
+            if (value.Equals("рандом", StringComparison.OrdinalIgnoreCase) || value == "-")
             {
                 _govorilka.Rand = true;
-                await ReplyAsync(embed: GovorEmbed()
-                    .AddField("установлено рандомное значение слов", true)
-                    .Build());
+                await SaveAsync();
+                await DoneAsync("число слов", "**рандом**");
                 return;
             }
-            if (count < 3 || count > 50)
+
+            if (!int.TryParse(value, out var count) || count is < 3 or > 50)
             {
-                await ReplyAsync("в диапазоне от 3 до 50 чел");
+                await FailAsync("число слов в диапазоне от 3 до 50, либо `рандом`");
                 return;
             }
+
             _govorilka.Rand = false;
             _govorilka.Count = count;
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("число слов установлено на", $"***{count}***", true)
-                .Build());
+            await SaveAsync();
+            await DoneAsync("число слов", $"**{count}**");
         }
 
         [Command("шанс")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SetChance(uint chance)
         {
-            if (chance > 100) chance = 100;
-            _govorilka.Chance = chance;
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("шанс выдачи установлен на", $"***{chance}%***", true)
-                .Build());
+            _govorilka.Chance = Math.Min(chance, 100);
+            await SaveAsync();
+            await DoneAsync("шанс выдачи", $"**{_govorilka.Chance}%**");
         }
 
         [Command("вербальная нищета"), Alias("верни")]
         [RequireUserPermission(GuildPermission.Administrator)]
-        public async Task VerbalAbuse(string perekl)
+        public async Task VerbalAbuse(string mode)
         {
-            try
+            var enabled = mode?.Trim().ToLowerInvariant() switch
             {
-                _govorilka.VerbalAbuseBySheff = perekl switch
-                {
-                    "вкл" => true,
-                    "выкл" => false,
-                    _ => false
-                };
-                Global.Vars.BuiltIn.govorVM = perekl;
-                await ReplyAsync(embed: GovorEmbed()
-                    .AddField("режим вербальной нищеты переведен в положение", $"***{perekl}***", true)
-                    .Build());
-            }
-            catch
+                "вкл" or "on" or "1" => true,
+                "выкл" or "off" or "0" => false,
+                _ => (bool?)null
+            };
+
+            if (enabled is null)
             {
-                await ReplyAsync("только вкл/выкл чел");
+                await FailAsync("только `вкл` или `выкл`");
+                return;
             }
+
+            _govorilka.VerbalAbuseBySheff = enabled.Value;
+            await SaveAsync();
+            await DoneAsync("вербальная нищета", enabled.Value ? "**вкл**" : "**выкл**");
         }
 
         [Command("сообщкол")]
@@ -236,13 +218,13 @@ namespace sblngavnav6.GVR
         {
             if (amount > 300)
             {
-                await ReplyAsync("не больше 300 чел");
+                await FailAsync("не больше 300");
                 return;
             }
+
             _govorilka.Collection = amount;
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("количество сообщений подзагрузки", $"***{amount}***", true)
-                .Build());
+            await SaveAsync();
+            await DoneAsync("сообщений подзагрузки", $"**{amount}**");
         }
 
         [Command("сброс")]
@@ -250,21 +232,69 @@ namespace sblngavnav6.GVR
         public async Task Reset()
         {
             _govorilka.Reset();
-            _commandHandler.UpdateTimerInterval(Global.Vars.BuiltIn.govorUpdTimeDefault);
-            Global.Vars.BuiltIn.govorVM = Global.Vars.BuiltIn.govorVMDefault;
-            await ReplyAsync(embed: GovorEmbed()
-                .AddField("сбросил все на дефолтыч", true)
-                .Build());
+            _commandHandler.UpdateTimerInterval(_govorilka.IntervalMs);
+            await SaveAsync();
+
+            await DoneAsync("настройки", "**сброшены на дефолтыч**");
         }
 
-        public async Task RemoveDuplicates()
+        private async Task CollectAsync(uint amount, bool append)
         {
-            var lines = (await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath))
-                .Select(l => l.Trim())
-                .Where(l => l.Length > 0)
-                .Distinct()
-                .ToArray();
-            await File.WriteAllLinesAsync(Global.Vars.Cfg.messagesFilePath, lines);
+            if (amount is 0 or > 1000)
+            {
+                await FailAsync("от 1 до 1000 сообщений за раз");
+                return;
+            }
+
+            var collected = new List<string>((int)amount);
+
+            await foreach (var message in Context.Channel.GetMessagesAsync((int)amount).Flatten())
+            {
+                if (message.Author.IsBot)
+                    continue;
+
+                var content = Keep(message.Content);
+
+                if (content is not null)
+                    collected.Add(content);
+            }
+
+            var stored = append
+                ? await _db.AddAsync(Context.Guild.Id, collected)
+                : await _db.ReplaceAsync(Context.Guild.Id, collected);
+
+            var (total, _) = await _db.StampAsync();
+
+            await DoneAsync(
+                append ? "добавлено" : "перезаписано",
+                $"**{stored}** из **{collected.Count}** подходящих, в базе **{total}**");
         }
+
+        private static string Keep(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content) ||
+                content.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase) ||
+                content.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return GVRText.Sanitize(content);
+        }
+
+        private Task SaveAsync() => _db.SaveSettingsAsync(_govorilka);
+
+        private Task DoneAsync(string what, string value) =>
+            ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                AuthorName = Author,
+                Description = $"{what}: {value}",
+                Color = Tint,
+                Footer = Footer
+            }));
+
+        private async Task FailAsync(string reason) =>
+            await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(Source, reason));
+
     }
 }

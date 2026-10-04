@@ -1,4 +1,5 @@
-using sblngavnav6.Common;
+﻿using sblngavnav6.Common;
+using Discord;
 using Discord.Commands;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
@@ -10,33 +11,36 @@ namespace sblngavnav6.Core
 {
     public sealed class GVRMessagesHandler
     {
-        private readonly GovorConfig _govorilka;
+        private readonly GVRConfig _govorilka;
+        private readonly GVRDb _db;
 
         private static readonly Regex SplitRegex = new(@"\s+", RegexOptions.Compiled);
         private static readonly Regex UrlRegex = new(@"https?://", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex PunctRegex = new(@"^[!?.,:;()\[\]/]+$", RegexOptions.Compiled);
+        private static readonly Regex PunctRegex = new(@"^[!?.,;]+$", RegexOptions.Compiled);
 
         private static readonly string[] FunnyInterjections =
         {
             "лол", "лейм", "YZL", ")", "(((", "соси", "шефчик", "йоу", "чел"
         };
 
-        public GVRMessagesHandler(GovorConfig govorilka)
+        public GVRMessagesHandler(GVRConfig govorilka, GVRDb db)
         {
             _govorilka = govorilka;
+            _db = db;
         }
 
         public async Task TrySendGeneratedMessageAsync(SocketCommandContext context)
         {
-            if (_govorilka.Rand)
-                _govorilka.Count = CommonUtils.RandomNumber(3, 20);
-
             if (CommonUtils.RandomNumber(1, 101) > _govorilka.Chance)
                 return;
 
+            var words = _govorilka.Rand
+                ? CommonUtils.RandomNumber(3, 20)
+                : _govorilka.Count;
+
             using (context.Channel.EnterTypingState())
             {
-                await SendGeneratedMessageAsync(context, (int)_govorilka.Step, (int)_govorilka.Count);
+                await SendGeneratedMessageAsync(context, (int)_govorilka.Step, words);
             }
         }
 
@@ -45,23 +49,11 @@ namespace sblngavnav6.Core
             if (step <= 0 || wordCount <= 0)
                 return;
 
-            if (!File.Exists(Global.Vars.Cfg.messagesFilePath))
-            {
-                await LoggingService.LogInformationAsync("GOVOR", $"Файл {Global.Vars.Cfg.messagesFilePath} не найден, генерация ответа пропущена");
-                return;
-            }
-
-            var rawLines = await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath);
-            if (rawLines.Length == 0)
+            var model = await GetModelAsync(step).ConfigureAwait(false);
+            if (model is null)
                 return;
 
-            var sentences = ParseSentences(rawLines);
-            if (sentences.Count == 0)
-                return;
-
-            var (chain, sentenceStarts) = MakeChain(sentences, step);
-            if (chain.Count == 0)
-                return;
+            var (chain, sentenceStarts) = model.Value;
 
             var generated = GenerateMessage(chain, sentenceStarts, step, wordCount);
             if (string.IsNullOrWhiteSpace(generated))
@@ -70,17 +62,74 @@ namespace sblngavnav6.Core
             if (generated.Length > 2000)
                 generated = generated[..2000];
 
-            await context.Channel.SendMessageAsync(generated);
+            await context.Channel.SendMessageAsync(generated, allowedMentions: AllowedMentions.None);
+        }
+
+        private readonly SemaphoreSlim _modelGate = new(1, 1);
+        private (Dictionary<string, List<string>> Chain, List<string> Starts)? _model;
+        private int _modelStep;
+        private int _modelCount;
+        private long _modelMaxId;
+
+        private async Task<(Dictionary<string, List<string>> Chain, List<string> Starts)?> GetModelAsync(int step)
+        {
+            var (count, maxId) = await _db.StampAsync().ConfigureAwait(false);
+
+            if (count == 0)
+                return null;
+
+            if (_model is { } cached && _modelStep == step && _modelCount == count && _modelMaxId == maxId)
+                return cached;
+
+            await _modelGate.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                if (_model is { } fresh && _modelStep == step && _modelCount == count && _modelMaxId == maxId)
+                    return fresh;
+
+                var rawLines = await _db.LoadAsync().ConfigureAwait(false);
+
+                if (rawLines.Count == 0)
+                    return null;
+
+                var sentences = ParseSentences(rawLines);
+
+                if (sentences.Count == 0)
+                    return null;
+
+                var built = MakeChain(sentences, step);
+
+                if (built.chain.Count == 0)
+                    return null;
+
+                _model = (built.chain, built.sentenceStarts);
+                _modelStep = step;
+                _modelCount = count;
+                _modelMaxId = maxId;
+
+                await LoggingService.LogDebugAsync(
+                    "GOVOR",
+                    $"Цепь пересобрана: строк {rawLines.Count}, ключей {built.chain.Count}, шаг {step}");
+
+                return _model;
+            }
+            finally
+            {
+                _modelGate.Release();
+            }
         }
 
         private static List<List<string>> ParseSentences(IEnumerable<string> rawLines)
         {
             var result = new List<List<string>>();
 
-            foreach (var line in rawLines)
+            foreach (var raw in rawLines)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                if (UrlRegex.IsMatch(line)) continue;
+                var line = GVRText.Sanitize(raw);
+
+                if (line is null)
+                    continue;
 
                 var sb = new StringBuilder();
                 foreach (var ch in line)
@@ -161,6 +210,31 @@ namespace sblngavnav6.Core
             return string.Join(" ", parts);
         }
 
+        private static string Choose(List<string> values, List<string> history)
+        {
+            var previous = history.Count > 0 ? history[^1] : null;
+            var beforeThat = history.Count > 1 ? history[^2] : null;
+
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                var value = Surprise()
+                    ? values.Distinct(StringComparer.OrdinalIgnoreCase).ElementAt(Random.Shared.Next(values.Distinct(StringComparer.OrdinalIgnoreCase).Count()))
+                    : values[Random.Shared.Next(values.Count)];
+
+                if (string.Equals(value, previous, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (beforeThat is not null && string.Equals(value, beforeThat, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return value;
+            }
+
+            return values.FirstOrDefault(value => !string.Equals(value, previous, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool Surprise() => Random.Shared.NextDouble() < 0.2;
+
         private string GenerateSentence(
             Dictionary<string, List<string>> chain,
             List<string> sentenceStarts,
@@ -198,8 +272,11 @@ namespace sblngavnav6.Core
                         key = chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
                 }
 
-                var values = chain[key];
-                var value = values[Random.Shared.Next(values.Count)];
+                var value = Choose(chain[key], temp);
+
+                if (value is null)
+                    break;
+
                 temp.Add(value);
 
                 if (PunctRegex.IsMatch(value))

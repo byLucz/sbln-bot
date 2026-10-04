@@ -18,8 +18,9 @@ namespace sblngavnav6.Core
         private readonly DiscordSocketClient _client;
         private readonly CommandService _commands;
         private readonly IServiceProvider _services;
-        private readonly GovorConfig _govorilka;
+        private readonly GVRConfig _govorilka;
         private readonly GVRMessagesHandler _GVRMessagesHandler;
+        private readonly GVRDb _gvrDb;
         private readonly CancellationTokenSource _stopping = new();
         private readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
         private readonly object _timerLock = new();
@@ -38,7 +39,7 @@ namespace sblngavnav6.Core
         private bool _disposed;
         private sealed record MailReplyRoute(ulong SenderId, ulong RecipientId, bool IsAnonymous, DateTimeOffset CreatedAt);
 
-        public CommandHandler(IServiceProvider services, GovorConfig govorilka)
+        public CommandHandler(IServiceProvider services, GVRConfig govorilka)
         {
             _services = services;
             _govorilka = govorilka;
@@ -46,6 +47,7 @@ namespace sblngavnav6.Core
             _commands = services.GetRequiredService<CommandService>();
             _client = services.GetRequiredService<DiscordSocketClient>();
             _GVRMessagesHandler = services.GetRequiredService<GVRMessagesHandler>();
+            _gvrDb = services.GetRequiredService<GVRDb>();
 
             HookEvents();
         }
@@ -320,11 +322,6 @@ namespace sblngavnav6.Core
                 if (File.Exists(cursorPath) && ulong.TryParse(await File.ReadAllTextAsync(cursorPath, cancellationToken), out var parsed))
                     oldestId = parsed;
 
-                var existingLines = File.Exists(Global.Vars.Cfg.messagesFilePath)
-                    ? new HashSet<string>((await File.ReadAllLinesAsync(Global.Vars.Cfg.messagesFilePath, cancellationToken))
-                        .Select(l => l.Trim()).Where(l => l.Length > 0))
-                    : new HashSet<string>();
-
                 var newLines = new List<string>();
                 ulong? newOldestId = null;
 
@@ -355,14 +352,15 @@ namespace sblngavnav6.Core
                     if (newOldestId == null || message.Id < newOldestId.Value)
                         newOldestId = message.Id;
 
-                    if (existingLines.Add(content))
-                        newLines.Add(content);
+                    newLines.Add(content);
                 }
 
                 if (newLines.Count > 0)
                 {
-                    await File.AppendAllLinesAsync(Global.Vars.Cfg.messagesFilePath, newLines);
-                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений: {newLines.Count}, всего в датасете: {existingLines.Count}");
+                    var stored = await _gvrDb.AddAsync(0, newLines, cancellationToken);
+                    var (total, _) = await _gvrDb.StampAsync(cancellationToken);
+
+                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых: {stored} из {newLines.Count}, всего в базе: {total}");
                 }
                 else
                 {

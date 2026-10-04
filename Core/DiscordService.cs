@@ -6,6 +6,7 @@ using sblngavnav6.Audio8;
 using sblngavnav6.Common;
 using static sblngavnav6.Common.CommonUtils.Time;
 using sblngavnav6.Data;
+using sblngavnav6.GVR;
 using sblngavnav6.PPM;
 using sblngavnav6.Services;
 using sblngavnav6.TwitchService;
@@ -106,6 +107,19 @@ namespace sblngavnav6.Core
 
                 try { await DataBase.ApplyLastStatusAsync(_client); }
                 catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось восстановить статус", ex); }
+
+                try
+                {
+                    var gvrDb = _services.GetRequiredService<GVRDb>();
+                    var gvrConfig = _services.GetRequiredService<GVRConfig>();
+
+                    if (await gvrDb.LoadSettingsAsync(gvrConfig, stopping.Token))
+                        _commandHandler.UpdateTimerInterval(gvrConfig.IntervalMs);
+
+                    await gvrDb.ImportFileAsync(Global.Vars.Cfg.messagesFilePath, stopping.Token);
+                }
+                catch (OperationCanceledException) when (stopping.IsCancellationRequested) { throw; }
+                catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось перенести корпус говорилки", ex); }
 
                 stopping.Token.ThrowIfCancellationRequested();
                 if (_streams != null)

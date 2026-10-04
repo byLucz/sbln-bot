@@ -48,6 +48,7 @@ namespace sblngavnav6.Core
                     return new InteractionService(client, interactionConfig);
                 })
                 .AddSingleton<InteractionHandler>()
+                .AddSingleton<GVRDb>()
                 .AddSingleton<GVRMessagesHandler>()
                 .AddSingleton<WeatherClient>()
                 .AddSingleton<StreamMonoService>()
@@ -58,7 +59,7 @@ namespace sblngavnav6.Core
                 .AddSingleton<PpmServerService>()
                 .AddSingleton<PpmPanels>()
                 .AddSingleton<PpmService>()
-                .AddSingleton<GovorConfig>()
+                .AddSingleton<GVRConfig>()
                 .AddTelegramExtensions()
                 .AddFrontier(o =>
                 {
