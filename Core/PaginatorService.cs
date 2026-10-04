@@ -90,14 +90,6 @@ namespace sblngavnav6.Core
             return msg;
         }
 
-        public async Task RetireAsync(string scope)
-        {
-            if (string.IsNullOrEmpty(scope) || !_scopes.TryRemove(scope, out var previous))
-                return;
-
-            await ClearAsync(previous.Channel, previous.MessageId);
-        }
-
         private async Task RetireAsync(string scope, IMessageChannel channel, ulong keepId)
         {
             if (_scopes.TryGetValue(scope, out var previous) && previous.MessageId != keepId)
@@ -144,8 +136,7 @@ namespace sblngavnav6.Core
             switch (TryPrepareFlip(component.Message.Id, userId, target, out var embed, out var components))
             {
                 case FlipOutcome.Ready:
-                    await component.DeferAsync();
-                    await component.ModifyOriginalResponseAsync(message =>
+                    await component.UpdateAsync(message =>
                     {
                         message.Embed = embed;
                         message.Components = components;

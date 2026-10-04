@@ -13,7 +13,8 @@ namespace sblngavnav6.Data
         private const int CommandTimeoutSeconds = 15;
         private const int RetryAttempts = 2;
 
-        private static readonly int[] TransientErrors = [1205, 1213, 1040, 2006, 2013];
+        private static readonly int[] TransientErrors = [1205, 1213, 1040];
+        private static readonly int[] ConnectionErrors = [2006, 2013];
 
         private static async Task<MySqlConnection> DbAsync(CancellationToken cancellationToken = default)
         {
@@ -42,7 +43,7 @@ namespace sblngavnav6.Data
             return cmd;
         }
 
-        private static async Task<T> RetriedAsync<T>(Func<Task<T>> work)
+        private static async Task<T> RetriedAsync<T>(Func<Task<T>> work, bool readOnly = false)
         {
             for (var attempt = 0; ; attempt++)
             {
@@ -50,7 +51,8 @@ namespace sblngavnav6.Data
                 {
                     return await work().ConfigureAwait(false);
                 }
-                catch (MySqlException ex) when (attempt < RetryAttempts && TransientErrors.Contains(ex.Number))
+                catch (MySqlException ex) when (attempt < RetryAttempts &&
+                    (TransientErrors.Contains(ex.Number) || (readOnly && ConnectionErrors.Contains(ex.Number))))
                 {
                     await Task.Delay(50 * (attempt + 1)).ConfigureAwait(false);
                 }
@@ -82,7 +84,7 @@ namespace sblngavnav6.Data
                 list.Add(map(reader));
 
             return list;
-        });
+        }, readOnly: true);
 
         private static Task<T> RowAsync<T>(string sql, Action<MySqlCommand> bind, Func<MySqlDataReader, T> map, T fallback = default) => RetriedAsync(async () =>
         {
@@ -91,22 +93,8 @@ namespace sblngavnav6.Data
             await using var reader = await cmd.ExecuteReaderAsync().ConfigureAwait(false);
 
             return await reader.ReadAsync().ConfigureAwait(false) ? map(reader) : fallback;
-        });
+        }, readOnly: true);
 
-        private static Task InTransactionAsync(Func<Func<string, Action<MySqlCommand>, Task<int>>, Task> work) => RetriedAsync<object>(async () =>
-        {
-            await using var conn = await DbAsync().ConfigureAwait(false);
-            await using var tx = await conn.BeginTransactionAsync().ConfigureAwait(false);
-
-            await work(async (sql, bind) =>
-            {
-                await using var cmd = Command(conn, sql, bind, tx);
-                return await cmd.ExecuteNonQueryAsync().ConfigureAwait(false);
-            }).ConfigureAwait(false);
-
-            await tx.CommitAsync().ConfigureAwait(false);
-            return null;
-        });
 
         private static readonly ConcurrentDictionary<ulong, GuildSettings> _guildCache = new();
 

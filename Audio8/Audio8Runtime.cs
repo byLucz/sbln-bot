@@ -380,6 +380,12 @@ namespace sblngavnav6.Audio8
         public bool Paused { get; set; }
     }
 
+    internal sealed class Audio8LegacyGuild
+    {
+        public ulong GuildId { get; set; }
+        public string SearchPrefix { get; set; }
+    }
+
     internal sealed class Audio8Persistence
     {
         private const string FileName = "audio8-state.json";
@@ -447,7 +453,16 @@ namespace sblngavnav6.Audio8
                 if (raw.StartsWith('['))
                 {
                     var legacy = JsonSerializer.Deserialize<List<Audio8GuildSnapshot>>(raw, Json) ?? [];
-                    return new Audio8State { Players = legacy };
+                    var prefixes = JsonSerializer.Deserialize<List<Audio8LegacyGuild>>(raw, Json) ?? [];
+
+                    return new Audio8State
+                    {
+                        Players = legacy,
+                        Guilds = prefixes
+                            .Where(entry => !string.IsNullOrWhiteSpace(entry.SearchPrefix))
+                            .Select(entry => new Audio8GuildSettings { GuildId = entry.GuildId, SearchPrefix = entry.SearchPrefix })
+                            .ToList()
+                    };
                 }
 
                 return JsonSerializer.Deserialize<Audio8State>(raw, Json) ?? new Audio8State();

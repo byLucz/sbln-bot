@@ -363,10 +363,22 @@ namespace sblngavnav6.Audio8
             _states = states;
         }
 
+        private async Task<bool> VoteBlocksAsync()
+        {
+            if (!_service.IsVoteRunning(Context.Guild.Id))
+                return false;
+
+            await RespondAsync("идёт голосование, дождись конца", ephemeral: true);
+            return true;
+        }
+
         [ComponentInteraction($"{Audio8Controls.NowPlayingId}:*")]
         public async Task NowPlayingAsync(string action)
         {
             if (Context.Interaction is not SocketMessageComponent component)
+                return;
+
+            if (await VoteBlocksAsync())
                 return;
 
             var player = _service.GetPlayer(Context.Guild.Id);
@@ -481,6 +493,9 @@ namespace sblngavnav6.Audio8
             if (Context.Interaction is not SocketMessageComponent component)
                 return;
 
+            if (await VoteBlocksAsync())
+                return;
+
             if (!_states.TryGetHoist(component.Message.Id, out var state))
             {
                 await RespondAsync("кнопка устарела", ephemeral: true);
@@ -545,6 +560,9 @@ namespace sblngavnav6.Audio8
         public async Task PickAsync(string indexRaw)
         {
             if (Context.Interaction is not SocketMessageComponent component)
+                return;
+
+            if (await VoteBlocksAsync())
                 return;
 
             if (!_states.TryGetPick(component.Message.Id, out var state))
@@ -649,6 +667,9 @@ namespace sblngavnav6.Audio8
             if (Context.Interaction is not SocketMessageComponent component)
                 return;
 
+            if (await VoteBlocksAsync())
+                return;
+
             if (!_states.TryGetSkip(component.Message.Id, out var state) ||
                 DateTimeOffset.UtcNow - state.CreatedAtUtc > Audio8Constants.ControlLifetime)
             {
@@ -690,11 +711,8 @@ namespace sblngavnav6.Audio8
             if (Context.Interaction is not SocketMessageComponent component)
                 return;
 
-            if (_service.IsVoteRunning(Context.Guild.Id))
-            {
-                await RespondAsync("идёт голосование, дождись конца", ephemeral: true);
+            if (await VoteBlocksAsync())
                 return;
-            }
 
             var recent = _service.GetRecentPlaylists(Context.Guild.Id);
 
@@ -760,6 +778,9 @@ namespace sblngavnav6.Audio8
         [ComponentInteraction(Audio8Controls.QueuePickId)]
         public async Task QueuePickAsync()
         {
+            if (await VoteBlocksAsync())
+                return;
+
             var player = _service.GetPlayer(Context.Guild.Id);
             if (player is null)
             {
@@ -785,6 +806,9 @@ namespace sblngavnav6.Audio8
         [ModalInteraction(Audio8Controls.QueuePickModalId)]
         public async Task QueuePickSubmitAsync(Audio8QueuePickModal modal)
         {
+            if (await VoteBlocksAsync())
+                return;
+
             var player = _service.GetPlayer(Context.Guild.Id);
             if (player is null)
             {
