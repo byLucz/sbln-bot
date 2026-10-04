@@ -28,8 +28,6 @@ namespace sblngavnav6.TwitchService
         {
             _discord = discord;
 
-            UpdInt = Global.Vars.BuiltIn.streamUpdTime;
-
             TwitchAPI api = new TwitchAPI();
             api.Settings.ClientId = Global.Vars.Cfg.streamCid;
             api.Settings.AccessToken = Global.Vars.Cfg.streamAuth;

@@ -25,7 +25,7 @@ namespace sblngavnav6.Core
         private readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
         private readonly object _timerLock = new();
 
-        private readonly Timer _timer = new(Global.Vars.BuiltIn.govorUpdTime)
+        private readonly Timer _timer = new(GVRConfig.DefaultIntervalMs)
         {
             AutoReset = true,
             Enabled = false
@@ -61,7 +61,6 @@ namespace sblngavnav6.Core
             {
                 if (_disposed) return;
                 _timer.Interval = amount;
-                Global.Vars.BuiltIn.govorUpdTime = (int)amount;
             }
         }
 
@@ -69,7 +68,7 @@ namespace sblngavnav6.Core
         {
             lock (_timerLock)
             {
-                return _disposed ? Global.Vars.BuiltIn.govorUpdTime : _timer.Interval;
+                return _disposed ? GVRConfig.DefaultIntervalMs : _timer.Interval;
             }
         }
 

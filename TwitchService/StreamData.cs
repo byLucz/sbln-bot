@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using TwitchLib.Api.Interfaces;
 
 namespace sblngavnav6.TwitchService
@@ -21,7 +21,7 @@ namespace sblngavnav6.TwitchService
 
         public ITwitchAPI TwitchApi { get; protected set; }
 
-        protected int UpdInt { get; set; }
+        protected const int UpdInt = 600;
 
         public List<string> StreamList { get; protected set; } = [];
 

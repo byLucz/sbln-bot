@@ -88,16 +88,6 @@ namespace sblngavnav6.Data
                 public static readonly string telegramToken = Str("Telegram:Token");
                 public static readonly ulong telegramDefaultGuild = UL("Telegram:DefaultGuild", 0);
             }
-
-            public static class BuiltIn
-            {
-                public const int streamUpdTime = 600;
-                public const int govorUpdTimeDefault = 86400000;
-                public const string govorVMDefault = "выкл";
-
-                public static int govorUpdTime = govorUpdTimeDefault;
-                public static string govorVM = govorVMDefault;
-            }
         }
     }
 }

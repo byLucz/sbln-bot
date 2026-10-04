@@ -1,4 +1,4 @@
-using sblngavnav6.Common;
+﻿using sblngavnav6.Common;
 using Discord;
 using Discord.Commands;
 using sblngavnav6.Services;
@@ -25,6 +25,7 @@ namespace sblngavnav6.GVR
         private int _modelStep;
         private int _modelCount;
         private long _modelMaxId;
+        private long _modelRevision;
 
         public GVRMessagesHandler(GVRConfig config, GVRDb db)
         {
@@ -73,14 +74,16 @@ namespace sblngavnav6.GVR
             if (count == 0)
                 return null;
 
-            if (IsFresh(step, count, maxId))
+            var revision = _db.Revision;
+
+            if (IsFresh(step, count, maxId, revision))
                 return _model;
 
             await _modelGate.WaitAsync().ConfigureAwait(false);
 
             try
             {
-                if (IsFresh(step, count, maxId))
+                if (IsFresh(step, count, maxId, revision))
                     return _model;
 
                 var rawLines = await _db.LoadAsync().ConfigureAwait(false);
@@ -102,6 +105,7 @@ namespace sblngavnav6.GVR
                 _modelStep = step;
                 _modelCount = count;
                 _modelMaxId = maxId;
+                _modelRevision = revision;
 
                 await LoggingService.LogDebugAsync(
                     "GOVOR",
@@ -115,8 +119,8 @@ namespace sblngavnav6.GVR
             }
         }
 
-        private bool IsFresh(int step, int count, long maxId) =>
-            _model is not null && _modelStep == step && _modelCount == count && _modelMaxId == maxId;
+        private bool IsFresh(int step, int count, long maxId, long revision) =>
+            _model is not null && _modelStep == step && _modelCount == count && _modelMaxId == maxId && _modelRevision == revision;
 
         private static List<List<string>> ParseSentences(IEnumerable<string> rawLines)
         {

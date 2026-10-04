@@ -11,6 +11,9 @@ namespace sblngavnav6.GVR
         private const int BatchSize = 500;
 
         private int _warned;
+        private long _revision;
+
+        public long Revision => Volatile.Read(ref _revision);
 
         public async Task<bool> LoadSettingsAsync(GVRConfig config, CancellationToken cancellationToken = default)
         {
@@ -133,6 +136,9 @@ namespace sblngavnav6.GVR
                 added += await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
 
+            if (added > 0)
+                Interlocked.Increment(ref _revision);
+
             return added;
         }
 
@@ -146,6 +152,8 @@ namespace sblngavnav6.GVR
                 await using var cmd = Command(conn, "TRUNCATE TABLE messages");
                 await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             }
+
+            Interlocked.Increment(ref _revision);
 
             return await AddAsync(guildId, contents, cancellationToken).ConfigureAwait(false);
         }
@@ -167,7 +175,12 @@ namespace sblngavnav6.GVR
             cmd.Parameters.AddWithValue("@p1", Global.Vars.Cfg.pref1);
             cmd.Parameters.AddWithValue("@p2", Global.Vars.Cfg.pref2);
 
-            return await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            var removed = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+            if (removed > 0)
+                Interlocked.Increment(ref _revision);
+
+            return removed;
         }
 
         public async Task<ulong> GetCursorAsync(CancellationToken cancellationToken = default)
