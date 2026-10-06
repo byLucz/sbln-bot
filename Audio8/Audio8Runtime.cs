@@ -20,6 +20,7 @@ namespace sblngavnav6.Audio8
 {
     public sealed class Audio8Runtime : IAsyncDisposable
     {
+        private readonly DiscordSocketClient _client;
         private readonly IAudioService _audio;
         private readonly IInactivityTrackingService _inactivity;
         private readonly Audio8Service _service;
@@ -37,6 +38,7 @@ namespace sblngavnav6.Audio8
         private bool _disposed;
 
         internal Audio8Runtime(
+            DiscordSocketClient client,
             IAudioService audio,
             IInactivityTrackingService inactivity,
             Audio8Service service,
@@ -45,6 +47,7 @@ namespace sblngavnav6.Audio8
             Audio8Persistence persistence)
         {
             _persistence = persistence;
+            _client = client;
             _audio = audio;
             _inactivity = inactivity;
             _service = service;
@@ -54,6 +57,18 @@ namespace sblngavnav6.Audio8
             _inactivity.PlayerInactive += OnPlayerInactiveAsync;
             _audio.ConnectionReady += OnConnectionReadyAsync;
             _audio.ConnectionClosed += OnConnectionClosedAsync;
+            _client.UserVoiceStateUpdated += OnVoiceStateUpdatedAsync;
+        }
+
+        private async Task OnVoiceStateUpdatedAsync(SocketUser user, SocketVoiceState before, SocketVoiceState after)
+        {
+            if (user.Id != _client.CurrentUser?.Id || before.VoiceChannel is null || after.VoiceChannel is not null)
+                return;
+
+            var guildId = before.VoiceChannel.Guild.Id;
+
+            await LoggingService.LogInformationAsync(Audio8Constants.LogSource, $"Выкинули из войса g={guildId}");
+            await _service.HandleKickedAsync(guildId).ConfigureAwait(false);
         }
 
         private static string Node => $"{Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}";
@@ -282,6 +297,7 @@ namespace sblngavnav6.Audio8
             _inactivity.PlayerInactive -= OnPlayerInactiveAsync;
             _audio.ConnectionReady -= OnConnectionReadyAsync;
             _audio.ConnectionClosed -= OnConnectionClosedAsync;
+            _client.UserVoiceStateUpdated -= OnVoiceStateUpdatedAsync;
 
             await StopAsync().ConfigureAwait(false);
 
@@ -340,6 +356,7 @@ namespace sblngavnav6.Audio8
                 .AddSingleton<Audio8Interactions>()
                 .AddSingleton<Audio8VoteService>()
                 .AddSingleton(provider => new Audio8Runtime(
+                    provider.GetRequiredService<DiscordSocketClient>(),
                     provider.GetRequiredService<IAudioService>(),
                     provider.GetRequiredService<IInactivityTrackingService>(),
                     provider.GetRequiredService<Audio8Service>(),

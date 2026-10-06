@@ -176,6 +176,30 @@ namespace sblngavnav6.Audio8
             return ValueTask.FromResult(new Audio8Player(properties));
         }
 
+        internal async Task HandleKickedAsync(ulong guildId)
+        {
+            var player = GetPlayer(guildId);
+
+            _states.DropGuild(guildId);
+
+            if (player is null)
+                return;
+
+            var panels = new[] { player.NowPlayingMessage, player.QueueMessage };
+
+            player.NowPlayingMessage = null;
+            player.QueueMessage = null;
+
+            foreach (var panel in panels)
+            {
+                if (panel is null)
+                    continue;
+
+                try { await ModifyAsync(panel, clearControls: true).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is HttpException or TimeoutException) { }
+            }
+        }
+
         public async Task LeaveAsync(ulong guildId, CancellationToken cancellationToken = default)
         {
             var player = GetPlayer(guildId);
