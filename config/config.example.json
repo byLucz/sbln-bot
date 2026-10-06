@@ -1,16 +1,16 @@
-{
+﻿{
   "System": {
     "BotToken": "",
     "DbConnectionString": "Server=host.docker.internal;Port=3306;Database=sbln;Uid=USER;Pwd=PASS;",
     "GvrBase": "sbln_govor",
     "Prefix1": "x ",
     "Prefix2": "х ",
+    "GvrPrefixes": "х,x",
     "SlashScopeGuild": "0",
     "SlashDevGuild": "0",
     "StreamsEnabled": "true",
     "PpmEnabled": "false",
-    "MessageSourceChannelId": "0",
-    "MessagesFilePath": "/opt/sbln/data/messages.csv"
+    "MessageSourceChannelId": "0"
   },
   "Api": {
     "KumaConn": "",

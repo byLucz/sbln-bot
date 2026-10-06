@@ -556,11 +556,7 @@ namespace sblngavnav6.Audio8
 
         private static string ResolvePath()
         {
-            var fromMessages = Global.Vars.Cfg.messagesFilePath;
-
-            var directory = !string.IsNullOrWhiteSpace(fromMessages)
-                ? Path.GetDirectoryName(Path.GetFullPath(fromMessages))
-                : null;
+            var directory = Environment.GetEnvironmentVariable("SBLN_DATA_DIR");
 
             if (string.IsNullOrWhiteSpace(directory))
                 directory = AppContext.BaseDirectory;

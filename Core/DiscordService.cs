@@ -68,9 +68,8 @@ namespace sblngavnav6.Core
             try
             {
                 SetReady(false);
-                foreach (var path in new[] { Global.Vars.Cfg.messagesFilePath, Global.Vars.Cfg.booksJsonPath })
-                    if (!string.IsNullOrWhiteSpace(path))
-                        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+                if (!string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath))
+                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(Global.Vars.Cfg.booksJsonPath))!);
 
                 if (!await DataBase.CanConnect())
                     throw new InvalidOperationException("Старт без БД невозможен");
