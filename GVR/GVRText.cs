@@ -1,4 +1,5 @@
-﻿using System.Text.RegularExpressions;
+﻿using sblngavnav6.Data;
+using System.Text.RegularExpressions;
 
 namespace sblngavnav6.GVR
 {
@@ -8,9 +9,11 @@ namespace sblngavnav6.GVR
         private const int MaxLength = 1024;
         private const char Guard = '\u0001';
 
+        private static readonly string[] Prefixes = BuildPrefixes();
+
         public static string Sanitize(string raw)
         {
-            if (string.IsNullOrWhiteSpace(raw))
+            if (string.IsNullOrWhiteSpace(raw) || LooksLikeCommand(raw))
                 return null;
 
             var kept = new List<string>();
@@ -41,6 +44,34 @@ namespace sblngavnav6.GVR
 
             return text;
         }
+
+        public static bool LooksLikeCommand(string raw)
+        {
+            var text = raw.TrimStart();
+            var space = text.IndexOf(' ');
+            var head = space < 0 ? text : text[..space];
+
+            return head.Length > 0 && Prefixes.Any(prefix => IsRepeated(head, prefix));
+        }
+
+        private static bool IsRepeated(string head, string prefix)
+        {
+            if (head.Length % prefix.Length != 0)
+                return false;
+
+            for (var offset = 0; offset < head.Length; offset += prefix.Length)
+                if (!head.AsSpan(offset, prefix.Length).Equals(prefix, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+            return true;
+        }
+
+        private static string[] BuildPrefixes() =>
+            new[] { Global.Vars.Cfg.pref1, Global.Vars.Cfg.pref2 }
+                .Select(prefix => prefix?.Trim())
+                .Where(prefix => !string.IsNullOrEmpty(prefix))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
         private static bool LooksLikeList(string text)
         {

@@ -13,6 +13,10 @@ namespace sblngavnav6.GVR
         private const string Icon = "https://assets.piliapp.com/s3pxy/emoji/meaning/preview/brain.png?polish=2";
         private const string Source = "говорилка";
 
+        private const int PageSize = 100;
+        private const int FlushSize = 200;
+        private const int MaxScan = 20000;
+
         private static readonly Color Tint = Color.LighterGrey;
 
         private readonly GVRConfig _config;
@@ -245,40 +249,69 @@ namespace sblngavnav6.GVR
                 return;
             }
 
-            var collected = new List<string>((int)amount);
+            if (!append)
+                await _db.ReplaceAsync(Context.Guild.Id, []);
 
-            await foreach (var message in Context.Channel.GetMessagesAsync((int)amount).Flatten())
+            var target = (int)amount;
+            var stored = 0;
+            var scanned = 0;
+            var buffer = new List<string>(FlushSize);
+            ulong? before = null;
+            var exhausted = false;
+
+            using (Context.Channel.EnterTypingState())
             {
-                if (message.Author.IsBot)
-                    continue;
+                while (stored + buffer.Count < target && scanned < MaxScan)
+                {
+                    var page = (before is null
+                        ? await Context.Channel.GetMessagesAsync(PageSize).FlattenAsync()
+                        : await Context.Channel.GetMessagesAsync(before.Value, Direction.Before, PageSize).FlattenAsync())
+                        .ToList();
 
-                var content = Keep(message.Content);
+                    if (page.Count == 0)
+                    {
+                        exhausted = true;
+                        break;
+                    }
 
-                if (content is not null)
-                    collected.Add(content);
+                    scanned += page.Count;
+                    before = page.Min(message => message.Id);
+
+                    foreach (var message in page)
+                    {
+                        if (message.Author.IsBot || message.Attachments.Any() || message.Embeds.Any())
+                            continue;
+
+                        var content = GVRText.Sanitize(message.Content);
+
+                        if (content is not null)
+                            buffer.Add(content);
+                    }
+
+                    if (buffer.Count >= FlushSize)
+                        stored += await FlushAsync(buffer);
+                }
+
+                if (buffer.Count > 0)
+                    stored += await FlushAsync(buffer);
             }
 
-            var stored = append
-                ? await _db.AddAsync(Context.Guild.Id, collected)
-                : await _db.ReplaceAsync(Context.Guild.Id, collected);
-
             var (total, _) = await _db.StampAsync();
+            var tail = exhausted
+                ? ", история канала кончилась"
+                : scanned >= MaxScan ? $", предел просмотра {MaxScan}" : string.Empty;
 
             await DoneAsync(
                 append ? "добавлено" : "перезаписано",
-                $"**{stored}** из **{collected.Count}** подходящих, в базе **{total}**");
+                $"**{stored}** новых, просмотрено **{scanned}**, в базе **{total}**{tail}");
         }
 
-        private static string Keep(string content)
+        private async Task<int> FlushAsync(List<string> buffer)
         {
-            if (string.IsNullOrWhiteSpace(content) ||
-                content.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase) ||
-                content.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
+            var batch = buffer.ToArray();
+            buffer.Clear();
 
-            return GVRText.Sanitize(content);
+            return await _db.AddAsync(Context.Guild.Id, batch);
         }
 
         private Task SaveAsync() => _db.SaveSettingsAsync(_config);

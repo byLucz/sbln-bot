@@ -341,9 +341,7 @@ namespace sblngavnav6.Core
 
                     var content = message.Content.Trim();
 
-                    if (content.StartsWith(Global.Vars.Cfg.pref1, StringComparison.OrdinalIgnoreCase) ||
-                        content.StartsWith(Global.Vars.Cfg.pref2, StringComparison.OrdinalIgnoreCase) ||
-                        content.Contains("https://", StringComparison.OrdinalIgnoreCase))
+                    if (content.Contains("https://", StringComparison.OrdinalIgnoreCase))
                         continue;
 
                     if (newOldestId == null || message.Id < newOldestId.Value)
