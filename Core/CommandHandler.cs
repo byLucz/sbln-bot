@@ -316,18 +316,10 @@ namespace sblngavnav6.Core
                     return;
                 }
 
-                var cursor = await _gvrDb.GetCursorAsync(cancellationToken);
-                ulong? oldestId = cursor == 0 ? null : cursor;
-
                 var newLines = new List<string>();
-                ulong? newOldestId = null;
-
                 var options = new RequestOptions { CancelToken = cancellationToken };
-                var query = oldestId.HasValue
-                    ? channel.GetMessagesAsync(oldestId.Value, Direction.Before, (int)_govorilka.Collection, options: options).Flatten()
-                    : channel.GetMessagesAsync((int)_govorilka.Collection, options: options).Flatten();
 
-                await foreach (var message in query)
+                await foreach (var message in channel.GetMessagesAsync((int)_govorilka.Collection, options: options).Flatten())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     if (message == null ||
@@ -344,9 +336,6 @@ namespace sblngavnav6.Core
                     if (content.Contains("https://", StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    if (newOldestId == null || message.Id < newOldestId.Value)
-                        newOldestId = message.Id;
-
                     var clean = GVRText.Sanitize(content);
 
                     if (clean is not null)
@@ -362,11 +351,8 @@ namespace sblngavnav6.Core
                 }
                 else
                 {
-                    await LoggingService.LogInformationAsync("GOVOR", "Новых сообщений нет — история исчерпана или канал пуст");
+                    await LoggingService.LogInformationAsync("GOVOR", "Подходящих сообщений не набралось");
                 }
-
-                if (newOldestId.HasValue)
-                    await _gvrDb.SetCursorAsync(newOldestId.Value, cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception ex)

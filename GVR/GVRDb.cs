@@ -183,46 +183,6 @@ namespace sblngavnav6.GVR
             return removed;
         }
 
-        public async Task<ulong> GetCursorAsync(CancellationToken cancellationToken = default)
-        {
-            if (!await ReadyAsync().ConfigureAwait(false))
-                return 0;
-
-            try
-            {
-                await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-                await using var cmd = Command(conn, "SELECT cursor_id FROM settings WHERE id = 1");
-
-                var value = await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-
-                return value is null or DBNull ? 0 : Convert.ToUInt64(value);
-            }
-            catch (Exception ex)
-            {
-                await LoggingService.LogWarningAsync(LogSource, $"Курсор не прочитан: {ex.Message}");
-                return 0;
-            }
-        }
-
-        public async Task SetCursorAsync(ulong messageId, CancellationToken cancellationToken = default)
-        {
-            if (!await ReadyAsync().ConfigureAwait(false))
-                return;
-
-            try
-            {
-                await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-                await using var cmd = Command(conn, "UPDATE settings SET cursor_id = @cursor WHERE id = 1");
-                cmd.Parameters.AddWithValue("@cursor", messageId);
-
-                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await LoggingService.LogWarningAsync(LogSource, $"Курсор не сохранён: {ex.Message}");
-            }
-        }
-
         private async Task<bool> ReadyAsync()
         {
             if (!string.IsNullOrWhiteSpace(Global.Vars.Cfg.connectionString) && !string.IsNullOrWhiteSpace(Global.Vars.Cfg.gvrBase))

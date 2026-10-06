@@ -66,12 +66,20 @@ namespace sblngavnav6.GVR
             return true;
         }
 
-        private static string[] BuildPrefixes() =>
-            new[] { Global.Vars.Cfg.pref1, Global.Vars.Cfg.pref2 }
+        private static string[] BuildPrefixes()
+        {
+            var configured = Global.Vars.Cfg.gvrPrefixes;
+
+            var source = string.IsNullOrWhiteSpace(configured)
+                ? [Global.Vars.Cfg.pref1, Global.Vars.Cfg.pref2]
+                : configured.Split(',', StringSplitOptions.RemoveEmptyEntries);
+
+            return source
                 .Select(prefix => prefix?.Trim())
                 .Where(prefix => !string.IsNullOrEmpty(prefix))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+        }
 
         private static bool LooksLikeList(string text)
         {

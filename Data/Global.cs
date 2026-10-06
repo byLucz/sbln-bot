@@ -52,6 +52,7 @@ namespace sblngavnav6.Data
                 public static readonly string gvrBase = Str("System:GvrBase", "sbln_govor");
                 public static readonly string pref1 = Str("System:Prefix1", "x ");
                 public static readonly string pref2 = Str("System:Prefix2", "х ");
+                public static readonly string gvrPrefixes = Str("System:GvrPrefixes");
                 public static readonly ulong slashScopeGuild = UL("System:SlashScopeGuild", 0);
                 public static readonly ulong slashDevGuild = UL("System:SlashDevGuild", 0);
                 public static readonly bool streamsEnabled = Bool("System:StreamsEnabled", true);
