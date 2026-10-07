@@ -165,7 +165,7 @@ namespace sblngavnav6.Data
             return ScalarAsync(
                 "SELECT url FROM memes WHERE category = @c ORDER BY RAND() LIMIT 1",
                 cmd => cmd.Parameters.AddWithValue("@c", category),
-                value => value?.ToString());
+                value => value?.ToString()?.Trim());
         }
 
         public static Task<int> AddMeme(string category, string url) =>
@@ -173,8 +173,8 @@ namespace sblngavnav6.Data
                 "INSERT IGNORE INTO memes (category, url) VALUES (@c, @u)",
                 cmd =>
                 {
-                    cmd.Parameters.AddWithValue("@c", category);
-                    cmd.Parameters.AddWithValue("@u", url);
+                    cmd.Parameters.AddWithValue("@c", category?.Trim().ToLowerInvariant());
+                    cmd.Parameters.AddWithValue("@u", url?.Trim());
                 });
 
         public static Task<int> CountMemes(string category) =>

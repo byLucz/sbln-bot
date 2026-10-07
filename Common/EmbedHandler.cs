@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 
 namespace sblngavnav6.Common
 {
@@ -57,18 +57,18 @@ namespace sblngavnav6.Common
             if (!string.IsNullOrWhiteSpace(spec.Title))
                 builder.WithTitle(Fit(spec.Title, MaxTitle));
 
-            if (!string.IsNullOrWhiteSpace(spec.Url))
-                builder.WithUrl(spec.Url);
+            if (Link(spec.Url) is { } url)
+                builder.WithUrl(url);
 
             if (!string.IsNullOrWhiteSpace(spec.AuthorName))
             {
                 var author = new EmbedAuthorBuilder().WithName(Fit(spec.AuthorName, MaxAuthor));
 
-                if (!string.IsNullOrWhiteSpace(spec.AuthorIconUrl))
-                    author.WithIconUrl(spec.AuthorIconUrl);
+                if (Link(spec.AuthorIconUrl) is { } authorIcon)
+                    author.WithIconUrl(authorIcon);
 
-                if (!string.IsNullOrWhiteSpace(spec.AuthorUrl))
-                    author.WithUrl(spec.AuthorUrl);
+                if (Link(spec.AuthorUrl) is { } authorUrl)
+                    author.WithUrl(authorUrl);
 
                 builder.WithAuthor(author);
             }
@@ -77,17 +77,17 @@ namespace sblngavnav6.Common
             {
                 var footer = new EmbedFooterBuilder().WithText(Fit(spec.Footer, MaxFooter));
 
-                if (!string.IsNullOrWhiteSpace(spec.FooterIconUrl))
-                    footer.WithIconUrl(spec.FooterIconUrl);
+                if (Link(spec.FooterIconUrl) is { } footerIcon)
+                    footer.WithIconUrl(footerIcon);
 
                 builder.WithFooter(footer);
             }
 
-            if (!string.IsNullOrWhiteSpace(spec.ThumbnailUrl))
-                builder.WithThumbnailUrl(spec.ThumbnailUrl);
+            if (Link(spec.ThumbnailUrl) is { } thumbnail)
+                builder.WithThumbnailUrl(thumbnail);
 
-            if (!string.IsNullOrWhiteSpace(spec.ImageUrl))
-                builder.WithImageUrl(spec.ImageUrl);
+            if (Link(spec.ImageUrl) is { } image)
+                builder.WithImageUrl(image);
 
             if (spec.Timestamp)
                 builder.WithCurrentTimestamp();
@@ -129,6 +129,20 @@ namespace sblngavnav6.Common
                 return value;
 
             return limit <= 1 ? value[..limit] : value[..(limit - 1)] + "…";
+        }
+
+        public static string Link(string url)
+        {
+            url = url?.Trim();
+
+            if (string.IsNullOrEmpty(url))
+                return null;
+
+            return url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                || url.StartsWith("attachment://", StringComparison.OrdinalIgnoreCase)
+                ? url
+                : null;
         }
 
         private static string Fallback(string value, string fallback) =>

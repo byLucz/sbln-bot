@@ -245,6 +245,12 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
             return;
         }
 
+        if (EmbedHandler.Link(url) is null)
+        {
+            await ReplyAsync(string.IsNullOrWhiteSpace(title) ? url.Trim() : $"{title}\n{url.Trim()}");
+            return;
+        }
+
         await ReplyAsync(embed: await EmbedHandler.CreateFImgEmbed(title, url));
     }
 }
