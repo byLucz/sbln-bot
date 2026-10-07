@@ -10,6 +10,7 @@ using sblngavnav6.PPM;
 using sblngavnav6.Services;
 using sblngavnav6.Services.Twitch;
 using sblngavnav6.TelegramExtensions;
+using sblngavnav6.TelegramExtensions.Core;
 using sblngavnav6.TwitchService;
 using DiscordTelegramFrontier;
 using CommandService = Discord.Commands.CommandService;
@@ -60,6 +61,7 @@ namespace sblngavnav6.Core
                 .AddSingleton<PpmPanels>()
                 .AddSingleton<PpmService>()
                 .AddSingleton<GVRConfig>()
+                .AddSingleton<ITelegramHelpSource, TelegramHelpSource>()
                 .AddTelegramExtensions()
                 .AddFrontier(o =>
                 {

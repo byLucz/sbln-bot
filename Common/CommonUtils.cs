@@ -1,7 +1,115 @@
+﻿using Discord;
+using Discord.Net;
+
 namespace sblngavnav6.Common
 {
     public static class CommonUtils
     {
+        public static class Chat
+        {
+            public const string DefaultAvatar = "https://cdn-icons-png.flaticon.com/512/3670/3670157.png";
+
+            private static readonly TimeSpan BulkDeleteLimit = TimeSpan.FromDays(14) - TimeSpan.FromMinutes(5);
+
+            public static string Avatar(IUser user, ushort size = 128) =>
+                user?.GetAvatarUrl(ImageFormat.Auto, size) ?? user?.GetDefaultAvatarUrl() ?? DefaultAvatar;
+
+            public static string GuildAvatar(IGuildUser user, string fallback = DefaultAvatar) =>
+                user?.GetGuildAvatarUrl() ?? user?.GetAvatarUrl() ?? user?.GetDefaultAvatarUrl() ?? fallback;
+
+            public static async Task ReactAsync(IUserMessage message, string emote)
+            {
+                if (message is null || !Emote.TryParse(emote, out var parsed))
+                    return;
+
+                try { await message.AddReactionAsync(parsed).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is HttpException or TimeoutException or NotSupportedException) { }
+            }
+
+            public static async Task<IUserMessage> AnimateAsync(
+                IMessageChannel channel,
+                IReadOnlyList<Embed> frames,
+                TimeSpan delay,
+                IUserMessage message = null)
+            {
+                ArgumentNullException.ThrowIfNull(channel);
+
+                if (frames is not { Count: > 0 })
+                    return message;
+
+                for (var index = 0; index < frames.Count; index++)
+                {
+                    var frame = frames[index];
+
+                    try
+                    {
+                        if (message is null)
+                            message = await channel.SendMessageAsync(embed: frame).ConfigureAwait(false);
+                        else
+                            await message.ModifyAsync(properties => properties.Embed = frame).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is HttpException or TimeoutException)
+                    {
+                        return message;
+                    }
+
+                    if (index < frames.Count - 1)
+                        await Task.Delay(delay).ConfigureAwait(false);
+                }
+
+                return message;
+            }
+
+            public static async Task<int> PurgeAsync(IMessageChannel channel, int count, ulong skipId = 0)
+            {
+                ArgumentNullException.ThrowIfNull(channel);
+
+                if (count <= 0)
+                    return 0;
+
+                var messages = (await channel.GetMessagesAsync(count).FlattenAsync().ConfigureAwait(false))
+                    .Where(message => message.Id != skipId)
+                    .ToList();
+
+                if (messages.Count == 0)
+                    return 0;
+
+                var threshold = DateTimeOffset.UtcNow - BulkDeleteLimit;
+                var bulk = messages.Where(message => message.Timestamp > threshold).ToList();
+                var single = messages.Except(bulk).ToList();
+                var removed = 0;
+
+                if (channel is ITextChannel text && bulk.Count > 1)
+                {
+                    try
+                    {
+                        await text.DeleteMessagesAsync(bulk).ConfigureAwait(false);
+                        removed += bulk.Count;
+                    }
+                    catch (Exception ex) when (ex is HttpException or TimeoutException)
+                    {
+                        single.AddRange(bulk);
+                    }
+                }
+                else
+                {
+                    single.AddRange(bulk);
+                }
+
+                foreach (var message in single)
+                {
+                    try
+                    {
+                        await channel.DeleteMessageAsync(message).ConfigureAwait(false);
+                        removed++;
+                    }
+                    catch (Exception ex) when (ex is HttpException or TimeoutException) { }
+                }
+
+                return removed;
+            }
+        }
+
         public static class Text
         {
             public static string Truncate(string s, int max)
@@ -107,7 +215,8 @@ namespace sblngavnav6.Common
             {
                 { TotalSeconds: < 60 } => $"{age.TotalSeconds:0}с",
                 { TotalMinutes: < 60 } => $"{age.TotalMinutes:0}м",
-                _ => $"{age.TotalHours:0}ч"
+                { TotalHours: < 24 } => $"{age.TotalHours:0}ч",
+                _ => $"{age.Days}д {age.Hours}ч"
             };
 
             public static bool TryParseTimecode(string input, out TimeSpan result)

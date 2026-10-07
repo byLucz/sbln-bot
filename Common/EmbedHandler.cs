@@ -170,7 +170,7 @@ namespace sblngavnav6.Common
                 Title = $"ОШИБКА ПОСТУПИЛА ИЗ - {source}",
                 Description = $"**детали**: \n{error}",
                 Color = Discord.Color.DarkRed,
-                Timestamp = true
+                Footer = "UNIERR-HANDLER"
             });
 
         public static Task<Embed> CreateFImgEmbed(string description, string url)

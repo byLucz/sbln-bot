@@ -178,32 +178,38 @@ namespace sblngavnav6.Core
                 ? string.Join('\n', message.Attachments.Select(a => a.Url))
                 : null;
 
-            var forwardedEmbed = new EmbedBuilder()
-                .WithColor(route.IsAnonymous ? Color.DarkGrey : Color.Blue)
-                .WithTitle("📬 Ответ на почту")
-                .WithDescription(text)
-                .WithFooter("sbln почта📧");
+            const string footer = "sbln внутренняя почта📧";
+
+            var fields = new List<EmbedFieldSpec>();
 
             if (route.IsAnonymous)
             {
-                forwardedEmbed.AddField("Отправитель:", "Анон", true);
+                fields.Add(new EmbedFieldSpec("Отправитель:", "Анон", true));
             }
             else
             {
-                forwardedEmbed
-                    .AddField("Отправитель:", $"{message.Author.Username}", true)
-                    .AddField("Получатель:", $"{sender.Username}", true);
+                fields.Add(new EmbedFieldSpec("Отправитель:", message.Author.Username, true));
+                fields.Add(new EmbedFieldSpec("Получатель:", sender.Username, true));
             }
 
             if (!string.IsNullOrWhiteSpace(attachmentLinks))
-                forwardedEmbed.AddField("Вложения", attachmentLinks);
+                fields.Add(new EmbedFieldSpec("Вложения", attachmentLinks));
 
-            await sender.SendMessageAsync(embed: forwardedEmbed.Build());
-            await message.Channel.SendMessageAsync(embed: new EmbedBuilder()
-                .WithColor(Color.Green)
-                .WithDescription("✅ Ответ отправлен")
-                .WithFooter("sbln почта📧")
-                .Build());
+            await sender.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                Title = "📬 Ответ на почту",
+                Description = text,
+                Color = route.IsAnonymous ? Color.DarkGrey : Color.Blue,
+                Fields = fields,
+                Footer = footer
+            }));
+
+            await message.Channel.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                Description = "✅ Ответ отправлен",
+                Color = Color.Green,
+                Footer = footer
+            }));
 
             await LoggingService.LogInformationAsync(
                 "XMAIL",
@@ -218,32 +224,32 @@ namespace sblngavnav6.Core
                 return;
 
             var cmd = command.Value;
-            string reply = result.Error switch
+            string reason = result.Error switch
             {
                 CommandError.BadArgCount =>
-                    $"🔴 Не хватает аргументов{BuildUsageHint(cmd)}",
+                    $"не хватает аргументов{BuildUsageHint(cmd)}",
 
                 CommandError.ParseFailed =>
-                    $"🔴 Неверный тип аргумента{BuildUsageHint(cmd)}",
+                    $"неверный тип аргумента{BuildUsageHint(cmd)}",
 
                 CommandError.ObjectNotFound =>
-                    $"🔴 Не найден объект: {result.ErrorReason}{BuildUsageHint(cmd)}",
+                    $"не найден объект: {result.ErrorReason}{BuildUsageHint(cmd)}",
 
                 CommandError.UnmetPrecondition when !string.IsNullOrWhiteSpace(result.ErrorReason) =>
                     result.ErrorReason,
 
                 CommandError.Exception =>
-                    "🔴 Внутренняя ошибка, детали в логах",
+                    "внутренняя ошибка, детали в логах",
 
                 CommandError.Unsuccessful =>
-                    "🔴 Команда не выполнилась",
+                    "команда не выполнилась",
 
                 _ => string.IsNullOrWhiteSpace(result.ErrorReason)
-                    ? $"🔴ОШИБКА🔴 - {result.Error}"
-                    : $"🔴ОШИБКА🔴 - {FirstLine(result.ErrorReason)}"
+                    ? result.Error.ToString()
+                    : FirstLine(result.ErrorReason)
             };
 
-            await context.Channel.SendMessageAsync(reply);
+            await context.Channel.SendMessageAsync(embed: await EmbedHandler.CreateErrorEmbed(cmd.Name, reason));
         }
 
         private static string BuildUsageHint(CommandInfo cmd)
