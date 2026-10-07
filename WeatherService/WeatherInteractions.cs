@@ -1,7 +1,8 @@
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using sblngavnav6.Core;
+using static sblngavnav6.Data.DataRoots;
 
 namespace sblngavnav6.Commands
 {

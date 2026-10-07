@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using sblngavnav6.Common;
 using sblngavnav6.Data;
@@ -27,7 +27,6 @@ namespace sblngavnav6.Commands.Twitch
 
         [RequireUserPermission(GuildPermission.ManageRoles)]
         [Command("добавить стримера", RunMode = RunMode.Async)]
-        [Alias("добавить")]
         public async Task AddStreamerAsync(string streamer)
         {
             if (await DisabledAsync())
@@ -52,7 +51,6 @@ namespace sblngavnav6.Commands.Twitch
 
         [RequireUserPermission(GuildPermission.ManageRoles)]
         [Command("убрать стримера", RunMode = RunMode.Async)]
-        [Alias("убрать")]
         public async Task RemoveStreamerAsync(string streamer)
         {
             if (await DisabledAsync())

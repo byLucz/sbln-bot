@@ -6,8 +6,10 @@ using Discord.WebSocket;
 using sblngavnav6.Core;
 using sblngavnav6.Common;
 using sblngavnav6.Data;
+using sblngavnav6.Services;
 using static sblngavnav6.Common.CommonUtils.Text;
 using static sblngavnav6.Common.CommonUtils.Time;
+using static sblngavnav6.Common.CommonUtils.Chat;
 using static sblngavnav6.Data.DataRoots;
 
 namespace sblngavnav6.PPM
@@ -101,11 +103,108 @@ namespace sblngavnav6.PPM
     {
         private readonly PaginatorService _pager;
         private readonly PpmPanels _panels;
+        private readonly CommandHandler _commandHandler;
 
-        public PpmCommands(PaginatorService pager, PpmPanels panels)
+        public PpmCommands(PaginatorService pager, PpmPanels panels, CommandHandler commandHandler)
         {
             _pager = pager;
             _panels = panels;
+            _commandHandler = commandHandler;
+        }
+
+        [Command("почта")]
+        public async Task SendMailAsync(SocketGuildUser user = null, [Remainder] string message = null)
+        {
+            var attachments = Context.Message.Attachments;
+
+            if (user is null)
+            {
+                await FailAsync("внутренняя почта", "укажи пользователя через @упоминание");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(message) && attachments.Count == 0)
+            {
+                await FailAsync("внутренняя почта", "укажи сообщение или приложи вложение");
+                return;
+            }
+
+            var (isAnonymous, prepared) = ParseMailMode(message);
+
+            if (string.IsNullOrWhiteSpace(prepared) && attachments.Count == 0)
+            {
+                await FailAsync("внутренняя почта", "после флага анонимности нужен текст или вложение");
+                return;
+            }
+
+            var fields = new List<EmbedFieldSpec>();
+
+            if (isAnonymous)
+            {
+                fields.Add(new EmbedFieldSpec("Отправитель", "Анонимно", true));
+            }
+            else
+            {
+                fields.Add(new EmbedFieldSpec("Отправитель:", Context.User.Username, true));
+                fields.Add(new EmbedFieldSpec("Получатель:", user.Username, true));
+            }
+
+            if (attachments.Count > 0)
+                fields.Add(new EmbedFieldSpec("Вложения:", string.Join('\n', attachments.Select(attachment => attachment.Url))));
+
+            try
+            {
+                var sent = await user.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+                {
+                    Title = "📩 Вам письмо // sbln внутренняя почта📧",
+                    Description = string.IsNullOrWhiteSpace(prepared) ? "*пустое сообщение*" : prepared,
+                    Color = isAnonymous ? Color.DarkGrey : Color.Blue,
+                    Fields = fields,
+                    Footer = "↩️ Для ответа отправителю сделай реплай на это сообщение"
+                }));
+
+                _commandHandler.RegisterMailReplyRoute(sent.Id, Context.User.Id, user.Id, isAnonymous);
+
+                await LoggingService.LogInformationAsync(
+                    "XMAIL",
+                    $"SEND anonymous={isAnonymous} sender={Context.User.Id} recipient={user.Id} contentLength={prepared.Length}");
+
+                await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+                {
+                    Description = $"Сообщение отправлено в ЛС: {user.Mention}",
+                    Color = Color.Green,
+                    ThumbnailUrl = Avatar(user),
+                    Fields =
+                    [
+                        new EmbedFieldSpec("Режим:", isAnonymous ? "Анон" : "Обычный", true),
+                        new EmbedFieldSpec("Вложения:", attachments.Count.ToString(), true)
+                    ],
+                    Footer = "sbln внутренняя почта📧"
+                }));
+            }
+            catch (Exception ex) when (ex is Discord.Net.HttpException or TimeoutException)
+            {
+                await FailAsync("внутренняя почта", $"не удалось доставить письмо {user.Mention}, возможно у него закрыты личные сообщения");
+            }
+        }
+
+        private static (bool IsAnonymous, string Prepared) ParseMailMode(string rawMessage)
+        {
+            if (string.IsNullOrWhiteSpace(rawMessage))
+                return (false, string.Empty);
+
+            var text = rawMessage.Trim();
+
+            foreach (var prefix in new[] { "анонимно", "анон", "anon" })
+            {
+                if (text.Equals(prefix, StringComparison.OrdinalIgnoreCase))
+                    return (true, string.Empty);
+
+                if (text.StartsWith($"{prefix} ", StringComparison.OrdinalIgnoreCase))
+                    return (true, text[(prefix.Length + 1)..].Trim());
+            }
+
+            return (false, text);
         }
 
         [Command("печкин")]
@@ -123,6 +222,8 @@ namespace sblngavnav6.PPM
 
             _panels.Track(Context.User.Id, panel);
         }
+        private async Task FailAsync(string source, string reason) =>
+            await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(source, reason));
     }
 
     public sealed class PpmNameModal : IModal
