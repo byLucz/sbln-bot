@@ -11,6 +11,7 @@ public class HelpCommands : ModuleBase<SocketCommandContext>
     }
 
     [Command("памаги")]
+    [Alias("помоги", "помощь", "хелп")]
     public async Task HelpAll()
     {
         await _pager.SendAsync(Context.Channel, HelpEmbedService.GetHelpPages());

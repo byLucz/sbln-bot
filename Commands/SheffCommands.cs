@@ -1,5 +1,6 @@
 ﻿using Discord;
 using sblngavnav6.Common;
+using static sblngavnav6.Common.CommonUtils.Chat;
 using Discord.Commands;
 using Discord.Interactions;
 using sblngavnav6.Data;
@@ -7,6 +8,51 @@ using DiscordTelegramFrontier;
 
 namespace sblngavnav6.Commands
 {
+    internal static class SheffEmbeds
+    {
+        public const string Footer = "sbln шефчик🧑‍🍳";
+
+        public static readonly TimeSpan FrameDelay = TimeSpan.FromSeconds(2.5);
+
+        private static readonly string[] Greetings =
+        {
+            "поздравляю!",
+            "соболезную!"
+        };
+
+        private static readonly string[] RotatingHeads =
+        {
+            "<:slyrHead:779359060225949757>",
+            "<:slyr2head:779363223467458571>",
+            "<:slyrGdetvoyasamoironiya:800698140021358612>"
+        };
+
+        public static IReadOnlyList<Embed> Frames() => RotatingHeads
+            .Select(head => EmbedHandler.Build(new EmbedSpec
+            {
+                Description = $"какой ты макс сегодня? 🎲 {head}",
+                Color = Color.Orange,
+                Footer = Footer
+            }))
+            .ToArray();
+
+        public static async Task<Embed> FinalAsync() => EmbedHandler.Build(new EmbedSpec
+        {
+            Description = $"сегодня ты 🎲 {await DataBase.GetRandomEmote()}\n{Greetings.RandomList()}",
+            Color = Color.Gold,
+            Footer = Footer
+        });
+
+        public static Embed Glory() => EmbedHandler.Build(new EmbedSpec
+        {
+            Title = "THE ONE AND ONLY SHEFFZ COMMAND🧑‍🍳",
+            Description = "**пососи пососи пососи пососи**",
+            Color = Color.Gold,
+            Footer = "внимание, команда сделана шефчиком!!",
+            FooterIconUrl = "https://sun9-11.userapi.com/impg/N2d0Y9MQMZDjMXJpaNU9D2lFiN18XqHUAfx1FQ/Zn5gTZTzx38.jpg?size=1600x1200&quality=95&sign=35fc9e6441da758ff4a7b00cd4a75dcb&type=album"
+        });
+    }
+
     public class SheffSlashModule : InteractionModuleBase<SocketInteractionContext>
     {
         [SlashCommand("шефчик", "узнай какой ты сегодня шефчик")]
@@ -14,123 +60,29 @@ namespace sblngavnav6.Commands
         {
             await DeferAsync();
 
-            IUserMessage message = null;
+            var message = await AnimateAsync(Context.Channel, SheffEmbeds.Frames(), SheffEmbeds.FrameDelay);
 
-            foreach (var rot in SheffCommands.rotatingNumbers)
-            {
-                var embedAnim = new EmbedBuilder()
-                    .WithColor(Color.Orange)
-                    .WithDescription($"какой ты макс сегодня? 🎲 {rot}")
-                    .WithFooter("sbln шефчик🧑‍🍳")
-                    .Build();
-
-                if (message == null)
-                {
-                    message = await Context.Channel.SendMessageAsync(embed: embedAnim);
-                }
-                else
-                {
-                    await message.ModifyAsync(x => x.Embed = embedAnim);
-                }
-
-                await Task.Delay(TimeSpan.FromSeconds(2.5));
-            }
-
-            int greetings = CommonUtils.RandomNumber(0, 2);
-
-            var finalEmbed = new EmbedBuilder()
-                .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты 🎲 {await DataBase.GetRandomEmote()}\n{SheffCommands.greetList[greetings]}")
-                .WithFooter("sbln шефчик🧑‍🍳")
-                .Build();
-
-            await message.ModifyAsync(msg => msg.Embed = finalEmbed);
+            await AnimateAsync(Context.Channel, [await SheffEmbeds.FinalAsync()], SheffEmbeds.FrameDelay, message);
             await FollowupAsync("готово 😎");
         }
 
         [SlashCommand("пососи", "невероятный блесс разработанный эксклюзивно шефом")]
-        public async Task BossesGloryCommand()
-        {
-            var EmbedBuilder = new EmbedBuilder()
-                .WithTitle("THE ONE AND ONLY SHEFFZ COMMAND <:slyrRadost:845217466765279263>")
-                .WithDescription("**пососи пососи пососи пососи**")
-                .WithFooter(footer =>
-                {
-                    footer
-                    .WithIconUrl("https://sun9-11.userapi.com/impg/N2d0Y9MQMZDjMXJpaNU9D2lFiN18XqHUAfx1FQ/Zn5gTZTzx38.jpg?size=1600x1200&quality=95&sign=35fc9e6441da758ff4a7b00cd4a75dcb&type=album")
-                    .WithText($"внимание, команда сделана шефчиком!!");
-                });
-            Embed embed = EmbedBuilder.Build();
-            await RespondAsync(embed: embed);
-        }
+        public Task SheffCommand() => RespondAsync(embed: SheffEmbeds.Glory());
     }
+
     public class SheffCommands : ModuleBase<SocketCommandContext>
     {
-        internal static readonly string[] greetList =
-        {
-            "поздравляю!",
-            "соболезную!"
-        };
-
-        internal static readonly string[] rotatingNumbers =
-        {
-            "<:slyrHead:779359060225949757>",
-            "<:slyr2head:779363223467458571>",
-            "<:slyrGdetvoyasamoironiya:800698140021358612>"
-        };
-
         [Frontier]
         [Command("пососи")]
-        public async Task BossesGloryCommand()
-        {
-            var EmbedBuilder = new EmbedBuilder()
-                .WithTitle("THE ONE AND ONLY SHEFFZ COMMAND <:slyrRadost:845217466765279263>")
-                .WithDescription("**пососи пососи пососи пососи**")
-                .WithFooter(footer =>
-                {
-                    footer
-                    .WithIconUrl("https://sun9-11.userapi.com/impg/N2d0Y9MQMZDjMXJpaNU9D2lFiN18XqHUAfx1FQ/Zn5gTZTzx38.jpg?size=1600x1200&quality=95&sign=35fc9e6441da758ff4a7b00cd4a75dcb&type=album")
-                    .WithText($"внимание, команда сделана шефчиком!!");
-                });
-            Embed embed = EmbedBuilder.Build();
-            await ReplyAsync(embed: embed);
-        }
+        public Task SheffCommand() => ReplyAsync(embed: SheffEmbeds.Glory());
 
         [FrontierAsImage]
-        [Command("маг7")]
+        [Command("маг7", RunMode = Discord.Commands.RunMode.Async)]
         public async Task SheffMag7()
         {
-            IUserMessage message = null;
+            var message = await AnimateAsync(Context.Channel, SheffEmbeds.Frames(), SheffEmbeds.FrameDelay);
 
-            foreach (var rot in rotatingNumbers)
-            {
-                var embedAnim = new EmbedBuilder()
-                    .WithColor(Color.Orange)
-                    .WithDescription($"какой ты макс сегодня? 🎲 {rot}")
-                    .WithFooter("sbln шефчик🧑‍🍳")
-                    .Build();
-
-                if (message == null)
-                {
-                    message = await ReplyAsync(embed: embedAnim);
-                    await Task.Delay(TimeSpan.FromSeconds(2.5));
-                }
-                else
-                {
-                    await message.ModifyAsync(x => x.Embed = embedAnim);
-                    await Task.Delay(TimeSpan.FromSeconds(2.5));
-                }
-            }
-
-            int greetings = CommonUtils.RandomNumber(0, 2);
-
-            var finalEmbed = new EmbedBuilder()
-                .WithColor(Color.Gold)
-                .WithDescription($"сегодня ты 🎲 {await DataBase.GetRandomEmote()}\n{greetList[greetings]}")
-                .WithFooter("sbln шефчик🧑‍🍳")
-                .Build();
-
-            await message.ModifyAsync(msg => msg.Embed = finalEmbed);
+            await AnimateAsync(Context.Channel, [await SheffEmbeds.FinalAsync()], SheffEmbeds.FrameDelay, message);
         }
     }
 }

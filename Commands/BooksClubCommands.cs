@@ -1,10 +1,10 @@
 ﻿using Discord;
 using sblngavnav6.Common;
 using Discord.Commands;
-using Discord.WebSocket;
 using System.Text.Json.Nodes;
 using sblngavnav6.Core;
 using sblngavnav6.Data;
+using static sblngavnav6.Data.DataRoots;
 using sblngavnav6.Services;
 using static sblngavnav6.Common.CommonUtils.Text;
 using DiscordTelegramFrontier;
@@ -13,6 +13,9 @@ namespace sblngavnav6.Commands
 {
     public class BooksClubCommands : ModuleBase<SocketCommandContext>
     {
+        private const string Logo = "<:KKLOGO:1352283192014409869>";
+        private const string Footer = "knizhniy klub📖";
+
         private readonly HttpClient _http;
         private readonly PaginatorService _pager;
 
@@ -22,315 +25,280 @@ namespace sblngavnav6.Commands
             _pager = pager;
         }
 
+        [Frontier]
         [Command("книга")]
         public async Task FindBookAsync([Remainder] string title)
         {
-            string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru&key={Global.Vars.Cfg.gBooksApi}";
+            var info = await FetchVolumeAsync(title, withKey: true);
 
-            HttpResponseMessage response = await _http.GetAsync(url);
-
-            if (!response.IsSuccessStatusCode)
+            if (info is null)
             {
-                await ReplyAsync("❌ Ошибка при поиске книги");
+                await FailAsync("книга не найдена или гугл недоступен");
                 return;
             }
 
-            string jsonResponse = await response.Content.ReadAsStringAsync();
-            JsonNode json = JsonNode.Parse(jsonResponse);
-
-            var firstBook = json?["items"]?[0]?["volumeInfo"];
-            if (firstBook == null)
+            await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
-                await ReplyAsync("❌ Книга не найдена");
-                return;
-            }
-
-            string bookTitle = firstBook["title"]?.ToString() ?? "Неизвестно";
-            string authors = firstBook["authors"] != null ? string.Join(", ", firstBook["authors"].AsArray()) : "Автор неизвестен";
-            string publishedDate = firstBook["publishedDate"]?.ToString() ?? "Неизвестно";
-            string pageCount = firstBook["pageCount"]?.ToString() ?? "Не указано";
-            string rating = firstBook["averageRating"]?.ToString() ?? "Нет оценок";
-            string ratingCount = firstBook["ratingsCount"]?.ToString() ?? "0";
-            string bookUrl = firstBook["infoLink"]?.ToString() ?? "Нет ссылки";
-
-            string description = Truncate(firstBook["description"]?.ToString() ?? "Нет описания", 200);
-
-            string imageUrl = firstBook["imageLinks"]?["thumbnail"]?.ToString() ?? "";
-
-            var embed = new EmbedBuilder()
-                .WithTitle($"<:KKLOGO:1352283192014409869> {bookTitle}")
-                .WithDescription($"✍️ **Автор(ы):** {authors}\n📅 **Год издания:** {publishedDate}\n📄 **Страниц:** {pageCount}" +
-                $"\n🖼️ **Описание:** {description}")
-                .AddField("🔗 Подробнее", $"[Gbooks]({bookUrl})", true)
-                .WithColor(Color.Purple)
-                .WithFooter("knizhniy klub📖");
-
-            if (!string.IsNullOrEmpty(imageUrl))
-                embed.WithThumbnailUrl(imageUrl);
-
-            await ReplyAsync(embed: embed.Build());
+                Title = $"{Logo} {Text(info, "title", "Неизвестно")}",
+                Description =
+                    $"✍️ **Автор(ы):** {Authors(info)}\n" +
+                    $"📅 **Год издания:** {Text(info, "publishedDate", "Неизвестно")}\n" +
+                    $"📄 **Страниц:** {Text(info, "pageCount", "Не указано")}\n" +
+                    $"🖼️ **Описание:** {Truncate(Text(info, "description", "Нет описания"), 200)}",
+                ThumbnailUrl = Thumbnail(info),
+                Color = Color.Purple,
+                Fields = [new EmbedFieldSpec("🔗 Подробнее", $"[Gbooks]({Text(info, "infoLink", "https://books.google.com")})", true)],
+                Footer = Footer
+            }));
         }
 
         [Command("выбор книги")]
         public async Task SelectBook([Remainder] string input = "")
         {
-            string trimmedInput = input?.Trim().ToLower() ?? "";
+            var trimmed = input?.Trim() ?? string.Empty;
 
-            if (trimmedInput == "отмена")
+            if (trimmed.Equals("отмена", StringComparison.OrdinalIgnoreCase))
             {
                 if ((await DataBase.GetLastBook()).id == 0)
                 {
-                    await ReplyAsync("❌ Нечего отменять — книга не выбрана");
+                    await FailAsync("нечего отменять, книга не выбрана");
                     return;
                 }
 
                 await DataBase.RemoveLastBook();
-                await ReplyAsync("✅ Последняя выбранная книга отменена");
+                await ReplyAsync(embed: Simple("✅ Последняя выбранная книга отменена", Color.Purple));
                 return;
             }
 
-            if (!await DataBase.CanSelectNewBook() || string.IsNullOrWhiteSpace(trimmedInput))
+            if (!await DataBase.CanSelectNewBook() || string.IsNullOrWhiteSpace(trimmed))
             {
-                var book = await DataBase.GetLastBook();
-                var embed = new EmbedBuilder()
-                    .WithTitle("<:KKLOGO:1352283192014409869> Книга недели уже выбрана")
-                    .WithDescription($"**{book.title}**\n✍️ Автор(ы): {book.authors}\n📅 {book.selectedDate:yyyy-MM-dd}\n👤 {book.suggestedBy}")
-                    .WithThumbnailUrl(book.image)
-                    .WithColor(Color.DarkPurple)
-                    .WithFooter("knizhniy klub📖");
-                await ReplyAsync(embed: embed.Build());
+                var current = await DataBase.GetLastBook();
+
+                await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+                {
+                    Title = $"{Logo} Книга недели уже выбрана",
+                    Description =
+                        $"**{current.title}**\n" +
+                        $"✍️ Автор(ы): {current.authors}\n" +
+                        $"📅 {current.selectedDate:yyyy-MM-dd}\n" +
+                        $"👤 {current.suggestedBy}",
+                    ThumbnailUrl = current.image,
+                    Color = Color.DarkPurple,
+                    Footer = Footer
+                }));
                 return;
             }
 
-            string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(input)}&langRestrict=ru";
+            var info = await FetchVolumeAsync(trimmed, withKey: false);
 
-            var response = await _http.GetAsync(url);
-            if (!response.IsSuccessStatusCode)
+            if (info is null)
             {
-                await ReplyAsync("❌ Ошибка при поиске книги");
+                await FailAsync("книга не найдена или гугл недоступен");
                 return;
             }
 
-            string json = await response.Content.ReadAsStringAsync();
-            var root = JsonNode.Parse(json);
-            var info = root?["items"]?[0]?["volumeInfo"];
-
-            if (info == null)
-            {
-                await ReplyAsync("❌ Книга не найдена");
-                return;
-            }
-
-            string title = info["title"]?.ToString() ?? "Неизвестно";
-            string authors = info["authors"] != null ? string.Join(", ", info["authors"].AsArray()) : "Автор неизвестен";
-            string image = info["imageLinks"]?["thumbnail"]?.ToString() ?? "";
+            var title = Text(info, "title", "Неизвестно");
+            var authors = Authors(info);
+            var image = Thumbnail(info);
 
             await DataBase.AddBook(title, authors, image, Context.User.Username);
 
-            var embedNew = new EmbedBuilder()
-                .WithTitle("<:KKLOGO:1352283192014409869> Книга недели выбрана!")
-                .WithDescription($"**{title}**\n✍️ {authors}\n📅 {DateTime.UtcNow:yyyy-MM-dd}\n👤 Выбрал: {Context.User.Username}")
-                .WithThumbnailUrl(image)
-                .WithColor(Color.Purple)
-                .WithFooter("knizhniy klub📖");
-            await ReplyAsync(embed: embedNew.Build());
+            await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                Title = $"{Logo} Книга недели выбрана!",
+                Description = $"**{title}**\n✍️ {authors}\n📅 {DateTime.UtcNow:yyyy-MM-dd}\n👤 Выбрал: {Context.User.Username}",
+                ThumbnailUrl = image,
+                Color = Color.Purple,
+                Footer = Footer
+            }));
         }
 
         [Command("оценить")]
         public async Task Rate([Remainder] string input)
         {
-            var parts = input.Split(' ');
+            var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
             if (parts.Length != 5)
             {
-                await ReplyAsync("❌ Введите 5 чисел, например: `х оценить 8 7 9 10 9`");
+                await FailAsync("нужно 5 чисел, например: `х оценить 8 7 9 10 9`");
                 return;
             }
 
             if (!DataBase.TryParseScores(parts, out var scores))
             {
-                await ReplyAsync("❌ Оценки должны быть числами от 1 до 10");
+                await FailAsync("оценки должны быть числами от 1 до 10");
                 return;
             }
 
             var book = await DataBase.GetLastBook();
 
-            if (await DataBase.UserHasRated(Context.User.Id.ToString(), book.id))
+            if (book.id == 0)
             {
-                await ReplyAsync("⚠️ Эта книга уже получала оценку");
+                await FailAsync("книга недели не выбрана, оценивать нечего");
                 return;
             }
 
-            double baseScore = (scores[0] + scores[1] + scores[2] + scores[3]) * 1.4;
-            double multiplier = 1 + (scores[4] - 1) * 0.06747;
-            double finalScore = Math.Round(baseScore * multiplier, 0);
+            if (await DataBase.UserHasRated(Context.User.Id.ToString(), book.id))
+            {
+                await FailAsync("эта книга уже получала твою оценку");
+                return;
+            }
 
-            string scoreEmoji = CommonUtils.GetScoreEmoji(finalScore);
+            var finalScore = Math.Round((scores[0] + scores[1] + scores[2] + scores[3]) * 1.4 * Multiplier(scores[4]), 0);
+
             await DataBase.SaveRating(Context.User.Id.ToString(), book.id, scores, finalScore);
             TriggerBooksExport();
 
-            var embed = new EmbedBuilder()
-                .WithTitle($"<:KKLOGO:1352283192014409869> {book.title}")
-                .WithDescription($"✍️ **Автор(ы):** {book.authors}")
-                .AddField("📢 Оценка пользователя", $"{Context.User.Username}", false)
-                .AddField("📜 Сюжет/драматургия", $"{scores[0]}", true)
-                .AddField("🖊️ Стиль/язык", $"{scores[1]}", true)
-                .AddField("👥 Герои/характеры", $"{scores[2]}", true)
-                .AddField("💡 Оригинальность/влияние", $"{scores[3]}", true)
-                .AddField("🌌 Вайб", $"{scores[4]}", true)
-                .AddField("⭐ Итоговый балл", $"{finalScore} // {scoreEmoji}", false)
-                .WithColor(Color.Purple)
-                .WithFooter("knizhniy klub📖");
-
-            await ReplyAsync(embed: embed.Build());
+            await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                Title = $"{Logo} {book.title}",
+                Description = $"✍️ **Автор(ы):** {book.authors}",
+                Color = Color.Purple,
+                Fields =
+                [
+                    new EmbedFieldSpec("📢 Оценка пользователя", Context.User.Username),
+                    new EmbedFieldSpec("📜 Сюжет/драматургия", scores[0].ToString(), true),
+                    new EmbedFieldSpec("🖊️ Стиль/язык", scores[1].ToString(), true),
+                    new EmbedFieldSpec("👥 Герои/характеры", scores[2].ToString(), true),
+                    new EmbedFieldSpec("💡 Оригинальность/влияние", scores[3].ToString(), true),
+                    new EmbedFieldSpec("🌌 Вайб", scores[4].ToString(), true),
+                    new EmbedFieldSpec("⭐ Итоговый балл", $"{finalScore} // {CommonUtils.GetScoreEmoji(finalScore)}")
+                ],
+                Footer = Footer
+            }));
         }
 
         [Command("клуб")]
-        public async Task ClubInfoAsync()
+        public Task ClubInfoAsync() => ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            var embed = new EmbedBuilder()
-                .WithTitle("<:KKLOGO:1352283192014409869> Добро пожаловать в KNIZHNIY KLUB!")
-                .WithDescription(
-                    "В нашем клубе мы читаем, обсуждаем и оцениваем книги по специальной <:KK90:1352292878252249191> балльной системе. " +
-                    "На про4тение дается одна неделя, книга должна быть не более 400-500 страниц. Дефолтный день сбора клуба - **четверг**\n\n" +
-                    "<:KKLOGO2:1352293663031558186> **Как оценивать книги?**\n" +
-                    "Используется четыре базовых критерия (по 10 баллов) + множитель **вайба**\n" +
-                    "Финальная оценка рассчитывается по специальной формуле"
-                )
-                .AddField("📖 1. Сюжет/драматургия", "Насколько интересна история, логичность развития событий, глубина конфликта", false)
-                .AddField("🖊️ 2. Стиль/язык", "Выразительность, богатство, ритм повествования и грамотность текста", false)
-                .AddField("👥 3. Герои/характеры", "Насколько персонажи глубоки, проработаны, их мотивация реалистична", false)
-                .AddField("💡 4. Оригинальность/влияние", "Влияет ли книга на жанр, есть ли новизна и авторский стиль", false)
-                .AddField("🌌 5. Вайб", "Передаёт ли книга эмоции? Насколько она захватывает?", false)
-                .AddField("📊 **Формула расчёта**",
+            Title = $"{Logo} Добро пожаловать в KNIZHNIY KLUB!",
+            Description =
+                "В нашем клубе мы читаем, обсуждаем и оцениваем книги по специальной <:KK90:1352292878252249191> балльной системе. " +
+                "На про4тение дается одна неделя, книга должна быть не более 400-500 страниц. Дефолтный день сбора клуба - **четверг**\n\n" +
+                "<:KKLOGO2:1352293663031558186> **Как оценивать книги?**\n" +
+                "Используется четыре базовых критерия (по 10 баллов) + множитель **вайба**\n" +
+                "Финальная оценка рассчитывается по специальной формуле",
+            Color = Color.Gold,
+            Fields =
+            [
+                new EmbedFieldSpec("📖 1. Сюжет/драматургия", "Насколько интересна история, логичность развития событий, глубина конфликта"),
+                new EmbedFieldSpec("🖊️ 2. Стиль/язык", "Выразительность, богатство, ритм повествования и грамотность текста"),
+                new EmbedFieldSpec("👥 3. Герои/характеры", "Насколько персонажи глубоки, проработаны, их мотивация реалистична"),
+                new EmbedFieldSpec("💡 4. Оригинальность/влияние", "Влияет ли книга на жанр, есть ли новизна и авторский стиль"),
+                new EmbedFieldSpec("🌌 5. Вайб", "Передаёт ли книга эмоции? Насколько она захватывает?"),
+                new EmbedFieldSpec("📊 **Формула расчёта**",
                     "<:KK30:1352292869179965544> (Сюжет + Стиль + Герои + Оригинальность) × 1.4\n" +
                     "<:KK60:1352292871260344400> Умножаем на множитель **вайба** (от 1.00 до 1.6072)\n" +
-                    "<:KK90:1352292878252249191> является максимально возможной оценкой", false)
-                .AddField("🌡️ **Как работает индекс душноты**",
+                    "<:KK90:1352292878252249191> является максимально возможной оценкой"),
+                new EmbedFieldSpec("🌡️ **Как работает индекс душноты**",
                     "1️⃣ Берётся разница между средним по книге и вашей оценкой (только если вы ниже среднего)\n" +
-                    "2️⃣ Для чужих пиков  книг разница умножается на 2\n" +
-                    "3️⃣ Усреднённая полученная величина нормируется на 56 (фундаментальные оценки без множителя) и переводится в %", false)
-                .AddField("📚 **Доступные команды**",
+                    "2️⃣ Для чужих пиков книг разница умножается на 2\n" +
+                    "3️⃣ Усреднённая полученная величина нормируется на 56 (фундаментальные оценки без множителя) и переводится в %"),
+                new EmbedFieldSpec("📚 **Доступные команды**",
                     "**х книга (название)** — ищет книгу по названию\n" +
                     "**х выбор книги (название)** — установка книги недели (или `отмена` для отмены)\n" +
-                    "**х оценить 8 9 7 10 9 ** — оценить выбранную книгу по критериям\n" +
+                    "**х оценить 8 9 7 10 9** — оценить выбранную книгу по критериям\n" +
                     "**х рейтинг** — показать текущий рейтинг клуба\n" +
-                    "**х членыклуба** — статистика по средним оценкам и индексу душноты", false)
-                .WithColor(Color.Gold)
-                .WithFooter("knizhniy klub📖");
-
-            await ReplyAsync(embed: embed.Build());
-        }
-
+                    "**х членыклуба** — статистика по средним оценкам и индексу душноты\n" +
+                    "**х книжныйэкспорт** — пересобрать books_data.json")
+            ],
+            Footer = Footer
+        }));
 
         [Command("членыклуба")]
         public async Task ClubMembersAsync()
         {
             var all = await DataBase.GetAllRatings();
-            var owners = await DataBase.GetBookSuggesters();
-            if (!all.Any())
+
+            if (all.Count == 0)
             {
-                await ReplyAsync("❌ Пока нет ни одной оценки.");
+                await FailAsync("пока нет ни одной оценки");
                 return;
             }
 
-            var avgNormByBook = all
-                .GroupBy(r => r.BookId)
-                .ToDictionary(
-                    g => g.Key,
-                    g => g.Average(r =>
-                    {
-                        double vm = 1 + (r.Scores[4] - 1) * 0.06747;
-                        return r.FinalScore / vm;
-                    })
-                );
+            var owners = await DataBase.GetBookSuggesters();
 
-            const double MaxBase = (10 + 10 + 10 + 10) * 1.4;
+            var bookAverages = all
+                .GroupBy(rating => rating.BookId)
+                .ToDictionary(group => group.Key, group => group.Average(rating => Normalized(rating.FinalScore, rating.Scores[4])));
 
             var stats = all
-                .GroupBy(r => r.UserId)
-                .Select(g =>
-                {
-                    string userId = g.Key;
-                    var list = g.ToList();
-
-                    double avgPlot = list.Average(x => x.Scores[0]);
-                    double avgStyle = list.Average(x => x.Scores[1]);
-                    double avgChars = list.Average(x => x.Scores[2]);
-                    double avgOrig = list.Average(x => x.Scores[3]);
-                    double avgVibe = list.Average(x => x.Scores[4]);
-                    double avgTotal = (avgPlot + avgStyle + avgChars + avgOrig + avgVibe) / 5.0;
-
-                    var diffs = list.Select(r =>
-                    {
-                        double norm = r.FinalScore / (1 + (r.Scores[4] - 1) * 0.06747);
-                        double bookAvg = avgNormByBook[r.BookId];
-                        double diff = bookAvg - norm;
-                        if (diff <= 0) return 0.0;
-
-                        owners.TryGetValue(r.BookId, out var owner);
-                        bool other = owner != null && owner != Context.Guild.GetUser(ulong.Parse(userId))?.Username;
-                        return diff * (other ? 2.0 : 1.0);
-                    })
-                    .Where(d => d > 0)
-                    .ToList();
-
-                    double avgDiff = diffs.Any() ? diffs.Average() : 0.0;
-                    double basePct = Math.Min(100.0, Math.Round(avgDiff / MaxBase * 100.0));
-
-                    double vibeFactor = 1.0 - avgVibe / 10.0;
-                    double finalPct = Math.Round(basePct * vibeFactor);
-                    if (finalPct < 0) finalPct = 0;
-
-                    string name = Context.Guild.GetUser(ulong.Parse(userId))?.Username
-                                  ?? $"<@{userId}>";
-
-                    return new
-                    {
-                        Name = name,
-                        AvgPlot = avgPlot,
-                        AvgStyle = avgStyle,
-                        AvgChars = avgChars,
-                        AvgOrig = avgOrig,
-                        AvgVibe = avgVibe,
-                        AvgTotal = avgTotal,
-                        DushPct = finalPct
-                    };
-                })
-                .OrderByDescending(u => u.DushPct)
+                .GroupBy(rating => rating.UserId)
+                .Select(group => BuildMemberStats(group.Key, group.ToList(), bookAverages, owners))
+                .OrderByDescending(member => member.Stuffiness)
                 .ToList();
 
-            var embed = new EmbedBuilder()
-                .WithTitle("<:KKLOGO:1352283192014409869> Члены клуба и их показатели")
-                .WithColor(Color.DarkPurple)
-                .WithFooter("knizhniy клуб📖");
+            var pages = stats
+                .Chunk(6)
+                .Select(chunk => EmbedHandler.Build(new EmbedSpec
+                {
+                    Title = $"{Logo} Члены клуба и их показатели",
+                    Color = Color.DarkPurple,
+                    Fields = chunk.Select(member => new EmbedFieldSpec($"Mr. {member.Name}",
+                        "📊 **Средние по критериям:**\n" +
+                        $"Сюжет: **{member.Plot:F1}**  Стиль: **{member.Style:F1}**\n" +
+                        $"Герои: **{member.Characters:F1}**  Оригинальность: **{member.Originality:F1}**\n" +
+                        $"Вайб: **{member.Vibe:F1}**\n" +
+                        $"⭐ Общий средний: **{member.Total:F1}**\n" +
+                        $"🥵 **Индекс душноты:** **{member.Stuffiness:F0}%**")).ToArray(),
+                    Footer = Footer
+                }))
+                .ToList();
 
-            foreach (var u in stats)
-            {
-                embed.AddField(
-                    "Mr. " + u.Name,
-                    $"📊 **Средние по критериям:**\n" +
-                    $"Сюжет: **{u.AvgPlot:F1}**  Стиль: **{u.AvgStyle:F1}**\n" +
-                    $"Герои: **{u.AvgChars:F1}**  Оригинальность: **{u.AvgOrig:F1}**\n" +
-                    $"Вайб: **{u.AvgVibe:F1}**\n" +
-                    $"⭐ Общий средний: **{u.AvgTotal:F1}**\n" +
-                    $"🥵 **Индекс душноты:** **{u.DushPct:F0}%**",
-                    inline: false
-                );
-            }
-
-            await ReplyAsync(embed: embed.Build());
+            await _pager.SendAsync(Context.Channel, pages);
         }
 
-        private void TriggerBooksExport()
+        [Command("рейтинг")]
+        public async Task ShowSeasonRatingAsync(int? season = null)
         {
-            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath)) return;
-            var userNames = Context.Guild.Users
-                .ToDictionary(u => u.Id.ToString(), u => u.Username);
-            Task.Run(async () =>
+            var max = await DataBase.GetMaxSeason();
+            var seasons = Enumerable.Range(1, Math.Max(1, max) + 1).ToList();
+
+            var pages = new List<Embed>();
+            var starts = new Dictionary<int, int>();
+
+            foreach (var number in seasons)
             {
-                try { await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames); }
-                catch (Exception ex) { _ = LoggingService.LogWarningAsync("BOOKS", $"JSON export fail: {ex.Message}"); }
-            });
+                starts[number] = pages.Count;
+                pages.AddRange(await BuildSeasonPages(number, max));
+            }
+
+            var start = season.HasValue && starts.TryGetValue(season.Value, out var index) ? index : starts[Math.Max(1, max)];
+
+            await _pager.SendAsync(Context.Channel, pages, startPage: start);
+        }
+
+        private static async Task<List<Embed>> BuildSeasonPages(int season, int maxSeason)
+        {
+            var books = await DataBase.GetBooksWithRatings(season);
+
+            if (books is not { Count: > 0 })
+            {
+                return
+                [
+                    EmbedHandler.Build(new EmbedSpec
+                    {
+                        Title = $"{Logo} Рейтинг клуба SZN#{season}",
+                        Description = season > maxSeason ? "📭COMING SOON!" : "тут пока пусто",
+                        Color = Color.Gold,
+                        Footer = Footer
+                    })
+                ];
+            }
+
+            return books
+                .Chunk(10)
+                .Select(chunk => EmbedHandler.Build(new EmbedSpec
+                {
+                    Title = $"{Logo} Рейтинг клуба SZN#{season}",
+                    Description = "[📊 Полный рейтинг на сайте](https://lois.media/sbln/books)",
+                    Color = Color.Gold,
+                    Fields = chunk.Select(book => new EmbedFieldSpec(
+                        $"📖 {book.Title} ({book.Authors})",
+                        $"👤 {book.SuggestedBy}\n⭐ Средняя оценка: {book.AvgScore:F1} // {CommonUtils.GetScoreEmoji(book.AvgScore)} ({book.Votes} голосов)")).ToArray(),
+                    Footer = Footer
+                }))
+                .ToList();
         }
 
         [Command("книжныйэкспорт")]
@@ -338,80 +306,128 @@ namespace sblngavnav6.Commands
         {
             if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath))
             {
-                await ReplyAsync("❌ `booksJsonPath` не задан в Utils");
+                await FailAsync("`Books:BooksJsonPath` не задан в конфиге");
                 return;
             }
+
             try
             {
-                var userNames = Context.Guild.Users
-                    .ToDictionary(u => u.Id.ToString(), u => u.Username);
-                await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames);
-                await ReplyAsync("✅ `books_data.json` обновлён");
+                await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, UserNames());
+                await ReplyAsync(embed: Simple("✅ `books_data.json` обновлён", Color.Green));
             }
-            catch (Exception ex)
+            catch (Exception ex) when (CommonUtils.IsIoFailure(ex))
             {
-                await ReplyAsync($"❌ Ошибка экспорта: {ex.Message}");
+                await FailAsync($"экспорт не удался: {ex.Message}");
             }
         }
 
-        [Frontier]
-        [Command("рейтинг")]
-        public async Task ShowSeasonRatingAsync(int? season = null)
+        private ClubMemberStats BuildMemberStats(
+            string userId,
+            List<DataRoots.RatingEntry> ratings,
+            Dictionary<int, double> bookAverages,
+            IReadOnlyDictionary<int, string> owners)
         {
-            var pages = await BuildSeasonEmbeds();
-            if (pages.Count == 0)
-                pages = new() { new EmbedBuilder().WithTitle("---").WithColor(Color.DarkGrey).Build() };
+            var name = Context.Guild.GetUser(ulong.Parse(userId))?.Username;
 
-            int start = season.HasValue && season.Value >= 1
-                ? Math.Clamp(season.Value - 1, 0, pages.Count - 1)
-                : 0;
+            var differences = ratings
+                .Select(rating =>
+                {
+                    var diff = bookAverages[rating.BookId] - Normalized(rating.FinalScore, rating.Scores[4]);
 
-            await _pager.SendAsync(Context.Channel, pages, startPage: start);
+                    if (diff <= 0)
+                        return 0.0;
+
+                    owners.TryGetValue(rating.BookId, out var owner);
+
+                    return diff * (owner is not null && owner != name ? 2.0 : 1.0);
+                })
+                .Where(diff => diff > 0)
+                .ToList();
+
+            var vibe = ratings.Average(rating => rating.Scores[4]);
+            var basePercent = differences.Count > 0
+                ? Math.Min(100.0, Math.Round(differences.Average() / (40 * 1.4) * 100.0))
+                : 0.0;
+
+            return new ClubMemberStats(
+                name ?? $"<@{userId}>",
+                ratings.Average(rating => rating.Scores[0]),
+                ratings.Average(rating => rating.Scores[1]),
+                ratings.Average(rating => rating.Scores[2]),
+                ratings.Average(rating => rating.Scores[3]),
+                vibe,
+                ratings.Average(rating => rating.Scores.Take(5).Average()),
+                Math.Max(0, Math.Round(basePercent * (1.0 - vibe / 10.0))));
         }
 
-        private static async Task<List<Embed>> BuildSeasonEmbeds()
+        private void TriggerBooksExport()
         {
-            var list = new List<Embed>();
-            int max = await DataBase.GetMaxSeason();
-            var seasons = max >= 1 ? Enumerable.Range(1, max).ToList() : new List<int> { 1 };
-            int nextSeason = Math.Max(1, max) + 1;
+            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath))
+                return;
 
-            foreach (var s in seasons)
-                list.Add(await BuildSeasonEmbed(s, max));
-            list.Add(await BuildSeasonEmbed(nextSeason, max));
+            var userNames = UserNames();
 
-            int idx = list.FindIndex(e => e.Title?.EndsWith($"сезон {Math.Max(1, max)}") == true);
-            if (idx > 0) { var first = list[idx]; list.RemoveAt(idx); list.Insert(0, first); }
-
-            return list;
-        }
-
-        private static async Task<Embed> BuildSeasonEmbed(int season, int maxSeason)
-        {
-            var eb = new EmbedBuilder()
-                .WithTitle($"<:KKLOGO:1352283192014409869> Рейтинг клуба SZN#{season}")
-                .WithColor(Color.Gold)
-                .WithFooter("knizhniy klub📖");
-
-            var books = await DataBase.GetBooksWithRatings(season);
-            if (books == null || books.Count == 0)
+            _ = Task.Run(async () =>
             {
-                if (season > maxSeason && maxSeason >= 0)
-                    eb.WithDescription("📭COMING SOON!");
-                return eb.Build();
-            }
-
-            foreach (var b in books)
-            {
-                var emoji = CommonUtils.GetScoreEmoji(b.AvgScore);
-                eb.AddField(
-                    $"📖 {b.Title} ({b.Authors})",
-                    $"👤 {b.SuggestedBy}\n⭐ Средняя оценка: {b.AvgScore:F1} // {emoji} ({b.Votes} голосов)",
-                    inline: false);
-            }
-
-            eb.WithDescription("[📊 Полный рейтинг на сайте](https://lois.media/sbln/books)");
-            return eb.Build();
+                try { await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames); }
+                catch (Exception ex) { await LoggingService.LogWarningAsync("BOOKS", $"JSON export fail: {ex.Message}"); }
+            });
         }
+
+        private Dictionary<string, string> UserNames() =>
+            Context.Guild.Users.ToDictionary(user => user.Id.ToString(), user => user.Username);
+
+        private async Task<JsonNode> FetchVolumeAsync(string title, bool withKey)
+        {
+            var url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru";
+
+            if (withKey && !string.IsNullOrWhiteSpace(Global.Vars.Cfg.gBooksApi))
+                url += $"&key={Global.Vars.Cfg.gBooksApi}";
+
+            try
+            {
+                using var response = await _http.GetAsync(url);
+
+                if (!response.IsSuccessStatusCode)
+                    return null;
+
+                var json = JsonNode.Parse(await response.Content.ReadAsStringAsync());
+
+                return json?["items"]?[0]?["volumeInfo"];
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+            {
+                await LoggingService.LogWarningAsync("BOOKS", $"поиск книги не удался: {ex.Message}");
+                return null;
+            }
+        }
+
+        private static double Multiplier(int vibe) => 1 + (vibe - 1) * 0.06747;
+
+        private static double Normalized(double finalScore, int vibe) => finalScore / Multiplier(vibe);
+
+        private static string Text(JsonNode info, string field, string fallback)
+        {
+            var value = info[field]?.ToString();
+
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
+        }
+
+        private static string Authors(JsonNode info) =>
+            info["authors"] is JsonArray authors && authors.Count > 0
+                ? string.Join(", ", authors.Select(author => author?.ToString()))
+                : "Автор неизвестен";
+
+        private static string Thumbnail(JsonNode info) => info["imageLinks"]?["thumbnail"]?.ToString();
+
+        private static Embed Simple(string description, Color color) => EmbedHandler.Build(new EmbedSpec
+        {
+            Description = description,
+            Color = color,
+            Footer = Footer
+        });
+
+        private async Task FailAsync(string reason) =>
+            await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("книжный клуб", reason));
     }
 }

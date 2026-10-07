@@ -2,72 +2,61 @@
 using Discord.Commands;
 using sblngavnav6.Core;
 using sblngavnav6.Common;
+using DiscordTelegramFrontier;
+using static sblngavnav6.Common.CommonUtils.Chat;
 using System.Text;
 
 namespace sblngavnav6.Commands;
 
 public class GamesCommands : ModuleBase<SocketCommandContext>
 {
-    List<string> apexWeapons = new List<string>
+    private const int RaceLength = 50;
+    private static readonly string[] ApexWeapons =
+    [
+        "R-301", "Alternator", "Rampage + Molly", "Flatline", "C.A.R", "Hemlok", "Devotion",
+        "R-99", "Volt", "Bocek", "Prowler", "Spitfire", "L-STAR", "G7 Scout", "Triple Take",
+        "Sentinel", "Longbow", "EVA-8", "Mastiff", "Nemesis", "Peacekeeper", "Kraber",
+        "Wingman", "RE-45", "Mozambique x2", "P2020 x2"
+    ];
+
+    private static readonly string[] ApexUpgrades = ["Фулл обвес", "Прицел+маг", "Прицел", "Дефолт"];
+    private static readonly string[] ApexShields = ["Синий", "Фиолетовый", "Красный", "Золотой"];
+    private static readonly string[] ApexAbilities = ["Можно", "Нельзя"];
+
+    private static readonly Dictionary<int, string> MinefieldTiles = new()
     {
-            "R-301",
-            "Alternator",
-            "Rampage + Molly",
-            "Flatline",
-            "C.A.R",
-            "Hemlok",
-            "Devotion",
-            "R-99",
-            "Volt",
-            "Bocek",
-            "Prowler",
-            "Spitfire",
-            "L-STAR",
-            "G7 Scout",
-            "Triple Take",
-            "Sentinel",
-            "Longbow",
-            "EVA-8",
-            "Mastiff",
-            "Nemesis",
-            "Peacekeeper",
-            "Kraber",
-            "Wingman",
-            "RE-45",
-            "Mozambique x2",
-            "P2020 x2"
+        { -1, "💣" },
+        { 0, "<:slyr3head:779368192036306954>" },
+        { 1, "1️⃣" },
+        { 2, "2️⃣" },
+        { 3, "3️⃣" },
+        { 4, "4️⃣" },
+        { 5, "5️⃣" },
+        { 6, "6️⃣" },
+        { 7, "7️⃣" },
+        { 8, "8️⃣" }
     };
 
-    string GetString(string[] emojis, int[] progresses)
+    private static string Track(string[] racers, int[] progresses)
     {
-        string response = "";
+        var track = new StringBuilder();
 
-        for (int i = 0; i < emojis.Length; i++)
+        for (var i = 0; i < racers.Length; i++)
         {
-            response += new string('ㅤ', progresses[i]) +
-                emojis[i] +
-                new string('ㅤ', 50 - progresses[i]) +
-                "||\n";
+            track.Append(new string('ㅤ', progresses[i]))
+                 .Append(racers[i])
+                 .Append(new string('ㅤ', RaceLength - progresses[i]))
+                 .AppendLine("||");
         }
 
-        return response;
+        return track.ToString();
     }
 
-    IEnumerable<int> GetBitIndices(int number)
-    {
-        for (int i = 0; i < 32; i++)
-        {
-            if ((number & (1 << i)) != 0)
-            {
-                yield return i;
-            }
-        }
-    }
-    
+    [Frontier]
     [Command("гонка", RunMode = RunMode.Async)]
     public async Task Race([Remainder] string args)
     {
-        string[] parts = args.Split(' ');
+        var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
         if (parts.Length < 2)
         {
@@ -75,236 +64,130 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
             return;
         }
 
-        Random random = Random.Shared;
+        var racers = parts.Take(5).ToArray();
+        var progresses = new int[racers.Length];
+        var strengths = new int[racers.Length];
 
-        string[] emojis = new string[Math.Min(5, parts.Length)];
-        int[] progresses = new int[emojis.Length];
-        int[] strengths = new int[emojis.Length];
+        for (var i = 0; i < racers.Length; i++)
+            strengths[i] = Random.Shared.Next(5, 8);
 
-        for (int i = 0; i < emojis.Length; i++)
+        var message = await ReplyAsync("на старт...");
+
+        foreach (var phase in new[] { "внимание...", "ПОГНАЛИ!" })
         {
-            emojis[i] = parts[i];
-            strengths[i] = random.Next(5, 8);
+            await Task.Delay(TimeSpan.FromMilliseconds(500));
+            await message.ModifyAsync(properties => properties.Content = phase);
         }
 
-        IUserMessage message = await ReplyAsync("на старт...");
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
 
-        await Task.Delay(500);
+        var finished = new List<int>();
 
-        await message.ModifyAsync(properties =>
+        while (finished.Count == 0)
         {
-            properties.Content = "внимание...";
-        });
-
-        await Task.Delay(500);
-
-        await message.ModifyAsync(properties =>
-        {
-            properties.Content = "ПОГНАЛИ!";
-        });
-
-        await Task.Delay(500);
-
-        int winner = 0;
-        int winnerCount = 0;
-
-        bool isFirst = true;
-
-        while (winner == 0)
-        {
-            await message.ModifyAsync(properties =>
+            for (var i = 0; i < progresses.Length; i++)
             {
-                if (!isFirst)
-                {
-                    for (int i = 0; i < progresses.Length; i++)
-                    {
-                        progresses[i] += random.Next(1, strengths[i]);
+                progresses[i] = Math.Min(RaceLength, progresses[i] + Random.Shared.Next(1, strengths[i]));
 
-                        if (progresses[i] >= 50)
-                        {
-                            progresses[i] = 50;
-                            winner |= 1 << i;
+                if (progresses[i] >= RaceLength)
+                    finished.Add(i);
+            }
 
-                            winnerCount++;
-                        }
-                    }
-                }
+            var frame = Track(racers, progresses);
+            await message.ModifyAsync(properties => properties.Content = frame);
 
-                isFirst = false;
-
-                properties.Content = GetString(emojis, progresses);
-            });
-
-            await Task.Delay(1000);
+            if (finished.Count == 0)
+                await Task.Delay(TimeSpan.FromSeconds(1));
         }
 
-        await message.ModifyAsync(properties =>
-        {
-            if (winnerCount == 1)
-            {
-                properties.Content = "👑 Победитель " + emojis[GetBitIndices(winner).First()] + "!";
-            }
-            else
-            {
-                string winners = "";
+        var result = finished.Count == 1
+            ? $"👑 Победитель {racers[finished[0]]}!"
+            : $"🏁 Ничья между {string.Join(" и ", finished.Select(index => racers[index]))}";
 
-                foreach (int index in GetBitIndices(winner))
-                {
-                    if (winners.Length != 0)
-                    {
-                        winners += " и ";
-                    }
-
-                    winners += emojis[index];
-                }
-
-                properties.Content = "🏁 Ничья между " + winners;
-            }
-        });
+        await message.ModifyAsync(properties => properties.Content = result);
     }
-    Dictionary<int, string> minesweeperValues = new Dictionary<int, string>()
-    {
-        { -1 , "💣" },
-        {  0 , "<:slyr3head:779368192036306954>" },
-        {  1 , "1️⃣" },
-        {  2 , "2️⃣" },
-        {  3 , "3️⃣" },
-        {  4 , "4️⃣" },
-        {  5 , "5️⃣" },
-        {  6 , "6️⃣" },
-        {  7 , "7️⃣" },
-        {  8 , "8️⃣" },
-    };
 
+    [Frontier]
     [Command("сапер")]
-    public async Task Title(int size = 9, float ratio = 0.2f)
+    public async Task Minefield(int size = 9, float ratio = 0.2f)
     {
-        if (size > 9)
+        if (size is < 2 or > 9)
         {
-            await ReplyAsync("больше 9 низя!");
+            await ReplyAsync("размер от 2 до 9, иначе не влезет");
             return;
         }
 
-        int[,] data = new int[size + 2, size + 2];
-
-        Random random = Random.Shared;
-
-        for (int iy = 1; iy <= size; iy++)
+        if (ratio is < 0.05f or > 0.6f)
         {
-            for (int ix = 1; ix <= size; ix++)
-            {
-                if (random.NextDouble() < ratio)
-                {
-                    data[ix, iy] = -1;
-
-                    if (data[ix - 1, iy - 1] >= 0)
-                    {
-                        data[ix - 1, iy - 1]++;
-                    }
-
-                    if (data[ix, iy - 1] >= 0)
-                    {
-                        data[ix, iy - 1]++;
-                    }
-
-                    if (data[ix + 1, iy - 1] >= 0)
-                    {
-                        data[ix + 1, iy - 1]++;
-                    }
-
-                    if (data[ix - 1, iy] >= 0)
-                    {
-                        data[ix - 1, iy]++;
-                    }
-
-                    data[ix + 1, iy]++;
-                    data[ix - 1, iy + 1]++;
-                    data[ix, iy + 1]++;
-                    data[ix + 1, iy + 1]++;
-                }
-            }
+            await ReplyAsync("плотность мин от 0.05 до 0.6");
+            return;
         }
 
-        StringBuilder result = new StringBuilder();
+        var bombs = new bool[size, size];
 
-        for (int iy = 1; iy <= size; iy++)
+        for (var y = 0; y < size; y++)
+            for (var x = 0; x < size; x++)
+                bombs[x, y] = Random.Shared.NextDouble() < ratio;
+
+        var field = new StringBuilder();
+
+        for (var y = 0; y < size; y++)
         {
-            for (int ix = 1; ix <= size; ix++)
-            {
-                result.Append("||");
-                result.Append(minesweeperValues[data[ix, iy]]);
-                result.Append("||");
-            }
+            for (var x = 0; x < size; x++)
+                field.Append("||").Append(MinefieldTiles[bombs[x, y] ? -1 : CountNeighbours(bombs, size, x, y)]).Append("||");
 
-            result.AppendLine();
+            field.AppendLine();
         }
 
-        await ReplyAsync(result.ToString());
+        await ReplyAsync(field.ToString());
     }
 
+    private static int CountNeighbours(bool[,] bombs, int size, int x, int y)
+    {
+        var count = 0;
+
+        for (var dy = -1; dy <= 1; dy++)
+        {
+            for (var dx = -1; dx <= 1; dx++)
+            {
+                if (dx == 0 && dy == 0)
+                    continue;
+
+                var nx = x + dx;
+                var ny = y + dy;
+
+                if (nx >= 0 && nx < size && ny >= 0 && ny < size && bombs[nx, ny])
+                    count++;
+            }
+        }
+
+        return count;
+    }
+
+    [Frontier]
     [Command("сетарех")]
     [Alias("дуэль")]
     public async Task RandomApexSet(IUser opponent = null)
     {
-        var rand = Random.Shared;
-
-        var upgrades = new List<string>
+        var fields = new List<EmbedFieldSpec>
         {
-            "Фулл обвес",
-            "Прицел+маг",
-            "Прицел",
-            "Дефолт"
+            new("Первое оружие", $"{ApexWeapons.RandomList()} ({ApexUpgrades.RandomList()})"),
+            new("Второе оружие", $"{ApexWeapons.RandomList()} ({ApexUpgrades.RandomList()})"),
+            new("Щит", ApexShields.RandomList()),
+            new("Способности", ApexAbilities.RandomList())
         };
 
-        var shieldOptions = new List<string>
+        var duel = opponent is not null;
+
+        var message = await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            "Синий",
-            "Фиолетовый",
-            "Красный",
-            "Золотой"
-        };
+            Title = duel ? "1X1 APEX DUEL⚔️" : "APEX SET🗡",
+            Description = duel ? $"***{Context.User.Username} VS {opponent.Username}***" : null,
+            Color = duel ? Color.DarkRed : Color.DarkerGrey,
+            Fields = fields,
+            Footer = "sbln апекс🔫"
+        }));
 
-        var abilityOptions = new List<string>
-        {
-            "Можно",
-            "Нельзя"
-        };
-
-        var primaryWeapon = apexWeapons[rand.Next(apexWeapons.Count)];
-        var primaryUpgrade = upgrades[rand.Next(upgrades.Count)];
-        var secondaryWeapon = apexWeapons[rand.Next(apexWeapons.Count)];
-        var secondaryUpgrade = upgrades[rand.Next(upgrades.Count)];
-        var shieldChoice = shieldOptions[rand.Next(shieldOptions.Count)];
-        var abilitiesChoice = abilityOptions[rand.Next(abilityOptions.Count)];
-
-        Embed embed;
-
-        if (opponent != null)
-        {
-            embed = EmbedHandler.FieldsEmbed(string.Empty, Color.DarkRed, "sbln апекс🔫")
-                .WithTitle($"1X1 APEX DUEL⚔️")
-                .WithDescription($"***{Context.User.Username} VS {opponent.Username}***")
-                .AddField("Первое оружие", $"{primaryWeapon} ({primaryUpgrade})", false)
-                .AddField("Второе оружие", $"{secondaryWeapon} ({secondaryUpgrade})", false)
-                .AddField("Щит", shieldChoice, false)
-                .AddField("Способности", abilitiesChoice, false)
-                .Build();
-        }
-        else
-        {
-            embed = EmbedHandler.FieldsEmbed(string.Empty, Color.DarkerGrey, "sbln апекс🔫")
-                .WithTitle("APEX SET🗡")
-                .AddField("Первое оружие", $"{primaryWeapon} ({primaryUpgrade})", false)
-                .AddField("Второе оружие", $"{secondaryWeapon} ({secondaryUpgrade})", false)
-                .AddField("Щит", shieldChoice, false)
-                .AddField("Способности", abilitiesChoice, false)
-                .Build();
-        }
-        var message = await ReplyAsync(embed: embed);
-        var emote = Emote.Parse("<:slyrCinema:1347218953604435998>");
-        await message.AddReactionAsync(emote);
-
+        await ReactAsync(message, "<:slyrCinema:1347218953604435998>");
     }
-
 }
-

@@ -16,18 +16,22 @@ namespace sblngavnav6.Commands
             static string Role(ulong? id) => id is ulong r ? MentionUtils.MentionRole(r) : "`не задано`";
             static string Chan(ulong? id) => id is ulong c ? MentionUtils.MentionChannel(c) : "`не задано`";
 
-            return new EmbedBuilder()
-                .WithTitle($"⚙️ Настройки сервера — {guild.Name}")
-                .WithColor(Color.Teal)
-                .AddField("👑 Доступ", $"Superuser-роль: {Role(gs.SuperuserRoleId)}")
-                .AddField("👋 Welcome",
-                    $"Канал: {Chan(gs.WelcomeChannelId)}\n" +
-                    $"Роль: {Role(gs.WelcomeRoleId)}\n" +
-                    $"Текст: {(string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? "`по умолчанию`" : gs.WelcomeMessage)}")
-                .AddField("📺 Стримы",
-                    $"Канал уведомлений: {(gs.StreamNotifChannelId is ulong s ? MentionUtils.MentionChannel(s) : "`выключено`")}")
-                .WithFooter("sbln настройки")
-                .Build();
+            return EmbedHandler.Build(new EmbedSpec
+            {
+                Title = $"⚙️ Настройки сервера — {guild.Name}",
+                Color = Color.Teal,
+                Fields =
+                [
+                    new EmbedFieldSpec("👑 Доступ", $"Superuser-роль: {Role(gs.SuperuserRoleId)}"),
+                    new EmbedFieldSpec("👋 Welcome",
+                        $"Канал: {Chan(gs.WelcomeChannelId)}\n" +
+                        $"Роль: {Role(gs.WelcomeRoleId)}\n" +
+                        $"Текст: {(string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? "`по умолчанию`" : gs.WelcomeMessage)}"),
+                    new EmbedFieldSpec("📺 Стримы",
+                        $"Канал уведомлений: {(gs.StreamNotifChannelId is ulong s ? MentionUtils.MentionChannel(s) : "`выключено`")}")
+                ],
+                Footer = "sbln настройки"
+            });
         }
 
         public static MessageComponent Buttons()
@@ -158,8 +162,8 @@ namespace sblngavnav6.Commands
             }
         }
 
-        private Task FailAsync(string message)
-            => RespondAsync($"🔴 {message}", ephemeral: true);
+        private async Task FailAsync(string message)
+            => await RespondAsync(embed: await EmbedHandler.CreateErrorEmbed("настройки", message), ephemeral: true);
 
         private async Task ShowPanelAsync(string note)
             => await RespondAsync(
