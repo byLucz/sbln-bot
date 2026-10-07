@@ -27,6 +27,8 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
 
     private readonly HttpClient _http;
 
+    static ApiCommands() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
     public ApiCommands(IHttpClientFactory httpClientFactory)
     {
         _http = httpClientFactory.CreateClient();
