@@ -14,8 +14,11 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
     private static readonly TimeSpan PastaTtl = TimeSpan.FromMinutes(10);
     private static readonly SemaphoreSlim PastaGate = new(1, 1);
 
+    private const int PageSize = 100;
+
     private static List<PastaEntry> _pasta;
     private static DateTimeOffset _pastaLoadedAt;
+    private static ulong _pastaNewestId;
 
     [Frontier]
     [Command("ролл")]
@@ -92,7 +95,7 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
     [Command("паста")]
     public async Task RandomMessageAsync()
     {
-        var pasta = Context.Guild is null ? null : await LoadPastaAsync(Context.Guild.GetTextChannel(858713660352233473));
+        var pasta = await LoadPastaAsync(Context.Client.GetChannel(858713660352233473) as ITextChannel);
 
         if (pasta is not { Count: > 0 })
         {
@@ -127,32 +130,11 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
             if (_pasta is { Count: > 0 } && DateTimeOffset.UtcNow - _pastaLoadedAt < PastaTtl)
                 return _pasta;
 
-            const int pageSize = 100;
+            if (_pasta is { Count: > 0 })
+                await TopUpAsync(channel).ConfigureAwait(false);
+            else
+                await CrawlAsync(channel).ConfigureAwait(false);
 
-            var collected = new List<PastaEntry>();
-            ulong? before = null;
-
-            for (var page = 0; page < 10; page++)
-            {
-                var batch = (before is null
-                    ? await channel.GetMessagesAsync(pageSize).FlattenAsync().ConfigureAwait(false)
-                    : await channel.GetMessagesAsync(before.Value, Direction.Before, pageSize).FlattenAsync().ConfigureAwait(false))
-                    .ToList();
-
-                if (batch.Count == 0)
-                    break;
-
-                before = batch.Min(message => message.Id);
-
-                collected.AddRange(batch
-                    .Where(message => !message.Author.IsBot && !string.IsNullOrWhiteSpace(message.Content))
-                    .Select(message => new PastaEntry(message.Author.Username, Avatar(message.Author), message.Content)));
-
-                if (batch.Count < pageSize)
-                    break;
-            }
-
-            _pasta = collected;
             _pastaLoadedAt = DateTimeOffset.UtcNow;
 
             return _pasta;
@@ -162,6 +144,54 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
             PastaGate.Release();
         }
     }
+
+    private static async Task CrawlAsync(ITextChannel channel)
+    {
+        var collected = new List<PastaEntry>();
+        ulong? before = null;
+
+        while (true)
+        {
+            var batch = (before is null
+                ? await channel.GetMessagesAsync(PageSize).FlattenAsync().ConfigureAwait(false)
+                : await channel.GetMessagesAsync(before.Value, Direction.Before, PageSize).FlattenAsync().ConfigureAwait(false))
+                .ToList();
+
+            if (batch.Count == 0)
+                break;
+
+            before = batch.Min(message => message.Id);
+            _pastaNewestId = Math.Max(_pastaNewestId, batch.Max(message => message.Id));
+
+            collected.AddRange(Keep(batch));
+
+            if (batch.Count < PageSize)
+                break;
+        }
+
+        _pasta = collected;
+    }
+
+    private static async Task TopUpAsync(ITextChannel channel)
+    {
+        while (true)
+        {
+            var batch = (await channel.GetMessagesAsync(_pastaNewestId, Direction.After, PageSize).FlattenAsync().ConfigureAwait(false)).ToList();
+
+            if (batch.Count == 0)
+                break;
+
+            _pastaNewestId = batch.Max(message => message.Id);
+            _pasta.AddRange(Keep(batch));
+
+            if (batch.Count < PageSize)
+                break;
+        }
+    }
+
+    private static IEnumerable<PastaEntry> Keep(IEnumerable<IMessage> batch) => batch
+        .Where(message => !message.Author.IsBot && !string.IsNullOrWhiteSpace(message.Content))
+        .Select(message => new PastaEntry(message.Author.Username, Avatar(message.Author), message.Content));
 
     [FrontierAsImage]
     [Command("волк")]
