@@ -9,12 +9,12 @@ using sblngavnav6.Services;
 using static sblngavnav6.Common.CommonUtils.Text;
 using DiscordTelegramFrontier;
 
-namespace sblngavnav6.Commands
+namespace sblngavnav6.BooksClub
 {
     public class BooksClubCommands : ModuleBase<SocketCommandContext>
     {
-        private const string Logo = "<:KKLOGO:1352283192014409869>";
-        private const string Footer = "knizhniy klub📖";
+        internal const string Logo = "<:KKLOGO:1352283192014409869>";
+        internal const string Footer = "knizhniy klub📖";
 
         private readonly HttpClient _http;
         private readonly PaginatorService _pager;
@@ -94,7 +94,7 @@ namespace sblngavnav6.Commands
                     ThumbnailUrl = current.image,
                     Color = Color.DarkPurple,
                     Footer = Footer
-                }));
+                }), components: current.id == 0 ? null : BookRating.OpenButton());
                 return;
             }
 
@@ -119,13 +119,29 @@ namespace sblngavnav6.Commands
                 ThumbnailUrl = image,
                 Color = Color.Purple,
                 Footer = Footer
-            }));
+            }), components: BookRating.OpenButton());
         }
 
         [RequireGuild]
         [Command("оценить")]
-        public async Task Rate([Remainder] string input)
+        public async Task Rate([Remainder] string input = null)
         {
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                var current = await DataBase.GetLastBook();
+
+                if (current.id == 0)
+                {
+                    await FailAsync("книга недели не выбрана, оценивать нечего");
+                    return;
+                }
+
+                await ReplyAsync(
+                    embed: Simple($"⭐ Оценка книги **{current.title}**, жми кнопку", Color.Purple),
+                    components: BookRating.OpenButton());
+                return;
+            }
+
             var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
             if (parts.Length != 5)
@@ -154,28 +170,12 @@ namespace sblngavnav6.Commands
                 return;
             }
 
-            var finalScore = Math.Round((scores[0] + scores[1] + scores[2] + scores[3]) * 1.4 * Multiplier(scores[4]), 0);
+            var finalScore = BookRating.Final(scores);
 
             await DataBase.SaveRating(Context.User.Id.ToString(), book.id, scores, finalScore);
-            TriggerBooksExport();
+            BookRating.TriggerExport(Context.Guild);
 
-            await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
-            {
-                Title = $"{Logo} {book.title}",
-                Description = $"✍️ **Автор(ы):** {book.authors}",
-                Color = Color.Purple,
-                Fields =
-                [
-                    new EmbedFieldSpec("📢 Оценка пользователя", Context.User.Username),
-                    new EmbedFieldSpec("📜 Сюжет/драматургия", scores[0].ToString(), true),
-                    new EmbedFieldSpec("🖊️ Стиль/язык", scores[1].ToString(), true),
-                    new EmbedFieldSpec("👥 Герои/характеры", scores[2].ToString(), true),
-                    new EmbedFieldSpec("💡 Оригинальность/влияние", scores[3].ToString(), true),
-                    new EmbedFieldSpec("🌌 Вайб", scores[4].ToString(), true),
-                    new EmbedFieldSpec("⭐ Итоговый балл", $"{finalScore} // {CommonUtils.GetScoreEmoji(finalScore)}")
-                ],
-                Footer = Footer
-            }));
+            await ReplyAsync(embed: BookRating.Result(book.title, book.authors, Context.User.Username, scores, finalScore));
         }
 
         [RequireGuild]
@@ -208,7 +208,7 @@ namespace sblngavnav6.Commands
                 new EmbedFieldSpec("📚 **Доступные команды**",
                     "**х книга (название)** — ищет книгу по названию\n" +
                     "**х выбор книги (название)** — установка книги недели (или `отмена` для отмены)\n" +
-                    "**х оценить 8 9 7 10 9** — оценить выбранную книгу по критериям\n" +
+                    "**х оценить** — оценить книгу недели (или сразу `х оценить 8 9 7 10 9`)\n" +
                     "**х рейтинг** — показать текущий рейтинг клуба\n" +
                     "**х членыклуба** — статистика по средним оценкам и индексу душноты\n" +
                     "**х книжныйэкспорт** — пересобрать books_data.json")
@@ -326,7 +326,7 @@ namespace sblngavnav6.Commands
 
             try
             {
-                await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, UserNames());
+                await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, BookRating.UserNames(Context.Guild));
                 await ReplyAsync(embed: Simple("✅ `books_data.json` обновлён", Color.Green));
             }
             catch (Exception ex) when (CommonUtils.IsIoFailure(ex))
@@ -374,23 +374,6 @@ namespace sblngavnav6.Commands
                 Math.Max(0, Math.Round(basePercent * (1.0 - vibe / 10.0))));
         }
 
-        private void TriggerBooksExport()
-        {
-            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath))
-                return;
-
-            var userNames = UserNames();
-
-            _ = Task.Run(async () =>
-            {
-                try { await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames); }
-                catch (Exception ex) { await LoggingService.LogWarningAsync("BOOKS", $"JSON export fail: {ex.Message}"); }
-            });
-        }
-
-        private Dictionary<string, string> UserNames() =>
-            Context.Guild.Users.ToDictionary(user => user.Id.ToString(), user => user.Username);
-
         private async Task<JsonNode> FetchVolumeAsync(string title, bool withKey)
         {
             var url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru";
@@ -416,9 +399,7 @@ namespace sblngavnav6.Commands
             }
         }
 
-        private static double Multiplier(int vibe) => 1 + (vibe - 1) * 0.06747;
-
-        private static double Normalized(double finalScore, int vibe) => finalScore / Multiplier(vibe);
+        private static double Normalized(double finalScore, int vibe) => finalScore / BookRating.Multiplier(vibe);
 
         private static string Text(JsonNode info, string field, string fallback)
         {
