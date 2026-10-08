@@ -53,6 +53,7 @@ namespace sblngavnav6.Common
                 ("MailKit", typeof(MailKit.Net.Imap.ImapClient)),
                 ("MySqlConnector", typeof(MySqlConnector.MySqlConnection)),
                 ("TwitchLib.Api", typeof(TwitchLib.Api.TwitchAPI)),
+                ("DTF", typeof(DiscordTelegramFrontier.FrontierService)),
                 ("Telegram.Bot", typeof(Telegram.Bot.TelegramBotClient))
             };
 

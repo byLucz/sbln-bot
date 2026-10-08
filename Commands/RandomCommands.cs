@@ -75,7 +75,7 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
     [Command("лейм")]
     public async Task LameCommand(IUser user = null)
     {
-        var target = user ?? Context.User;
+        var target = user ?? Context.Sender();
 
         if (target is null)
         {
@@ -84,7 +84,7 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
         }
 
         var percentage = CommonUtils.RandomNumber(0, 100);
-        var pronoun = target.Id == Context.User?.Id ? "Ты" : target.Id == Context.Client.CurrentUser.Id ? "Я" : "Он";
+        var pronoun = target.Id == Context.Sender()?.Id ? "Ты" : target.Id == Context.Client.CurrentUser.Id ? "Я" : "Он";
         var verdict = percentage < 33 ? "леймик" : percentage < 66 ? "лейм" : "лейминатор";
 
         await ReplyAsync($"**{target.Mention}** уровень лейминга - **{percentage}%**. \n{pronoun} **{verdict}**! ");
@@ -192,47 +192,47 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
         .Where(message => !message.Author.IsBot && !string.IsNullOrWhiteSpace(message.Content))
         .Select(message => new PastaEntry(message.Author.Username, Avatar(message.Author), message.Content));
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("волк")]
     public Task WolfMeme() => SendMemeAsync("wolfs", null);
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("8 яиц")]
     [Alias("?")]
     public Task EightEggs([Remainder] string args = null) => SendMemeAsync("quotes", null);
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("погладить")]
     public Task Pat([Remainder] string input) => SendMemeAsync("pat", $"{Who} погладил {input}💕");
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("чмокнуть")]
     public Task Kiss([Remainder] string input) => SendMemeAsync("kiss", $"{Who} чмокнул {input}💕");
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("обнять")]
     public Task Hug([Remainder] string input) => SendMemeAsync("hug", $"{Who} обнял {input}💕");
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("ф")]
     public Task PressF([Remainder] string input) =>
         SendMemeAsync("pressf", $"{Who} дает респект {input} <:sadge:853604643456024576>");
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("кусь")]
     public Task Bite([Remainder] string input) => SendMemeAsync("bite", $"{Who} куснул {input}💕");
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("бухнуть")]
     public Task Drunk([Remainder] string input) =>
         SendMemeAsync("drunk", $"{Who} хочет бухнуть с {input} \U0001f974");
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("заткнуть")]
     [Alias("завали ебало")]
     public Task Stfu([Remainder] string input) => SendMemeAsync("stfu", $"{Who} затыкает {input} 🤐");
 
-    private string Who => Context.User?.Mention ?? "кто-то";
+    private string Who => UserName(Context.Sender(), mention: true);
 
     private async Task SendMemeAsync(string category, string title)
     {

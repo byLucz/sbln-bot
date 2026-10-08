@@ -181,7 +181,7 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
         var message = await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
             Title = duel ? "1X1 APEX DUEL⚔️" : "APEX SET🗡",
-            Description = duel ? $"***{Context.User.Username} VS {opponent.Username}***" : null,
+            Description = duel ? $"***{UserName(Context.Sender())} VS {UserName(opponent)}***" : null,
             Color = duel ? Color.DarkRed : Color.DarkerGrey,
             Fields = fields,
             Footer = "sbln апекс🔫"

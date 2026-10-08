@@ -17,6 +17,9 @@ namespace sblngavnav6.Common
             public static string GuildAvatar(IGuildUser user, string fallback = DefaultAvatar) =>
                 user?.GetGuildAvatarUrl() ?? user?.GetAvatarUrl() ?? user?.GetDefaultAvatarUrl() ?? fallback;
 
+            public static string UserName(IUser user, bool mention = false) =>
+                (mention ? user?.Mention : user?.Username ?? user?.GlobalName) ?? "кто-то";
+
             public static async Task ReactAsync(IUserMessage message, string emote)
             {
                 if (message is null || !Emote.TryParse(emote, out var parsed))

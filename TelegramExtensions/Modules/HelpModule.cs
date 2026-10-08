@@ -20,7 +20,7 @@ public sealed class HelpModule : TelegramModuleBase
             return;
         }
 
-        var text = new StringBuilder("🤖 <b>Команды, которые работают тут</b>");
+        var text = new StringBuilder();
 
         foreach (var section in sections)
         {
@@ -32,7 +32,7 @@ public sealed class HelpModule : TelegramModuleBase
                     .AppendLine(WebUtility.HtmlEncode(command.About));
         }
 
-        text.AppendLine().Append("<i>остальные команды живут только в дискорде</i>");
+        text.AppendLine().Append("<i>остальные команды доступны только в дискорде</i>");
 
         await ReplyAsync(text.ToString(), ParseMode.Html);
     }

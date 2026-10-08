@@ -35,7 +35,7 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
         _http.Timeout = TimeSpan.FromSeconds(10);
     }
 
-    [FrontierAsImage]
+    [Frontier]
     [Command("кит")]
     [Alias("кот")]
     public async Task UploadCat()
@@ -72,7 +72,7 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
         }));
     }
 
-    [Frontier]
+    [FrontierAsImage]
     [Command("биток")]
     [Alias("монетки", "мон")]
     public async Task GetCoins([Remainder] string unused = null)
@@ -139,7 +139,7 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
         }));
     }
 
-    [Frontier]
+    [FrontierAsImage]
     [Command("курс")]
     [Alias("кс")]
     public async Task Exchange()
