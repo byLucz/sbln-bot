@@ -19,9 +19,9 @@ namespace sblngavnav6.Commands.Twitch
         private static readonly Color Tint = new(191, 0, 255);
 
         private readonly StreamMonoService _lsms;
-        private readonly StreamerFileHelper _streamers;
+        private readonly StreamerRegistry _streamers;
 
-        public TwitchCommands(StreamMonoService lsms, StreamerFileHelper streamers)
+        public TwitchCommands(StreamMonoService lsms, StreamerRegistry streamers)
         {
             _lsms = lsms;
             _streamers = streamers;
@@ -81,7 +81,7 @@ namespace sblngavnav6.Commands.Twitch
             if (await DisabledAsync())
                 return;
 
-            var streamers = _lsms.StreamList;
+            var streamers = _lsms.Streamers.Keys.ToList();
 
             if (streamers.Count == 0)
             {
@@ -89,7 +89,7 @@ namespace sblngavnav6.Commands.Twitch
                 return;
             }
 
-            var online = _lsms.StreamIds
+            var online = _lsms.Streamers
                 .Where(pair => _lsms.StreamsOnline.ContainsKey(pair.Value))
                 .Select(pair => pair.Key)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);

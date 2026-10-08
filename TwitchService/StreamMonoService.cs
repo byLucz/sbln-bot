@@ -42,8 +42,8 @@ namespace sblngavnav6.TwitchService
                 return;
 
             StreamModels = new Dictionary<string, StreamData>();
-            GetStreamerList();
-            await GetStreamerIdDictAsync();
+            Streamers = DataRoots.States.Streamers;
+            await LoggingService.LogInformationAsync("TTVLK", "ТвичМонитор включен");
 
             await LoggingService.LogInformationAsync("TTVLK", $"Кол-во серверов: {_discord.Guilds.Count}");
 
@@ -56,7 +56,7 @@ namespace sblngavnav6.TwitchService
 
             try
             {
-                StreamProfileImages = await GetProfImgUrlsAsync(StreamIdList, cancellationToken);
+                StreamProfileImages = await GetProfImgUrlsAsync(Streamers.Values.ToList(), cancellationToken);
             }
             catch (TwitchLib.Api.Core.Exceptions.InternalServerErrorException ex)
             {
@@ -79,8 +79,8 @@ namespace sblngavnav6.TwitchService
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (StreamIdList == null || StreamIdList.Count == 0)
-                    throw new ArgumentException("StreamIdList пуст");
+                if (Streamers.Count == 0)
+                    throw new ArgumentException("список стримеров пуст");
 
                 monitor = new LiveStreamMonitorService(TwitchApi, UpdInt, 100);
                 monitor.OnServiceTick += OnServiceTickEvent;
@@ -91,7 +91,7 @@ namespace sblngavnav6.TwitchService
                 monitor.OnStreamOffline += OnStreamOfflineEvent;
 
                 await LoadStreamOnlineState();
-                monitor.SetChannelsById(StreamIdList);
+                monitor.SetChannelsById(Streamers.Values.ToList());
                 monitor.Start();
 
                 _liveStreamMonitor = monitor;
@@ -222,20 +222,6 @@ namespace sblngavnav6.TwitchService
             await LoggingService.LogCriticalAsync("TTVLK", "Каналы не настроены");
         }
 
-        private void GetStreamerList()
-        {
-            List<string> tmp = DataRoots.States.Streamers;
-            StreamList = tmp ?? new List<string>();
-        }
-
-        private async Task GetStreamerIdDictAsync()
-        {
-            StreamIds = new Dictionary<string, string>(DataRoots.States.StreamerMap);
-            StreamIdList = DataRoots.States.StreamerIds.ToList();
-
-            await LoggingService.LogInformationAsync("TTVLK", "ТвичМонитор включен");
-        }
-
         private void UpdateLiveStreamModelsAsync(TwitchLib.Api.Helix.Models.Streams.GetStreams.Stream twitchStream, GetGamesResponse game)
         {
             string gameName = game.Data.Length != 0 ? game.Data[0].Name : "Неизвестна";
@@ -300,7 +286,7 @@ namespace sblngavnav6.TwitchService
             List<string> verifiedStreams = new();
             List<string> tmp = new() { " " };
 
-            foreach (string s in StreamList)
+            foreach (string s in Streamers.Keys)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 tmp[0] = s;
@@ -330,12 +316,14 @@ namespace sblngavnav6.TwitchService
         public async Task UpdateChannelsToMonitor(CancellationToken cancellationToken = default)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            await GetStreamerIdDictAsync();
+            Streamers = DataRoots.States.Streamers;
             if (_liveStreamMonitor == null) return;
+
+            var ids = Streamers.Values.ToList();
 
             try
             {
-                _liveStreamMonitor.SetChannelsById(StreamIdList);
+                _liveStreamMonitor.SetChannelsById(ids);
             }
             catch (ArgumentException ex)
             {
@@ -345,8 +333,7 @@ namespace sblngavnav6.TwitchService
                     _liveStreamMonitor.Stop();
             }
 
-            StreamProfileImages = await GetProfImgUrlsAsync(StreamIdList, cancellationToken);
-            GetStreamerList();
+            StreamProfileImages = await GetProfImgUrlsAsync(ids, cancellationToken);
         }
 
         public bool StopLsm()

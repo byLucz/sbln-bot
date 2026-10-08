@@ -23,13 +23,9 @@ namespace sblngavnav6.TwitchService
 
         protected const int UpdInt = 600;
 
-        public List<string> StreamList { get; protected set; } = [];
-
-        public List<string> StreamIdList { get; protected set; } = [];
-
         public ConcurrentDictionary<string, byte> StreamsOnline { get; } = new();
 
-        public Dictionary<string, string> StreamIds { get; protected set; } = [];
+        public IReadOnlyDictionary<string, string> Streamers { get; protected set; } = new Dictionary<string, string>();
 
         protected Dictionary<string, StreamData> StreamModels { get; set; } = [];
 

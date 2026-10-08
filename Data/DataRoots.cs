@@ -6,14 +6,12 @@ namespace sblngavnav6.Data
     {
         public static class States
         {
-            public static int RealId { get; set; }
-            public static List<string> Streamers { get; } = new();
-            public static List<string> StreamerIds { get; } = new();
-            public static Dictionary<string, string> StreamerMap { get; } = new();
-            public static List<string> StatusText { get; } = new();
-            public static List<string> StatusPos { get; } = new();
-            public static List<string> StatusLink { get; } = new();
-            public static List<string> StatusType { get; } = new();
+            private static IReadOnlyDictionary<string, string> _streamers = new Dictionary<string, string>();
+
+            public static IReadOnlyDictionary<string, string> Streamers => Volatile.Read(ref _streamers);
+
+            public static void SetStreamers(IReadOnlyDictionary<string, string> streamers) =>
+                Volatile.Write(ref _streamers, streamers);
         }
 
         public class Rates

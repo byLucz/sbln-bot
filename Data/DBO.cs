@@ -5,7 +5,6 @@ using sblngavnav6.Common;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using static sblngavnav6.Data.DataRoots;
-using static sblngavnav6.Data.DataRoots.States;
 
 namespace sblngavnav6.Data
 {
@@ -191,16 +190,12 @@ namespace sblngavnav6.Data
                 null,
                 reader => (Id: reader.GetString("twitch_id"), Login: reader.GetString("login"))).ConfigureAwait(false);
 
-            States.Streamers.Clear();
-            States.StreamerIds.Clear();
-            States.StreamerMap.Clear();
+            var streamers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var (id, login) in rows)
-            {
-                States.Streamers.Add(login);
-                States.StreamerIds.Add(id);
-                States.StreamerMap[login] = id;
-            }
+                streamers[login] = id;
+
+            States.SetStreamers(streamers);
         }
 
         public static Task AddStreamer(string login, string twitchId) =>
@@ -230,31 +225,6 @@ namespace sblngavnav6.Data
                     cmd.Parameters.AddWithValue("@link", linkStr);
                     cmd.Parameters.AddWithValue("@type", type);
                 });
-        }
-
-        public static async Task PushStatus()
-        {
-            var rows = await RowsAsync(
-                "SELECT StatusText, StatusPos, StatusLink, StatusType FROM statusbar",
-                null,
-                reader => (
-                    Text: reader.GetString("StatusText"),
-                    Pos: reader.GetString("StatusPos"),
-                    Link: reader.GetString("StatusLink"),
-                    Type: reader.GetString("StatusType"))).ConfigureAwait(false);
-
-            StatusText.Clear();
-            StatusPos.Clear();
-            StatusLink.Clear();
-            StatusType.Clear();
-
-            foreach (var row in rows)
-            {
-                StatusText.Add(row.Text);
-                StatusPos.Add(row.Pos);
-                StatusLink.Add(row.Link);
-                StatusType.Add(row.Type);
-            }
         }
 
         public static async Task<List<string>> GetAllEmotes()

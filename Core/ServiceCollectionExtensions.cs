@@ -58,7 +58,7 @@ namespace sblngavnav6.Core
                 .AddSingleton<GVRMessagesHandler>()
                 .AddSingleton<WeatherClient>()
                 .AddSingleton<StreamMonoService>()
-                .AddSingleton<StreamerFileHelper>()
+                .AddSingleton<StreamerRegistry>()
                 .AddSingleton<WelcomeService>()
                 .AddSingleton<PaginatorService>()
                 .AddSingleton<PgApiService>()

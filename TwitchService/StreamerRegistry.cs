@@ -11,11 +11,11 @@ namespace sblngavnav6.Services.Twitch
         NotFound
     }
 
-    public sealed class StreamerFileHelper
+    public sealed class StreamerRegistry
     {
         private readonly StreamMonoService _lsms;
 
-        public StreamerFileHelper(StreamMonoService lsms)
+        public StreamerRegistry(StreamMonoService lsms)
         {
             _lsms = lsms;
         }
@@ -24,7 +24,7 @@ namespace sblngavnav6.Services.Twitch
         {
             var streamer = name.Trim().ToLowerInvariant();
 
-            if (_lsms.StreamList.Contains(streamer))
+            if (_lsms.Streamers.ContainsKey(streamer))
                 return StreamerChange.AlreadyThere;
 
             var streamerId = await TryVerifyStreamerAsync(streamer).ConfigureAwait(false);
@@ -42,7 +42,7 @@ namespace sblngavnav6.Services.Twitch
         {
             var streamer = name.Trim().ToLowerInvariant();
 
-            if (!_lsms.StreamIds.TryGetValue(streamer, out var streamerId))
+            if (!_lsms.Streamers.TryGetValue(streamer, out var streamerId))
                 return StreamerChange.Missing;
 
             await DataBase.DeleteStreamer(streamerId);
