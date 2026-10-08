@@ -248,13 +248,6 @@ namespace sblngavnav6.Common
             }
         }
 
-        public static double Round(double value, int places)
-        {
-            long factor = (long)Math.Pow(10, places);
-            long tmp = (long)Math.Round(value * factor);
-            return (double)tmp / factor;
-        }
-
         public static bool IsIoFailure(Exception ex) =>
             ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
 

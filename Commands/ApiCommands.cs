@@ -188,7 +188,7 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
             .Where(item => item.Rate > 0)
             .Select(item => new EmbedFieldSpec(
                 item.Name,
-                $"{CommonUtils.Round(item.Invert ? 1 / item.Rate : item.Rate, 2)}₽",
+                $"{Math.Round(item.Invert ? 1 / item.Rate : item.Rate, 2)}₽",
                 true))
             .ToList();
 

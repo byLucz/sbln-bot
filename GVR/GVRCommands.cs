@@ -6,7 +6,10 @@ using sblngavnav6.Data;
 
 namespace sblngavnav6.GVR
 {
+    [Group("говор")]
+    [Alias("говорилка", "гвр")]
     [RequireGuild]
+    [RequireUserPermission(GuildPermission.Administrator)]
     public class GVRCommands : ModuleBase<SocketCommandContext>
     {
         private const string Author = "sbln говорилка🎤📓";
@@ -31,22 +34,21 @@ namespace sblngavnav6.GVR
             _db = db;
         }
 
-        [Command("говорилка"), Alias("говор")]
-        [RequireUserPermission(GuildPermission.Administrator)]
+        [Command]
         public async Task SendHelp()
         {
             (string Name, string About)[] commands =
             [
-                ("доб", "добавляет сообщения к уже накопленным"),
-                ("чистись", "прогоняет базу через фильтры и чистит дубли"),
-                ("настройкиговора", "показывает настройки нейросетки"),
-                ("шаг", "изменение шагов цепей рандома"),
-                ("числов", "число слов в сообщении на выдаче"),
-                ("шанс", "шанс что говорилка пропиздиться, роллится на каждое сообщение"),
-                ("сообщкол", "количество сообщений для подзагрузки"),
-                ("вр", "интервал через который произойдёт подзагрузка"),
-                ("верни", "включает особый режим вербальной нищеты **(идея шефа)**"),
-                ("сброс", "сброс настроек на дефолт")
+                ("говор доб <кол-во>", "добавляет сообщения к уже накопленным"),
+                ("говор чист", "прогоняет базу через фильтры и чистит дубли"),
+                ("говор настройки", "показывает настройки нейросетки"),
+                ("говор шаг <1-15>", "изменение шагов цепей рандома"),
+                ("говор слов <3-50|рандом>", "число слов в сообщении на выдаче"),
+                ("говор шанс <0-100>", "шанс что говорилка пропиздиться, роллится на каждое сообщение"),
+                ("говор кол <0-300>", "количество сообщений для подзагрузки"),
+                ("говор вр <мс>", "интервал через который произойдёт подзагрузка"),
+                ("говор нищета <вкл|выкл>", "включает особый режим вербальной нищеты **(идея шефа)**"),
+                ("говор сброс", "сброс настроек на дефолт")
             ];
 
             await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
@@ -60,8 +62,7 @@ namespace sblngavnav6.GVR
             }));
         }
 
-        [Command("настройкиговора")]
-        [RequireUserPermission(GuildPermission.Administrator)]
+        [Command("настройки")]
         public async Task GetSettings()
         {
             var words = _config.Rand ? "рандом" : _config.Count.ToString();
@@ -85,11 +86,9 @@ namespace sblngavnav6.GVR
         }
 
         [Command("добавить"), Alias("доб")]
-        [RequireUserPermission(GuildPermission.Administrator)]
         public Task AppendData(uint amount) => CollectAsync(amount);
 
         [Command("время"), Alias("вр")]
-        [RequireUserPermission(GuildPermission.Administrator)]
         public async Task TimeMS(int amount)
         {
             if (amount <= 0)
@@ -105,14 +104,13 @@ namespace sblngavnav6.GVR
         }
 
         [Command("чистись"), Alias("чист")]
-        [RequireUserPermission(GuildPermission.Administrator)]
         public async Task ClearFile()
         {
             var (before, _) = await _db.StampAsync();
 
             if (before == 0)
             {
-                await FailAsync("база пуста, собери сообщения через `доб`");
+                await FailAsync("база пуста, собери сообщения через `говор доб`");
                 return;
             }
 
@@ -142,7 +140,6 @@ namespace sblngavnav6.GVR
         }
 
         [Command("шаг")]
-        [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SetStep(uint step)
         {
             if (step is < 1 or > 15)
@@ -156,8 +153,7 @@ namespace sblngavnav6.GVR
             await DoneAsync("шаг", $"**{step}**");
         }
 
-        [Command("числослов"), Alias("числов")]
-        [RequireUserPermission(GuildPermission.Administrator)]
+        [Command("слова"), Alias("слов")]
         public async Task SetCount(string value)
         {
             if (value.Equals("рандом", StringComparison.OrdinalIgnoreCase) || value == "-")
@@ -181,7 +177,6 @@ namespace sblngavnav6.GVR
         }
 
         [Command("шанс")]
-        [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SetChance(uint chance)
         {
             _config.Chance = Math.Min(chance, 100);
@@ -189,8 +184,7 @@ namespace sblngavnav6.GVR
             await DoneAsync("шанс выдачи", $"**{_config.Chance}%**");
         }
 
-        [Command("вербальная нищета"), Alias("верни")]
-        [RequireUserPermission(GuildPermission.Administrator)]
+        [Command("нищета"), Alias("верни", "вербальная нищета")]
         public async Task VerbalAbuse(string mode)
         {
             var enabled = mode?.Trim().ToLowerInvariant() switch
@@ -211,8 +205,7 @@ namespace sblngavnav6.GVR
             await DoneAsync("вербальная нищета", enabled.Value ? "**вкл**" : "**выкл**");
         }
 
-        [Command("сообщкол")]
-        [RequireUserPermission(GuildPermission.Administrator)]
+        [Command("кол"), Alias("сообщкол")]
         public async Task SetCollection(uint amount)
         {
             if (amount > 300)
@@ -227,7 +220,6 @@ namespace sblngavnav6.GVR
         }
 
         [Command("сброс")]
-        [RequireUserPermission(GuildPermission.Administrator)]
         public async Task Reset()
         {
             _config.Reset();
