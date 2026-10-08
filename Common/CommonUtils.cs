@@ -258,7 +258,7 @@ namespace sblngavnav6.Common
         public static bool IsIoFailure(Exception ex) =>
             ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
 
-        public static int RandomNumber(int min, int max) => Random.Shared.Next(min, max);
+        public static int RandomNumber(int min, int max) => (int)Random.Shared.NextInt64(min, (long)max + 1);
 
         public static T RandomList<T>(this IList<T> items) => items[Random.Shared.Next(items.Count)];
 

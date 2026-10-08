@@ -494,11 +494,18 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             using var table = new DataTable();
             var result = table.Compute(math, null);
 
+            if (result is double value && !double.IsFinite(value))
+                throw new DivideByZeroException();
+
             await ReplyAsync(embed: EmbedHandler.Authored(
                 "sbln калькулятор📚📐",
                 $"{math} = {result}",
                 Color.DarkerGrey,
                 "sbln"));
+        }
+        catch (DivideByZeroException)
+        {
+            await FailAsync("калькулятор", "на ноль делить нельзя");
         }
         catch (Exception ex) when (ex is EvaluateException or SyntaxErrorException or OverflowException)
         {
@@ -529,15 +536,27 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     }
 
     [Command("ембед")]
-    public async Task CmdEmbedMessage(int color = 0, [Remainder] string msg = "")
+    public async Task CmdEmbedMessage([Remainder] string msg = "")
     {
-        var input = (msg ?? string.Empty).Split('|');
+        msg = (msg ?? string.Empty).Trim();
+
+        var color = 0;
+        var space = msg.IndexOf(' ');
+        var head = space < 0 ? msg : msg[..space];
+
+        if (head.Length == 1 && head[0] is >= '1' and <= '4')
+        {
+            color = head[0] - '0';
+            msg = space < 0 ? string.Empty : msg[(space + 1)..];
+        }
+
+        var input = msg.Split('|');
         var title = input.Length > 0 ? input[0].Trim() : string.Empty;
         var description = input.Length > 1 ? input[1].Trim() : string.Empty;
 
         if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(description))
         {
-            await FailAsync("ембед", "нужен текст: `ембед 1 заголовок | описание`");
+            await FailAsync("ембед", "нужен текст: `ембед [1-4] заголовок | описание`");
             return;
         }
 

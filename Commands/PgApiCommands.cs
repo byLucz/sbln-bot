@@ -18,7 +18,6 @@ public static class PgApiPanelBuilder
 
     public static readonly (string Label, string Key)[] Actions =
     [
-        ("Health-check", "health"),
         ("Проекты",      "projects"),
         ("Статус pg",    "status"),
         ("Сервисы pg",   "services"),
@@ -32,13 +31,27 @@ public static class PgApiPanelBuilder
 
     public static string Scope(ulong channelId, ulong userId) => $"pgapi:{channelId}:{userId}";
 
-    public static List<Embed> BuildPages(string pingInfo)
+    public static async Task<string> CheckAsync(PgApiService pgApi)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var health = await pgApi.HealthAsync();
+        sw.Stop();
+
+        if (health.Ok)
+            return $"✅ ок, {sw.ElapsedMilliseconds} мс";
+
+        return health.Status is null
+            ? "❌ недоступен"
+            : $"❌ {health.Error}, {sw.ElapsedMilliseconds} мс";
+    }
+
+    public static List<Embed> BuildPages(string health)
     {
         var total = Pagination.TotalPages(Actions.Length, PageSize);
         var pages = new List<Embed>(total);
 
         for (var page = 0; page < total; page++)
-            pages.Add(BuildPanelEmbed(pingInfo));
+            pages.Add(BuildPanelEmbed(health));
 
         return pages;
     }
@@ -56,17 +69,17 @@ public static class PgApiPanelBuilder
             builder.WithButton(label, $"pgapi_action:{key}", style, row: 1);
         }
 
-        builder.WithButton("Пинг", "pgapi_ping", ButtonStyle.Secondary, row: 2);
+        builder.WithButton("Health-check", "pgapi_health", ButtonStyle.Primary, row: 2);
     };
 
-    private static Embed BuildPanelEmbed(string pingInfo) => EmbedHandler.Build(new EmbedSpec
+    private static Embed BuildPanelEmbed(string health) => EmbedHandler.Build(new EmbedSpec
     {
         AuthorName = "Панель управления pgAPI",
         Description = "[PG Container v0.2](https://github.com/loismedia/pg)",
         Color = Color.Teal,
-        Fields = string.IsNullOrWhiteSpace(pingInfo)
+        Fields = string.IsNullOrWhiteSpace(health)
             ? null
-            : [new EmbedFieldSpec("⏱️ Время отклика", pingInfo, true)],
+            : [new EmbedFieldSpec("🩺 Health-check", health, true)],
         Footer = Footer
     });
 }
@@ -86,17 +99,11 @@ public class PgApiCommands : ModuleBase<SocketCommandContext>
     [Command("пг")]
     public async Task PgApiPanel()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var health = await _pgApi.HealthAsync();
-        sw.Stop();
-
-        var pingInfo = health.Ok
-            ? $"{sw.ElapsedMilliseconds} мс"
-            : health.Status is null ? "недоступен" : $"{health.Error} за {sw.ElapsedMilliseconds} мс";
+        var health = await PgApiPanelBuilder.CheckAsync(_pgApi);
 
         await _pager.SendAsync(
             Context.Channel,
-            PgApiPanelBuilder.BuildPages(pingInfo),
+            PgApiPanelBuilder.BuildPages(health),
             decorate: PgApiPanelBuilder.BuildControls(),
             scope: PgApiPanelBuilder.Scope(Context.Channel.Id, Context.User.Id));
     }
@@ -114,25 +121,19 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
     }
 
     [RequirePgOperatorInteraction]
-    [ComponentInteraction("pgapi_ping")]
-    public async Task Ping()
+    [ComponentInteraction("pgapi_health")]
+    public async Task Health()
     {
         if (Context.Interaction is not SocketMessageComponent component)
             return;
 
         await DeferAsync();
 
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var health = await _pgApi.HealthAsync();
-        sw.Stop();
-
-        var pingInfo = health.Ok
-            ? $"{sw.ElapsedMilliseconds} мс"
-            : health.Status is null ? "недоступен" : $"{health.Error} за {sw.ElapsedMilliseconds} мс";
+        var health = await PgApiPanelBuilder.CheckAsync(_pgApi);
 
         await _pager.ReplaceAsync(
             component.Message,
-            PgApiPanelBuilder.BuildPages(pingInfo),
+            PgApiPanelBuilder.BuildPages(health),
             decorate: PgApiPanelBuilder.BuildControls());
     }
 
@@ -150,7 +151,6 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         {
             result = action switch
             {
-                "health"      => await _pgApi.HealthAsync(),
                 "projects"    => await _pgApi.ProjectsAsync(),
                 "status"      => await _pgApi.ProjectStatusAsync(PgApiPanelBuilder.DefaultProject),
                 "services"    => await _pgApi.ServicesAsync(PgApiPanelBuilder.DefaultProject),

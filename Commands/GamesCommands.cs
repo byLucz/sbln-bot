@@ -69,7 +69,7 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
         var strengths = new int[racers.Length];
 
         for (var i = 0; i < racers.Length; i++)
-            strengths[i] = Random.Shared.Next(5, 8);
+            strengths[i] = CommonUtils.RandomNumber(5, 7);
 
         var message = await ReplyAsync("на старт...");
 
@@ -87,7 +87,7 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
         {
             for (var i = 0; i < progresses.Length; i++)
             {
-                progresses[i] = Math.Min(RaceLength, progresses[i] + Random.Shared.Next(1, strengths[i]));
+                progresses[i] = Math.Min(RaceLength, progresses[i] + CommonUtils.RandomNumber(1, strengths[i] - 1));
 
                 if (progresses[i] >= RaceLength)
                     finished.Add(i);

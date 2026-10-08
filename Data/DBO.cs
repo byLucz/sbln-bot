@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using MySqlConnector;
+using sblngavnav6.Common;
 using System.Collections.Concurrent;
 using System.Text.Json;
 using static sblngavnav6.Data.DataRoots;
@@ -268,8 +269,7 @@ namespace sblngavnav6.Data
             var all = await GetAllEmotes().ConfigureAwait(false);
             if (all.Count == 0)
                 return null;
-            var rnd = Random.Shared;
-            return all[rnd.Next(all.Count)];
+            return all.RandomList();
         }
 
         public static async Task ApplyLastStatusAsync(DiscordSocketClient client)

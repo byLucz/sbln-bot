@@ -84,7 +84,7 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
             return;
         }
 
-        var percentage = CommonUtils.RandomNumber(0, 101);
+        var percentage = CommonUtils.RandomNumber(0, 100);
         var pronoun = target.Id == Context.User?.Id ? "Ты" : target.Id == Context.Client.CurrentUser.Id ? "Я" : "Он";
         var verdict = percentage < 33 ? "гетеро" : percentage < 66 ? "биби" : "гэй";
 

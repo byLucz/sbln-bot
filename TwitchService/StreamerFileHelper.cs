@@ -42,13 +42,8 @@ namespace sblngavnav6.Services.Twitch
         {
             var streamer = name.Trim().ToLowerInvariant();
 
-            if (!_lsms.StreamList.Contains(streamer))
+            if (!_lsms.StreamIds.TryGetValue(streamer, out var streamerId))
                 return StreamerChange.Missing;
-
-            var streamerId = await TryVerifyStreamerAsync(streamer).ConfigureAwait(false);
-
-            if (streamerId is null)
-                return StreamerChange.NotFound;
 
             await DataBase.DeleteStreamer(streamerId);
             await DataBase.DownloadStreamers();

@@ -70,7 +70,6 @@ namespace sblngavnav6.Commands.Twitch
             await FailAsync(outcome switch
             {
                 StreamerChange.Missing => $"**{streamer}** в списке нет",
-                StreamerChange.NotFound => $"на твиче нет такого канала: **{streamer}**",
                 _ => "не вышло, подробности в логе"
             });
         }

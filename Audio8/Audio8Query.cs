@@ -171,9 +171,6 @@ namespace sblngavnav6.Audio8
         [GeneratedRegex(@"(https?://\S+)", RegexOptions.IgnoreCase)]
         private static partial Regex UrlRegex();
 
-        [GeneratedRegex(@"^\s*(?:(?:х|и|играй)\s+)+", RegexOptions.IgnoreCase)]
-        private static partial Regex LeadingCommandRegex();
-
         [GeneratedRegex(@"^\s*(?:споти|спотик)\s+", RegexOptions.IgnoreCase)]
         private static partial Regex SpotifyPrefixRegex();
 
@@ -190,7 +187,7 @@ namespace sblngavnav6.Audio8
             var urlMatch = UrlRegex().Match(query);
             query = urlMatch.Success
                 ? urlMatch.Groups[1].Value.Trim().TrimEnd(')', ']', '}', '>', '.', ',', ';')
-                : LeadingCommandRegex().Replace(query, string.Empty).Trim();
+                : query.Trim();
 
             if (query.StartsWith("ftts://", StringComparison.OrdinalIgnoreCase))
             {

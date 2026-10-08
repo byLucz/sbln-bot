@@ -435,7 +435,7 @@ namespace sblngavnav6.Audio8
             if (player is null)
                 return;
 
-            var winner = items[Random.Shared.Next(items.Count)];
+            var winner = items.RandomList();
             var statusMessage = await _service.SendAsync(
                 Context.Channel,
                 Audio8Embeds.Vote("⏳ Кукапим секвенции...", Color.DarkBlue));

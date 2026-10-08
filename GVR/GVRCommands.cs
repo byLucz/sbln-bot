@@ -37,7 +37,6 @@ namespace sblngavnav6.GVR
         {
             (string Name, string About)[] commands =
             [
-                ("доб+", "добавляет сообщения, переписывая всё что было в файле"),
                 ("доб", "добавляет сообщения к уже накопленным"),
                 ("чистись", "прогоняет базу через фильтры и чистит дубли"),
                 ("настройкиговора", "показывает настройки нейросетки"),
@@ -87,11 +86,7 @@ namespace sblngavnav6.GVR
 
         [Command("добавить"), Alias("доб")]
         [RequireUserPermission(GuildPermission.Administrator)]
-        public Task AppendData(uint amount) => CollectAsync(amount, append: true);
-
-        [Command("добавить+"), Alias("доб+")]
-        [RequireUserPermission(GuildPermission.Administrator)]
-        public Task SeedFile(uint amount) => CollectAsync(amount, append: false);
+        public Task AppendData(uint amount) => CollectAsync(amount);
 
         [Command("время"), Alias("вр")]
         [RequireUserPermission(GuildPermission.Administrator)]
@@ -242,16 +237,13 @@ namespace sblngavnav6.GVR
             await DoneAsync("настройки", "**сброшены на дефолтыч**");
         }
 
-        private async Task CollectAsync(uint amount, bool append)
+        private async Task CollectAsync(uint amount)
         {
             if (amount is 0 or > 1000)
             {
                 await FailAsync("от 1 до 1000 сообщений за раз");
                 return;
             }
-
-            if (!append)
-                await _db.ReplaceAsync(Context.Guild.Id, []);
 
             var target = (int)amount;
             var stored = 0;
@@ -303,7 +295,7 @@ namespace sblngavnav6.GVR
                 : scanned >= MaxScan ? $", предел просмотра {MaxScan}" : string.Empty;
 
             await DoneAsync(
-                append ? "добавлено" : "перезаписано",
+                "добавлено",
                 $"**{stored}** новых, просмотрено **{scanned}**, в базе **{total}**{tail}");
         }
 

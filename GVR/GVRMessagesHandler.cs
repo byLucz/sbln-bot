@@ -35,7 +35,7 @@ namespace sblngavnav6.GVR
 
         public async Task TrySendGeneratedMessageAsync(SocketCommandContext context)
         {
-            if (CommonUtils.RandomNumber(1, 101) > _config.Chance)
+            if (CommonUtils.RandomNumber(1, 100) > _config.Chance)
                 return;
 
             var words = _config.Rand
@@ -183,7 +183,7 @@ namespace sblngavnav6.GVR
 
         private string GenerateMessage(Model model, int step, int wordCount)
         {
-            int sentenceCount = wordCount <= 5 ? 1 : wordCount <= 12 ? Random.Shared.Next(1, 3) : Random.Shared.Next(1, 4);
+            int sentenceCount = wordCount <= 5 ? 1 : wordCount <= 12 ? CommonUtils.RandomNumber(1, 2) : CommonUtils.RandomNumber(1, 3);
             int baseWords = wordCount / sentenceCount;
 
             var parts = new List<string>();
@@ -200,8 +200,8 @@ namespace sblngavnav6.GVR
 
             if (parts.Count > 1 && Random.Shared.NextDouble() < 0.25)
             {
-                var funny = FunnyInterjections[Random.Shared.Next(FunnyInterjections.Length)];
-                parts.Insert(Random.Shared.Next(1, parts.Count), funny);
+                var funny = FunnyInterjections.RandomList();
+                parts.Insert(CommonUtils.RandomNumber(1, parts.Count - 1), funny);
             }
 
             return Polish(string.Join(" ", parts));
@@ -212,7 +212,7 @@ namespace sblngavnav6.GVR
             var chain = model.Chain;
 
             var startKey = model.Starts.Count > 0
-                ? model.Starts[Random.Shared.Next(model.Starts.Count)]
+                ? model.Starts.RandomList()
                 : model.RandomKey();
 
             if (!chain.ContainsKey(startKey))
@@ -277,11 +277,11 @@ namespace sblngavnav6.GVR
                 if (Surprise())
                 {
                     distinct ??= values.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
-                    value = distinct[Random.Shared.Next(distinct.Count)];
+                    value = distinct.RandomList();
                 }
                 else
                 {
-                    value = values[Random.Shared.Next(values.Count)];
+                    value = values.RandomList();
                 }
 
                 if (string.Equals(value, previous, StringComparison.OrdinalIgnoreCase))
@@ -308,7 +308,7 @@ namespace sblngavnav6.GVR
 
         private sealed record Model(Dictionary<string, List<string>> Chain, List<string> Starts, string[] Keys)
         {
-            public string RandomKey() => Keys[Random.Shared.Next(Keys.Length)];
+            public string RandomKey() => Keys.RandomList();
         }
     }
 }
