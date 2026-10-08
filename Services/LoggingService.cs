@@ -1,5 +1,6 @@
-﻿using Discord;
+using Discord;
 using Discord.WebSocket;
+using sblngavnav6.Data;
 using System.Net.WebSockets;
 using System.Security;
 using System.Text;
@@ -8,13 +9,20 @@ namespace sblngavnav6.Services
 {
     public static class LoggingService
     {
+        private const int LogRetentionDays = 14;
+
         private static readonly SemaphoreSlim _sync = new(1, 1);
+        private static readonly Encoding FileEncoding = new UTF8Encoding(false);
         private static readonly string _logsDirectory =
             Environment.GetEnvironmentVariable("SBLN_LOG_DIR") ?? Path.Combine(AppContext.BaseDirectory, "logs");
+        private static readonly Lazy<LogSeverity> _minSeverity = new(ResolveMinSeverity);
 
-        private const int LogRetentionDays = 14;
         private static DateTime _lastCleanupDateUtc = DateTime.MinValue;
         private static bool _fileSinkFailureReported;
+
+        private static DateTime _writersDate = DateTime.MinValue;
+        private static StreamWriter _generalWriter;
+        private static StreamWriter _errorWriter;
 
         public static async Task LogAsync(
             string src,
@@ -22,39 +30,33 @@ namespace sblngavnav6.Services
             string? message,
             Exception? exception = null)
         {
+            if (severity > _minSeverity.Value)
+                return;
+
             var acquired = false;
             try
             {
                 var now = DateTime.Now;
-                var utcNow = DateTime.UtcNow;
-
-                var consoleTimeStamp = now.ToString("dd.MM | HH:mm:ss");
-                var fileTimeStamp = now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-
                 var severityText = GetSeverityString(severity);
-                var severityColor = GetConsoleColor(severity);
                 var sourceText = SourceToString(src);
-
-                var consoleMessage = BuildConsoleMessage(message, exception, src, severity);
-                var fileMessage = BuildFileMessage(message, exception, src, severity);
-
-                var generalLogPath = GetGeneralLogFilePath(now);
-                var errorLogPath = GetErrorLogFilePath(now);
+                var text = BuildMessage(message, exception, src, severity);
                 var isError = severity is LogSeverity.Error or LogSeverity.Critical || exception != null;
 
                 await _sync.WaitAsync();
                 acquired = true;
 
-                WriteToConsole(severityText, severityColor, consoleTimeStamp, sourceText, consoleMessage);
+                WriteToConsole(severityText, GetConsoleColor(severity), now.ToString("dd.MM | HH:mm:ss"), sourceText, text);
 
-                if (EnsureLogsDirectory())
+                if (EnsureWriters(now))
                 {
-                    await WriteToFileAsync(generalLogPath, severityText, fileTimeStamp, sourceText, fileMessage);
+                    var line = $"{severityText} {now:yyyy-MM-dd HH:mm:ss.fff} [{sourceText}] {text}";
+
+                    await WriteLineAsync(_generalWriter, line);
 
                     if (isError)
-                        await WriteToFileAsync(errorLogPath, severityText, fileTimeStamp, sourceText, fileMessage);
+                        await WriteLineAsync(_errorWriter, line);
 
-                    CleanupOldLogsIfNeeded(utcNow);
+                    CleanupOldLogsIfNeeded(DateTime.UtcNow);
                 }
             }
             catch (Exception ex)
@@ -92,8 +94,21 @@ namespace sblngavnav6.Services
             if (BenignReconnect(log) is { } reason)
                 return LogAsync("discord", LogSeverity.Info, reason);
 
-            var severity = NormalizeDiscordSeverity(log);
-            return LogAsync("discord", severity, log.Message, log.Exception);
+            return LogAsync("discord", NormalizeDiscordSeverity(log), log.Message, log.Exception);
+        }
+
+        private static LogSeverity ResolveMinSeverity()
+        {
+            try
+            {
+                return Enum.TryParse<LogSeverity>(Global.Vars.Cfg.logLevel, ignoreCase: true, out var level)
+                    ? level
+                    : LogSeverity.Info;
+            }
+            catch (Exception)
+            {
+                return LogSeverity.Info;
+            }
         }
 
         private static string BenignReconnect(LogMessage log)
@@ -110,9 +125,6 @@ namespace sblngavnav6.Services
             return null;
         }
 
-        public static Task LogExceptionAsync(string source, Exception exc)
-            => LogAsync(source, LogSeverity.Error, "Что-то умерло...", exc);
-
         private static void WriteToConsole(
             string severityText,
             ConsoleColor severityColor,
@@ -120,8 +132,7 @@ namespace sblngavnav6.Services
             string sourceText,
             string message)
         {
-            var previousColor = ConsoleColor.Gray;
-            var colorAvailable = TryGetConsoleColor(out previousColor);
+            var colorAvailable = TryGetConsoleColor(out var previousColor);
 
             try
             {
@@ -161,37 +172,58 @@ namespace sblngavnav6.Services
             catch (Exception ex) when (ex is IOException or PlatformNotSupportedException or SecurityException) { }
         }
 
-        private static bool EnsureLogsDirectory()
+        private static bool EnsureWriters(DateTime now)
         {
+            if (_writersDate == now.Date && _generalWriter is not null && _errorWriter is not null)
+                return true;
+
+            CloseWriters();
+
             try
             {
                 Directory.CreateDirectory(_logsDirectory);
+                _generalWriter = OpenWriter(Path.Combine(_logsDirectory, $"bot-{now:yyyy-MM-dd}.log"));
+                _errorWriter = OpenWriter(Path.Combine(_logsDirectory, $"errors-{now:yyyy-MM-dd}.log"));
+                _writersDate = now.Date;
+                _fileSinkFailureReported = false;
                 return true;
             }
             catch (Exception ex) when (IsFileSinkFailure(ex))
             {
+                CloseWriters();
                 ReportFileSinkFailure(_logsDirectory, ex);
                 return false;
             }
         }
 
-        private static async Task WriteToFileAsync(
-            string filePath,
-            string severityText,
-            string timeStamp,
-            string sourceText,
-            string message)
+        private static StreamWriter OpenWriter(string path)
         {
-            var line = $"{severityText} {timeStamp} [{sourceText}] {message}{Environment.NewLine}";
+            var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
+            return new StreamWriter(stream, FileEncoding) { AutoFlush = true };
+        }
+
+        private static void CloseWriters()
+        {
+            _generalWriter?.Dispose();
+            _errorWriter?.Dispose();
+            _generalWriter = null;
+            _errorWriter = null;
+            _writersDate = DateTime.MinValue;
+        }
+
+        private static async Task WriteLineAsync(StreamWriter writer, string line)
+        {
+            if (writer is null)
+                return;
 
             try
             {
-                await File.AppendAllTextAsync(filePath, line, Encoding.UTF8);
-                _fileSinkFailureReported = false;
+                await writer.WriteLineAsync(line);
             }
             catch (Exception ex) when (IsFileSinkFailure(ex))
             {
-                ReportFileSinkFailure(filePath, ex);
+                CloseWriters();
+                ReportFileSinkFailure(_logsDirectory, ex);
             }
         }
 
@@ -200,7 +232,8 @@ namespace sblngavnav6.Services
                 or UnauthorizedAccessException
                 or SecurityException
                 or NotSupportedException
-                or ArgumentException;
+                or ArgumentException
+                or ObjectDisposedException;
 
         private static void ReportFileSinkFailure(string path, Exception ex)
         {
@@ -228,16 +261,6 @@ namespace sblngavnav6.Services
             catch (IOException) { }
         }
 
-        private static string GetGeneralLogFilePath(DateTime now)
-        {
-            return Path.Combine(_logsDirectory, $"bot-{now:yyyy-MM-dd}.log");
-        }
-
-        private static string GetErrorLogFilePath(DateTime now)
-        {
-            return Path.Combine(_logsDirectory, $"errors-{now:yyyy-MM-dd}.log");
-        }
-
         private static void CleanupOldLogsIfNeeded(DateTime utcNow)
         {
             if (_lastCleanupDateUtc.Date == utcNow.Date)
@@ -248,9 +271,6 @@ namespace sblngavnav6.Services
             string[] files;
             try
             {
-                if (!Directory.Exists(_logsDirectory))
-                    return;
-
                 files = Directory.GetFiles(_logsDirectory, "*.log", SearchOption.TopDirectoryOnly);
             }
             catch (Exception ex) when (IsFileSinkFailure(ex))
@@ -273,53 +293,39 @@ namespace sblngavnav6.Services
             }
         }
 
-        private static string BuildConsoleMessage(
-            string? message,
-            Exception? exception,
-            string? src,
-            LogSeverity severity)
+        private static string BuildMessage(string? message, Exception? exception, string? src, LogSeverity severity)
         {
             if (exception != null)
-                return BuildExceptionText(exception, message, singleLine: false);
+                return BuildExceptionText(exception, message);
 
             if (!string.IsNullOrWhiteSpace(message))
                 return message.Trim();
 
-            return
-                $"Пустая запись лога. Source='{src ?? "(null)"}', Severity='{severity}', " +
-                "Message не передан, Exception отсутствует.";
+            return $"Пустая запись лога. Source='{src ?? "(null)"}', Severity='{severity}'";
         }
 
-        private static string BuildFileMessage(
-            string? message,
-            Exception? exception,
-            string? src,
-            LogSeverity severity)
-        {
-            if (exception != null)
-                return BuildExceptionText(exception, message, singleLine: false);
-
-            if (!string.IsNullOrWhiteSpace(message))
-                return message.Trim();
-
-            return
-                $"Пустая запись лога. Source='{src ?? "(null)"}', Severity='{severity}', " +
-                "Message is null/empty, Exception is null.";
-        }
-
-        private static string BuildExceptionText(Exception exception, string? message, bool singleLine)
+        private static string BuildExceptionText(Exception exception, string? message)
         {
             var sb = new StringBuilder();
 
             if (!string.IsNullOrWhiteSpace(message))
-            {
-                sb.Append(message.Trim());
-                sb.Append(singleLine ? " | " : Environment.NewLine);
-            }
+                sb.AppendLine(message.Trim());
 
-            AppendException(sb, exception, "Exception", singleLine);
+            AppendException(sb, exception, "Exception");
 
-            return sb.ToString();
+            return sb.ToString().TrimEnd();
+        }
+
+        private static void AppendException(StringBuilder sb, Exception exception, string label)
+        {
+            sb.AppendLine($"{label}Type: {exception.GetType().FullName}");
+            sb.AppendLine($"{label}Message: {exception.Message}");
+            sb.AppendLine(string.IsNullOrWhiteSpace(exception.StackTrace)
+                ? $"{label}StackTrace: (отсутствует)"
+                : $"{label}StackTrace:{Environment.NewLine}{exception.StackTrace}");
+
+            if (exception.InnerException != null)
+                AppendException(sb, exception.InnerException, "Inner");
         }
 
         private static LogSeverity NormalizeDiscordSeverity(LogMessage log)
@@ -327,50 +333,13 @@ namespace sblngavnav6.Services
             if (log.Exception is GatewayReconnectException)
                 return LogSeverity.Info;
 
-            if (log.Exception is not null &&
-                log.Exception.Message.Contains("Server requested a reconnect", StringComparison.OrdinalIgnoreCase))
-            {
+            if (log.Exception?.Message.Contains("Server requested a reconnect", StringComparison.OrdinalIgnoreCase) == true)
                 return LogSeverity.Info;
-            }
 
-            if (!string.IsNullOrWhiteSpace(log.Message) &&
-                log.Message.Contains("Server requested a reconnect", StringComparison.OrdinalIgnoreCase))
-            {
+            if (log.Message?.Contains("Server requested a reconnect", StringComparison.OrdinalIgnoreCase) == true)
                 return LogSeverity.Info;
-            }
 
             return log.Severity;
-        }
-
-        private static void AppendException(
-            StringBuilder sb,
-            Exception exception,
-            string label,
-            bool singleLine)
-        {
-            sb.Append($"{label}Type: {exception.GetType().FullName}");
-            sb.Append(singleLine ? " | " : Environment.NewLine);
-
-            sb.Append($"{label}Message: {exception.Message}");
-            sb.Append(singleLine ? " | " : Environment.NewLine);
-
-            if (!string.IsNullOrWhiteSpace(exception.StackTrace))
-            {
-                sb.Append($"{label}StackTrace:");
-                sb.Append(singleLine ? " | " : Environment.NewLine);
-                sb.Append(exception.StackTrace);
-                sb.Append(singleLine ? " | " : Environment.NewLine);
-            }
-            else
-            {
-                sb.Append($"{label}StackTrace: (отсутствует)");
-                sb.Append(singleLine ? " | " : Environment.NewLine);
-            }
-
-            if (exception.InnerException != null)
-            {
-                AppendException(sb, exception.InnerException, "Inner", singleLine);
-            }
         }
 
         private static string SourceToString(string? src)
@@ -387,32 +356,26 @@ namespace sblngavnav6.Services
             };
         }
 
-        private static string GetSeverityString(LogSeverity severity)
+        private static string GetSeverityString(LogSeverity severity) => severity switch
         {
-            return severity switch
-            {
-                LogSeverity.Critical => "CRTIC",
-                LogSeverity.Debug => "D-BUG",
-                LogSeverity.Error => "ERROR",
-                LogSeverity.Info => "IN-FO",
-                LogSeverity.Verbose => "VRBSE",
-                LogSeverity.Warning => "WR-NG",
-                _ => "UNKWN"
-            };
-        }
+            LogSeverity.Critical => "CRTIC",
+            LogSeverity.Debug => "D-BUG",
+            LogSeverity.Error => "ERROR",
+            LogSeverity.Info => "IN-FO",
+            LogSeverity.Verbose => "VRBSE",
+            LogSeverity.Warning => "WR-NG",
+            _ => "UNKWN"
+        };
 
-        private static ConsoleColor GetConsoleColor(LogSeverity severity)
+        private static ConsoleColor GetConsoleColor(LogSeverity severity) => severity switch
         {
-            return severity switch
-            {
-                LogSeverity.Critical => ConsoleColor.Red,
-                LogSeverity.Debug => ConsoleColor.Magenta,
-                LogSeverity.Error => ConsoleColor.DarkRed,
-                LogSeverity.Info => ConsoleColor.Green,
-                LogSeverity.Verbose => ConsoleColor.DarkCyan,
-                LogSeverity.Warning => ConsoleColor.Yellow,
-                _ => ConsoleColor.White
-            };
-        }
+            LogSeverity.Critical => ConsoleColor.Red,
+            LogSeverity.Debug => ConsoleColor.Magenta,
+            LogSeverity.Error => ConsoleColor.DarkRed,
+            LogSeverity.Info => ConsoleColor.Green,
+            LogSeverity.Verbose => ConsoleColor.DarkCyan,
+            LogSeverity.Warning => ConsoleColor.Yellow,
+            _ => ConsoleColor.White
+        };
     }
 }

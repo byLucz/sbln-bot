@@ -10,7 +10,8 @@
     "SlashDevGuild": "0",
     "StreamsEnabled": "true",
     "PpmEnabled": "false",
-    "MessageSourceChannelId": "0"
+    "MessageSourceChannelId": "0",
+    "LogLevel": "Info"
   },
   "Api": {
     "KumaConn": "",

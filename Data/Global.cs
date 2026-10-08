@@ -58,6 +58,7 @@ namespace sblngavnav6.Data
                 public static readonly bool streamsEnabled = Bool("System:StreamsEnabled", true);
                 public static readonly bool ppmEnabled = Bool("System:PpmEnabled", true);
                 public static readonly ulong messageSourceChannelId = UL("System:MessageSourceChannelId", 0);
+                public static readonly string logLevel = Str("System:LogLevel", "Info");
 
                 public static readonly string kumaConn = Str("Api:KumaConn");
                 public static readonly string weatherApiKey = Str("Api:WeatherApiKey");
