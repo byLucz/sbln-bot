@@ -14,7 +14,7 @@ namespace sblngavnav6.Commands
             var gs = await DataBase.GetGuildSettings(guild.Id);
 
             static string Role(ulong? id) => id is ulong r ? MentionUtils.MentionRole(r) : "`не задано`";
-            static string Chan(ulong? id) => id is ulong c ? MentionUtils.MentionChannel(c) : "`не задано`";
+            static string Chan(ulong? id) => id is ulong c ? MentionUtils.MentionChannel(c) : "`выключено`";
 
             return EmbedHandler.Build(new EmbedSpec
             {
@@ -48,7 +48,7 @@ namespace sblngavnav6.Commands
     {
         public string Title => "Настройка";
 
-        [InputLabel("Значение (пусто = сброс на дефолт)")]
+        [InputLabel("Значение (пусто = сброс)")]
         [ModalTextInput("value", TextInputStyle.Paragraph, "id роли/канала или текст")]
         [RequiredInput(false)]
         public string Value { get; set; }
@@ -90,7 +90,7 @@ namespace sblngavnav6.Commands
                 }
 
                 await DataBase.SetWelcomeMessage(gid, reset ? null : raw);
-                await ShowPanelAsync(reset ? "Welcome-текст сброшен на дефолт" : "Welcome-текст обновлён");
+                await ShowPanelAsync(reset ? "Welcome-текст сброшен" : "Welcome-текст обновлён");
                 return;
             }
 
@@ -130,7 +130,7 @@ namespace sblngavnav6.Commands
                     return;
             }
 
-            await ShowPanelAsync(reset ? "Сброшено на дефолт" : "Сохранено");
+            await ShowPanelAsync(reset ? "Сброшено" : "Сохранено");
         }
 
         private string ValidateTarget(string field, ulong id)

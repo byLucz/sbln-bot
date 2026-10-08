@@ -7,8 +7,6 @@ namespace sblngavnav6.Services
 {
     public sealed class WelcomeService : IDisposable
     {
-        private const string DefaultMessage = "Добро пожаловать!";
-
         private readonly DiscordSocketClient _client;
         private bool _disposed;
 
@@ -35,11 +33,6 @@ namespace sblngavnav6.Services
         {
             var gs = await DataBase.GetGuildSettings(user.Guild.Id);
 
-            var channel = gs.WelcomeChannelId is ulong chId
-                ? user.Guild.GetTextChannel(chId)
-                : user.Guild.SystemChannel ?? user.Guild.DefaultChannel;
-            if (channel == null) return;
-
             if (gs.WelcomeRoleId is ulong roleId)
             {
                 var role = user.Guild.GetRole(roleId);
@@ -47,12 +40,16 @@ namespace sblngavnav6.Services
                     try { await user.AddRoleAsync(role); } catch { }
             }
 
-            var message = string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? DefaultMessage : gs.WelcomeMessage;
+            if (gs.WelcomeChannelId is not ulong chId)
+                return;
+
+            var channel = user.Guild.GetTextChannel(chId);
+            if (channel == null) return;
 
             await channel.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
-                Title = $"Добро пожаловать, {user.Username}!",
-                Description = message,
+                Title = user.Guild.Name,
+                Description = string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? $"{user.Mention}, добро пожаловать!" : gs.WelcomeMessage,
                 Color = Color.Green,
                 ThumbnailUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
             }));
