@@ -6,6 +6,7 @@ using sblngavnav6.Data;
 
 namespace sblngavnav6.GVR
 {
+    [RequireGuild]
     public class GVRCommands : ModuleBase<SocketCommandContext>
     {
         private const string Author = "sbln говорилка🎤📓";

@@ -413,6 +413,14 @@ namespace sblngavnav6.Data
                 value => Convert.ToInt32(value) > 0);
         }
 
+        public static Task<bool> BookHasRatings(int bookId)
+        {
+            return ScalarAsync(
+                "SELECT COUNT(*) FROM booksRating WHERE book_id = @b",
+                cmd => cmd.Parameters.AddWithValue("@b", bookId),
+                value => Convert.ToInt32(value) > 0);
+        }
+
         public static async Task<List<BookWithRating>> GetBooksWithRatings(int? season)
         {
             var list = new List<BookWithRating>();

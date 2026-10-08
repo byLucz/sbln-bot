@@ -5,6 +5,15 @@ using sblngavnav6.Data;
 
 namespace sblngavnav6.Core
 {
+    public class RequireGuildAttribute : Discord.Commands.PreconditionAttribute
+    {
+        public override Task<Discord.Commands.PreconditionResult> CheckPermissionsAsync(
+            ICommandContext context, CommandInfo command, IServiceProvider services)
+            => Task.FromResult(context.Guild is null
+                ? Discord.Commands.PreconditionResult.FromError("только на сервере")
+                : Discord.Commands.PreconditionResult.FromSuccess());
+    }
+
     public class RequireSuperuserAttribute : Discord.Commands.PreconditionAttribute
     {
         public override async Task<Discord.Commands.PreconditionResult> CheckPermissionsAsync(

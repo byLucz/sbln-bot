@@ -52,6 +52,7 @@ namespace sblngavnav6.Commands
             }));
         }
 
+        [RequireGuild]
         [Command("выбор книги")]
         public async Task SelectBook([Remainder] string input = "")
         {
@@ -59,9 +60,17 @@ namespace sblngavnav6.Commands
 
             if (trimmed.Equals("отмена", StringComparison.OrdinalIgnoreCase))
             {
-                if ((await DataBase.GetLastBook()).id == 0)
+                var last = await DataBase.GetLastBook();
+
+                if (last.id == 0)
                 {
                     await FailAsync("нечего отменять, книга не выбрана");
+                    return;
+                }
+
+                if (await DataBase.BookHasRatings(last.id))
+                {
+                    await FailAsync($"**{last.title}** уже оценивали, отменить нельзя");
                     return;
                 }
 
@@ -113,6 +122,7 @@ namespace sblngavnav6.Commands
             }));
         }
 
+        [RequireGuild]
         [Command("оценить")]
         public async Task Rate([Remainder] string input)
         {
@@ -168,6 +178,7 @@ namespace sblngavnav6.Commands
             }));
         }
 
+        [RequireGuild]
         [Command("клуб")]
         public Task ClubInfoAsync() => ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
@@ -205,6 +216,7 @@ namespace sblngavnav6.Commands
             Footer = Footer
         }));
 
+        [RequireGuild]
         [Command("членыклуба")]
         public async Task ClubMembersAsync()
         {
@@ -248,6 +260,7 @@ namespace sblngavnav6.Commands
             await _pager.SendAsync(Context.Channel, pages);
         }
 
+        [RequireGuild]
         [Command("рейтинг")]
         public async Task ShowSeasonRatingAsync(int? season = null)
         {
@@ -301,6 +314,7 @@ namespace sblngavnav6.Commands
                 .ToList();
         }
 
+        [RequireGuild]
         [Command("книжныйэкспорт")]
         public async Task ManualExportAsync()
         {

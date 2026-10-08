@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using sblngavnav6.Common;
+using sblngavnav6.Core;
 using sblngavnav6.Data;
 using sblngavnav6.Services.Twitch;
 using sblngavnav6.TwitchService;
@@ -8,6 +9,7 @@ using static sblngavnav6.Common.CommonUtils.Text;
 
 namespace sblngavnav6.Commands.Twitch
 {
+    [RequireGuild]
     public sealed class TwitchCommands : ModuleBase<SocketCommandContext>
     {
         private const string Footer = "sbln твич📺 / powered by TwitchLib";

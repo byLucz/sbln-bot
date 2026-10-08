@@ -57,6 +57,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         FooterIconUrl = DevIcon
     }));
 
+    [RequireGuild]
     [Command("ава")]
     public async Task ShowAvatar([Optional] string size, [Optional] IGuildUser user)
     {
@@ -156,6 +157,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             StatusFooter));
     }
 
+    [RequireSuperuser]
     [Command("инфа разрабов")]
     [Alias("ир")]
     public async Task InfoDev()
@@ -218,6 +220,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }));
     }
 
+    [RequireGuild]
     [Command("инфа")]
     public async Task Info()
     {
@@ -256,8 +259,8 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         await Context.Channel.SendMessageAsync(embed: embed, components: components);
     }
 
+    [RequireGuild]
     [Command("анонс")]
-    [RequireOwner]
     [Cooldown(10)]
     public async Task AnnounceMessage([Remainder] string message)
     {
@@ -273,6 +276,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }));
     }
 
+    [RequireGuild]
     [Command("удоли")]
     [RequireUserPermission(GuildPermission.ManageMessages, ErrorMessage = "нужны права на управление сообщениями")]
     [RequireBotPermission(GuildPermission.ManageMessages)]
@@ -344,6 +348,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }));
     }
 
+    [RequireGuild]
     [Command("позови")]
     [Cooldown(10)]
     public Task CallUser(SocketGuildUser user) =>
@@ -369,6 +374,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             $"состояние `{_client.ConnectionState}`, аптайм `{FormatAge(Uptime)}`");
     }
 
+    [RequireGuild]
     [Command("чел")]
     public async Task UserInfo(SocketGuildUser user = null)
     {
@@ -399,6 +405,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }));
     }
 
+    [RequireGuild]
     [Command("кик")]
     [RequireUserPermission(GuildPermission.KickMembers, ErrorMessage = "тебе нельзя ты додик")]
     [RequireBotPermission(GuildPermission.KickMembers)]
@@ -418,6 +425,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             Avatar(Context.User)));
     }
 
+    [RequireGuild]
     [Command("бан")]
     [RequireUserPermission(GuildPermission.BanMembers, ErrorMessage = "тебе нельзя ты додик")]
     [RequireBotPermission(GuildPermission.BanMembers)]
@@ -502,11 +510,11 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Alias("н")]
     public async Task Remind(int seconds, [Remainder] string remindMsg)
     {
-        const int maxSeconds = 7 * 24 * 60 * 60;
+        const int maxSeconds = 24 * 60 * 60;
 
         if (seconds is < 1 or > maxSeconds)
         {
-            await FailAsync("напоминалка", $"от 1 секунды до {maxSeconds} секунд (неделя)");
+            await FailAsync("напоминалка", $"от 1 секунды до {maxSeconds} секунд (сутки)");
             return;
         }
 

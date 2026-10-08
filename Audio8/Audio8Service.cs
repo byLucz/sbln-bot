@@ -654,7 +654,10 @@ namespace sblngavnav6.Audio8
                     Audio8Constants.LogSource,
                     $"Трек переиграл длительность g={player.GuildId}: {position.Value:hh\\:mm\\:ss} из {track.Duration:hh\\:mm\\:ss}, скипаю \"{track.Title}\"");
 
-                await SkipAsync(player, null, cancellationToken).ConfigureAwait(false);
+                var skipped = await SkipAsync(player, null, cancellationToken).ConfigureAwait(false);
+
+                if (!skipped.Ok)
+                    await StopPlaybackAsync(player, cancellationToken).ConfigureAwait(false);
 
                 if (player.SilentMode)
                     continue;
@@ -664,9 +667,11 @@ namespace sblngavnav6.Audio8
                 if (channel is null)
                     continue;
 
+                var next = skipped.Ok ? "перехожу дальше" : "очередь пуста, останавливаю";
+
                 await SendAsync(channel, await Audio8Embeds.Error(
                     "плеер",
-                    $"{TrackLink(track.Title, track.Uri?.ToString())} переиграл свою длительность, перехожу дальше")).ConfigureAwait(false);
+                    $"{TrackLink(track.Title, track.Uri?.ToString())} переиграл свою длительность, {next}")).ConfigureAwait(false);
             }
         }
 

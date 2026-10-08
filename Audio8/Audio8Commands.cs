@@ -3,12 +3,14 @@ using Discord.Commands;
 using Lavalink4NET.Players;
 using System.Runtime.InteropServices;
 using sblngavnav6.Common;
+using sblngavnav6.Core;
 using sblngavnav6.Services;
 using static sblngavnav6.Common.CommonUtils.Text;
 using static sblngavnav6.Common.CommonUtils.Time;
 
 namespace sblngavnav6.Audio8
 {
+    [RequireGuild]
     public sealed class Audio8Commands : ModuleBase<SocketCommandContext>
     {
         private readonly Audio8Service _service;
