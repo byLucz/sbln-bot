@@ -84,11 +84,11 @@ namespace sblngavnav6.GVR
             }));
         }
 
-        [Command("добавить", RunMode = RunMode.Async), Alias("доб")]
+        [Command("добавить"), Alias("доб")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public Task AppendData(uint amount) => CollectAsync(amount, append: true);
 
-        [Command("добавить+", RunMode = RunMode.Async), Alias("доб+")]
+        [Command("добавить+"), Alias("доб+")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public Task SeedFile(uint amount) => CollectAsync(amount, append: false);
 
@@ -108,7 +108,7 @@ namespace sblngavnav6.GVR
             await DoneAsync("время подзагрузки", $"**{amount / 1000.0:0.##} сек**");
         }
 
-        [Command("чистись", RunMode = RunMode.Async), Alias("чист")]
+        [Command("чистись"), Alias("чист")]
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task ClearFile()
         {

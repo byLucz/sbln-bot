@@ -1,4 +1,5 @@
-﻿using Discord.Interactions;
+using Discord;
+using Discord.Interactions;
 using Discord.WebSocket;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
@@ -33,6 +34,8 @@ namespace sblngavnav6.Core
 
             _client.InteractionCreated += HandleInteractionAsync;
             _client.Ready += RegisterCommandsAsync;
+            _interactions.InteractionExecuted += OnInteractionExecutedAsync;
+            _interactions.Log += LogAsync;
             _hooked = true;
         }
 
@@ -72,10 +75,7 @@ namespace sblngavnav6.Core
             try
             {
                 var ctx = new SocketInteractionContext(_client, socketInteraction);
-                var result = await _interactions.ExecuteCommandAsync(ctx, _services);
-
-                if (!result.IsSuccess && result.Error != InteractionCommandError.UnknownCommand)
-                    await ReportFailureAsync(socketInteraction, result);
+                await _interactions.ExecuteCommandAsync(ctx, _services);
             }
             catch (Exception ex)
             {
@@ -84,24 +84,50 @@ namespace sblngavnav6.Core
             }
         }
 
-        private static async Task ReportFailureAsync(SocketInteraction interaction, IResult result)
+        private async Task OnInteractionExecutedAsync(ICommandInfo command, IInteractionContext context, IResult result)
         {
+            if (result.IsSuccess || result.Error == InteractionCommandError.UnknownCommand)
+                return;
+
+            var interaction = context.Interaction;
+            var name = command?.Name ?? "?";
+            var exception = (result as ExecuteResult?)?.Exception;
+
+            if (exception is not null)
+            {
+                await LoggingService.LogErrorAsync(
+                    "INTRS",
+                    $"Interaction упал. Command={name}, Type={interaction.Type}, User={interaction.User?.Id}",
+                    exception);
+            }
+            else
+            {
+                await LoggingService.LogWarningAsync(
+                    "INTRS",
+                    $"Interaction не выполнен. Command={name}, Type={interaction.Type}, User={interaction.User?.Id}, Error={result.Error}, Reason={result.ErrorReason}");
+            }
+
             var reply = result.Error switch
             {
                 InteractionCommandError.UnmetPrecondition => $"🔴 {result.ErrorReason}",
                 InteractionCommandError.ConvertFailed => "🔴 Не удалось разобрать аргументы",
                 InteractionCommandError.BadArgs => "🔴 Неверные аргументы",
+                InteractionCommandError.Exception => "🔴 Внутренняя ошибка, попробуй позже",
                 _ => $"🔴 Не выполнено: {result.ErrorReason}"
             };
-
-            await LoggingService.LogWarningAsync(
-                "INTRS",
-                $"Interaction не выполнен. Type={interaction.Type}, User={interaction.User?.Id}, Error={result.Error}, Reason={result.ErrorReason}");
 
             await RespondSafeAsync(interaction, reply);
         }
 
-        private static async Task RespondSafeAsync(SocketInteraction interaction, string message)
+        private static Task LogAsync(LogMessage log)
+        {
+            if (log.Exception is InteractionException)
+                return Task.CompletedTask;
+
+            return LoggingService.LogAsync("INTRS", log.Severity, log.Message, log.Exception);
+        }
+
+        private static async Task RespondSafeAsync(IDiscordInteraction interaction, string message)
         {
             try
             {
@@ -122,6 +148,8 @@ namespace sblngavnav6.Core
 
             _client.InteractionCreated -= HandleInteractionAsync;
             _client.Ready -= RegisterCommandsAsync;
+            _interactions.InteractionExecuted -= OnInteractionExecutedAsync;
+            _interactions.Log -= LogAsync;
             _hooked = false;
         }
 

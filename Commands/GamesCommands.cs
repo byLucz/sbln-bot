@@ -53,7 +53,7 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
     }
 
     [Frontier]
-    [Command("гонка", RunMode = RunMode.Async)]
+    [Command("гонка")]
     public async Task Race([Remainder] string args)
     {
         var parts = args.Split(' ', StringSplitOptions.RemoveEmptyEntries);

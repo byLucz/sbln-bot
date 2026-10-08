@@ -28,7 +28,7 @@ namespace sblngavnav6.Audio8
             _httpClientFactory = httpClientFactory;
         }
 
-        [Command("играй", RunMode = RunMode.Async)]
+        [Command("играй")]
         [Alias("и")]
         public async Task PlayAsync([Remainder] string searchQuery)
         {
@@ -86,7 +86,7 @@ namespace sblngavnav6.Audio8
             }
         }
 
-        [Command("озвучь", RunMode = RunMode.Async)]
+        [Command("озвучь")]
         [Alias("ттс")]
         public async Task SpeakAsync([Remainder] string text)
         {
@@ -99,7 +99,7 @@ namespace sblngavnav6.Audio8
             await PlayAsync($"ftts://{text.Trim()}");
         }
 
-        [Command("выйди", RunMode = RunMode.Async)]
+        [Command("выйди")]
         [Alias("л")]
         public async Task LeaveAsync()
         {
@@ -109,7 +109,7 @@ namespace sblngavnav6.Audio8
             await _service.LeaveAsync(Context.Guild.Id);
         }
 
-        [Command("источник", RunMode = RunMode.Async)]
+        [Command("источник")]
         [Alias("сорс", "деф")]
         public async Task DefaultSourceAsync([Remainder] string source = null)
         {
@@ -133,7 +133,7 @@ namespace sblngavnav6.Audio8
                 $"🎚️ Дефолтный источник для `x и` теперь: **{Audio8Query.DisplayName(prefix)}**"));
         }
 
-        [Command("скип", RunMode = RunMode.Async)]
+        [Command("скип")]
         [Alias("ск")]
         public async Task SkipAsync([Optional] int? index)
         {
@@ -155,7 +155,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Skipped(skip));
         }
 
-        [Command("недавние", RunMode = RunMode.Async)]
+        [Command("недавние")]
         [Alias("нед", "последние")]
         public async Task RecentPlaylistsAsync()
         {
@@ -174,7 +174,7 @@ namespace sblngavnav6.Audio8
                 scope: Audio8Scopes.Recent(Context.Guild.Id));
         }
 
-        [Command("плейлист", RunMode = RunMode.Async)]
+        [Command("плейлист")]
         [Alias("лист")]
         public async Task QueueAsync()
         {
@@ -185,7 +185,7 @@ namespace sblngavnav6.Audio8
             await _service.SendQueueAsync(player, (ITextChannel)Context.Channel);
         }
 
-        [Command("перемешай", RunMode = RunMode.Async)]
+        [Command("перемешай")]
         [Alias("шафл", "перемешка")]
         public async Task ShuffleAsync()
         {
@@ -203,7 +203,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Accent("шафл", $"🔀 **Очередь перемешана** ({count} треков)"));
         }
 
-        [Command("пауза", RunMode = RunMode.Async)]
+        [Command("пауза")]
         [Alias("пз")]
         public async Task PauseAsync()
         {
@@ -228,7 +228,7 @@ namespace sblngavnav6.Audio8
                 $"Поставил на паузу: {TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ⏸️"));
         }
 
-        [Command("продолжи", RunMode = RunMode.Async)]
+        [Command("продолжи")]
         [Alias("прод")]
         public async Task ResumeAsync()
         {
@@ -253,7 +253,7 @@ namespace sblngavnav6.Audio8
                 $"Продолжаю: {TrackLink(player.CurrentTrack.Title, player.CurrentTrack.Uri?.ToString())} ▶️"));
         }
 
-        [Command("останови", RunMode = RunMode.Async)]
+        [Command("останови")]
         [Alias("стоп")]
         public async Task StopAsync()
         {
@@ -265,7 +265,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Info("стоп", "стопнулся и очистил плейлист ⛔"));
         }
 
-        [Command("громкость", RunMode = RunMode.Async)]
+        [Command("громкость")]
         [Alias("гр")]
         public async Task VolumeAsync([Optional] int? level)
         {
@@ -294,7 +294,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Accent("громкость", $"**Громкость - {volume} 📶**"));
         }
 
-        [Command("басс", RunMode = RunMode.Async)]
+        [Command("басс")]
         [Alias("бс")]
         public async Task BassBoostAsync([Optional] int? level)
         {
@@ -326,7 +326,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Accent("басс", description));
         }
 
-        [Command("назад", RunMode = RunMode.Async)]
+        [Command("назад")]
         [Alias("пред", "предыдущий")]
         public async Task PreviousAsync()
         {
@@ -344,7 +344,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Previous(previous));
         }
 
-        [Command("фильтр", RunMode = RunMode.Async)]
+        [Command("фильтр")]
         [Alias("фильтры", "эффект")]
         public async Task FilterAsync([Remainder] string preset = null)
         {
@@ -369,7 +369,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Filter(applied));
         }
 
-        [Command("залупа", RunMode = RunMode.Async)]
+        [Command("залупа")]
         [Alias("луп")]
         public async Task LoopAsync()
         {
@@ -382,7 +382,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Accent("луп", enabled ? "🔁 **Луп вкл**" : "⛔ **Луп выкл**"));
         }
 
-        [Command("перейти", RunMode = RunMode.Async)]
+        [Command("перейти")]
         [Alias("пр")]
         public async Task SeekAsync([Remainder] string timecode)
         {
@@ -408,7 +408,7 @@ namespace sblngavnav6.Audio8
             await ReplyAsync(embed: await Audio8Embeds.Info("перейти", $"⏩ Перемотал на **{position:hh\\:mm\\:ss}**"));
         }
 
-        [Command("голосование", RunMode = RunMode.Async)]
+        [Command("голосование")]
         [Alias("голос")]
         public async Task VoteAsync([Remainder] string options)
         {
@@ -444,7 +444,7 @@ namespace sblngavnav6.Audio8
             await _vote.RunAsync(player, statusMessage, items, winner, http);
         }
 
-        [Command("лавастат", RunMode = RunMode.Async)]
+        [Command("лавастат")]
         public async Task StatsAsync()
         {
             var embed = _service.Stats.Build(_service.BuildStatsContext());

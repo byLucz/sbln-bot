@@ -93,7 +93,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         Color.Blue,
         StatsFooter));
 
-    [Command("ст", RunMode = RunMode.Async)]
+    [Command("ст")]
     [RequireOwner]
     public async Task SetStatus(string status, [Remainder] string args = null)
     {
@@ -156,7 +156,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             StatusFooter));
     }
 
-    [Command("инфа разрабов", RunMode = RunMode.Async)]
+    [Command("инфа разрабов")]
     [Alias("ир")]
     public async Task InfoDev()
     {
@@ -256,7 +256,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         await Context.Channel.SendMessageAsync(embed: embed, components: components);
     }
 
-    [Command("анонс", RunMode = RunMode.Async)]
+    [Command("анонс")]
     [RequireOwner]
     [Cooldown(10)]
     public async Task AnnounceMessage([Remainder] string message)
@@ -350,7 +350,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         ReplyAsync(string.Join(" ", Enumerable.Repeat($"{user.Mention} ЗАЙДИ В ДС", 8)));
 
     [Frontier]
-    [Command("пинг", RunMode = RunMode.Async)]
+    [Command("пинг")]
     public async Task Ping()
     {
         var restWatch = Stopwatch.StartNew();
@@ -498,7 +498,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }
     }
 
-    [Command("напомни", RunMode = RunMode.Async)]
+    [Command("напомни")]
     [Alias("н")]
     public async Task Remind(int seconds, [Remainder] string remindMsg)
     {

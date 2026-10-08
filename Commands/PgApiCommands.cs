@@ -83,7 +83,7 @@ public class PgApiCommands : ModuleBase<SocketCommandContext>
         _pager = pager;
     }
 
-    [Command("пг", RunMode = Discord.Commands.RunMode.Async)]
+    [Command("пг")]
     public async Task PgApiPanel()
     {
         var sw = System.Diagnostics.Stopwatch.StartNew();

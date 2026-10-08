@@ -26,7 +26,7 @@ namespace sblngavnav6.Commands.Twitch
         }
 
         [RequireUserPermission(GuildPermission.ManageRoles)]
-        [Command("добавить стримера", RunMode = RunMode.Async)]
+        [Command("добавить стримера")]
         public async Task AddStreamerAsync(string streamer)
         {
             if (await DisabledAsync())
@@ -50,7 +50,7 @@ namespace sblngavnav6.Commands.Twitch
         }
 
         [RequireUserPermission(GuildPermission.ManageRoles)]
-        [Command("убрать стримера", RunMode = RunMode.Async)]
+        [Command("убрать стримера")]
         public async Task RemoveStreamerAsync(string streamer)
         {
             if (await DisabledAsync())
@@ -73,7 +73,7 @@ namespace sblngavnav6.Commands.Twitch
             });
         }
 
-        [Command("стримеры", RunMode = RunMode.Async)]
+        [Command("стримеры")]
         [Alias("стримерши")]
         public async Task Streamers()
         {

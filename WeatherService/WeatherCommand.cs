@@ -18,7 +18,7 @@ namespace sblngavnav6.Commands
         }
 
         [FrontierAsImage]
-        [Command("погода", RunMode = RunMode.Async)]
+        [Command("погода")]
         public async Task WeatherInfo(params string[] cityParts)
         {
             var city = string.Join(" ", cityParts ?? []).Trim();

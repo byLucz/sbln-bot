@@ -151,7 +151,19 @@ namespace sblngavnav6.Core
                 return;
             }
 
-            await _gvrMessages.TrySendGeneratedMessageAsync(context);
+            _ = Task.Run(() => TrySendGeneratedAsync(context));
+        }
+
+        private async Task TrySendGeneratedAsync(SocketCommandContext context)
+        {
+            try
+            {
+                await _gvrMessages.TrySendGeneratedMessageAsync(context);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogErrorAsync("GOVOR", "Не удалось сгенерировать сообщение", ex);
+            }
         }
 
         private async Task<bool> TryHandleMailReplyAsync(SocketUserMessage message)
@@ -283,9 +295,7 @@ namespace sblngavnav6.Core
         }
 
         private Task LogAsync(LogMessage log)
-        {
-            return LoggingService.LogInformationAsync("COMND", log.ToString());
-        }
+            => LoggingService.LogAsync("COMND", log.Severity, log.Message, log.Exception);
 
         private Task OnClientReadyAsync() => StartTimerAsync();
 

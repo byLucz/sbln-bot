@@ -14,6 +14,7 @@ using sblngavnav6.TelegramExtensions.Core;
 using sblngavnav6.TwitchService;
 using DiscordTelegramFrontier;
 using CommandService = Discord.Commands.CommandService;
+using CommandServiceConfig = Discord.Commands.CommandServiceConfig;
 
 namespace sblngavnav6.Core
 {
@@ -36,7 +37,11 @@ namespace sblngavnav6.Core
             return services
                 .AddLogging()
                 .AddSingleton(_ => new DiscordSocketClient(config))
-                .AddSingleton<CommandService>()
+                .AddSingleton(_ => new CommandService(new CommandServiceConfig
+                {
+                    DefaultRunMode = Discord.Commands.RunMode.Async,
+                    LogLevel = LogSeverity.Info
+                }))
                 .AddSingleton<CommandHandler>()
                 .AddSingleton<InteractionService>(provider =>
                 {

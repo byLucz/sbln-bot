@@ -77,7 +77,7 @@ namespace sblngavnav6.Commands
         public Task SheffCommand() => ReplyAsync(embed: SheffEmbeds.Glory());
 
         [FrontierAsImage]
-        [Command("маг7", RunMode = Discord.Commands.RunMode.Async)]
+        [Command("маг7")]
         public async Task SheffMag7()
         {
             var message = await AnimateAsync(Context.Channel, SheffEmbeds.Frames(), SheffEmbeds.FrameDelay);
