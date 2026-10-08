@@ -107,7 +107,6 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
         await message.ModifyAsync(properties => properties.Content = result);
     }
 
-    [Frontier]
     [Command("сапер")]
     public async Task Minefield(int size = 9, float ratio = 0.2f)
     {

@@ -205,7 +205,7 @@ namespace sblngavnav6.Core
                     await _frontier.StartAsync();
 
                     if (attempt > 0)
-                        await LoggingService.LogInformationAsync("EXSRV",
+                        await LoggingService.LogInformationAsync("DTFTG",
                             $"Telegram-мост поднялся, попыток {attempt + 1}, простой {FormatAge(DateTimeOffset.UtcNow - since)}");
 
                     return;
@@ -222,7 +222,7 @@ namespace sblngavnav6.Core
                     if (now - reported >= FrontierReportInterval)
                     {
                         reported = now;
-                        await LoggingService.LogWarningAsync("EXSRV",
+                        await LoggingService.LogWarningAsync("DTFTG",
                             $"Telegram-мост недоступен, попыток {attempt}, простой {FormatAge(now - since)}, повтор через минуту",
                             attempt == 1 ? ex : null);
                     }

@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
+using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Common;
 using static sblngavnav6.Common.CommonUtils.Text;
@@ -86,6 +87,8 @@ namespace sblngavnav6.Core
 
         public async Task InitializeAsync()
         {
+            _commands.AddFrontierUserReaders();
+
             await _commands.AddModulesAsync(
                 assembly: Assembly.GetEntryAssembly(),
                 services: _services);
@@ -232,7 +235,7 @@ namespace sblngavnav6.Core
 
         private async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
         {
-            if (!command.IsSpecified || result.IsSuccess)
+            if (!command.IsSpecified || result.IsSuccess || context.Channel is FrontierProxyChannel)
                 return;
 
             var cmd = command.Value;
@@ -295,7 +298,12 @@ namespace sblngavnav6.Core
         }
 
         private Task LogAsync(LogMessage log)
-            => LoggingService.LogAsync("COMND", log.Severity, log.Message, log.Exception);
+        {
+            if (log.Exception is CommandException { Context.Channel: FrontierProxyChannel })
+                return Task.CompletedTask;
+
+            return LoggingService.LogAsync("COMND", log.Severity, log.Message, log.Exception);
+        }
 
         private Task OnClientReadyAsync() => StartTimerAsync();
 

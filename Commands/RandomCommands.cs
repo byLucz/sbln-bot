@@ -4,7 +4,6 @@ using sblngavnav6.Common;
 using static sblngavnav6.Common.CommonUtils.Chat;
 using sblngavnav6.Data;
 using static sblngavnav6.Data.DataRoots;
-using System.Runtime.InteropServices;
 using DiscordTelegramFrontier;
 
 namespace sblngavnav6.Commands;
@@ -73,10 +72,10 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
     }
 
     [Frontier]
-    [Command("гэй")]
-    public async Task GayCommand([Optional] IGuildUser user)
+    [Command("лейм")]
+    public async Task LameCommand(IUser user = null)
     {
-        var target = (IUser)user ?? Context.User;
+        var target = user ?? Context.User;
 
         if (target is null)
         {
@@ -86,9 +85,9 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
 
         var percentage = CommonUtils.RandomNumber(0, 100);
         var pronoun = target.Id == Context.User?.Id ? "Ты" : target.Id == Context.Client.CurrentUser.Id ? "Я" : "Он";
-        var verdict = percentage < 33 ? "гетеро" : percentage < 66 ? "биби" : "гэй";
+        var verdict = percentage < 33 ? "леймик" : percentage < 66 ? "лейм" : "лейминатор";
 
-        await ReplyAsync($"**{target.Mention}** уровень гейства - **{percentage}%**. \n{pronoun} **{verdict}**! ");
+        await ReplyAsync($"**{target.Mention}** уровень лейминга - **{percentage}%**. \n{pronoun} **{verdict}**! ");
     }
 
     [Frontier]
@@ -216,22 +215,22 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
 
     [FrontierAsImage]
     [Command("ф")]
-    public Task F([Remainder] string input) =>
+    public Task PressF([Remainder] string input) =>
         SendMemeAsync("pressf", $"{Who} дает респект {input} <:sadge:853604643456024576>");
 
     [FrontierAsImage]
     [Command("кусь")]
-    public Task Kus([Remainder] string input) => SendMemeAsync("bite", $"{Who} куснул {input}💕");
+    public Task Bite([Remainder] string input) => SendMemeAsync("bite", $"{Who} куснул {input}💕");
 
     [FrontierAsImage]
     [Command("бухнуть")]
-    public Task Buhat([Remainder] string input) =>
+    public Task Drunk([Remainder] string input) =>
         SendMemeAsync("drunk", $"{Who} хочет бухнуть с {input} \U0001f974");
 
     [FrontierAsImage]
     [Command("заткнуть")]
     [Alias("завали ебало")]
-    public Task Zavali([Remainder] string input) => SendMemeAsync("stfu", $"{Who} затыкает {input} 🤐");
+    public Task Stfu([Remainder] string input) => SendMemeAsync("stfu", $"{Who} затыкает {input} 🤐");
 
     private string Who => Context.User?.Mention ?? "кто-то";
 

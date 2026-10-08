@@ -193,7 +193,7 @@ namespace sblngavnav6.Common
 
             return BuildAsync(new EmbedSpec
             {
-                AuthorName = "sbln милашки\U0001f97a👉🏻👈🏻",
+                AuthorName = "sbln картинки🧑‍🎨",
                 Description = description,
                 Color = new Color(255, 166, 207),
                 ImageUrl = url

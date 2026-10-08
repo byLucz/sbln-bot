@@ -72,6 +72,7 @@ namespace sblngavnav6.Core
                 {
                     o.TelegramToken = Global.Vars.Cfg.telegramToken;
                     o.DefaultGuildId = Global.Vars.Cfg.telegramDefaultGuild;
+                    o.ErrorHandler = ex => _ = LoggingService.LogErrorAsync("DTFTG", "Ошибка Telegram-моста", ex);
                     foreach (var (left, right) in Global.Vars.Cfg.IdMap("Telegram:ChatGuild"))
                         o.Chat(left, right);
                     foreach (var (left, right) in Global.Vars.Cfg.IdMap("Telegram:UserLink"))
