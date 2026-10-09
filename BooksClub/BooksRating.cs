@@ -2,6 +2,7 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using sblngavnav6.Common;
+using sblngavnav6.Core;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
 
@@ -63,12 +64,7 @@ namespace sblngavnav6.BooksClub
             if (filled == Criteria.Length)
             {
                 var final = Final(scores);
-                total = $"**{final}** // {CommonUtils.GetScoreEmoji(final)}\n" +
-                        $"база {Base(scores):0.#} × вайб {Multiplier(scores[4]):0.###}";
-            }
-            else if (scores.Take(4).All(score => score > 0))
-            {
-                total = $"база {Base(scores):0.#}, осталось выбрать вайб";
+                total = $"**{final}** // {CommonUtils.GetScoreEmoji(final)}";
             }
             else
             {
@@ -108,7 +104,7 @@ namespace sblngavnav6.BooksClub
                     .WithMaxValues(1);
 
                 for (var value = 1; value <= 10; value++)
-                    menu.AddOption($"{emoji} {name}: {value}", value.ToString(), isDefault: scores[index] == value);
+                    menu.AddOption($"{emoji} {value}", value.ToString(), isDefault: scores[index] == value);
 
                 builder.WithSelectMenu(menu, row: index);
             }
@@ -291,6 +287,14 @@ namespace sblngavnav6.BooksClub
 
         private async Task<(int id, string title, string authors, string image, DateTime selectedDate, string suggestedBy)?> CurrentBookAsync(int bookId)
         {
+            var opened = ((SocketMessageComponent)Context.Interaction).Message.CreatedAt;
+
+            if (DateTimeOffset.UtcNow - opened > PaginatorService.ViewLifetime)
+            {
+                await UpdateAsync(await EmbedHandler.CreateErrorEmbed("книжный клуб", "оценка устарела, открой её заново кнопкой ⭐ Оценить"), null);
+                return null;
+            }
+
             var book = await DataBase.GetLastBook();
 
             if (book.id == bookId)

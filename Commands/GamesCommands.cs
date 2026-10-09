@@ -43,10 +43,11 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
 
         for (var i = 0; i < racers.Length; i++)
         {
-            track.Append(new string('ㅤ', progresses[i]))
+            track.Append('|')
+                 .Append(new string('ㅤ', progresses[i]))
                  .Append(racers[i])
                  .Append(new string('ㅤ', RaceLength - progresses[i]))
-                 .AppendLine("||");
+                 .AppendLine(progresses[i] >= RaceLength ? "🏆" : "🏁");
         }
 
         return track.ToString();
@@ -104,7 +105,8 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
             ? $"👑 Победитель {racers[finished[0]]}!"
             : $"🏁 Ничья между {string.Join(" и ", finished.Select(index => racers[index]))}";
 
-        await message.ModifyAsync(properties => properties.Content = result);
+        var podium = Track(racers, progresses) + result;
+        await message.ModifyAsync(properties => properties.Content = podium);
     }
 
     [Command("сапер")]

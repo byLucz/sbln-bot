@@ -28,7 +28,7 @@ public sealed class HelpModule : TelegramModuleBase
                 .Append("<b>").Append(WebUtility.HtmlEncode(section.Title)).AppendLine("</b>");
 
             foreach (var command in section.Commands)
-                text.Append("<code>").Append(WebUtility.HtmlEncode(command.Command)).Append("</code> — ")
+                text.Append("<code>").Append(WebUtility.HtmlEncode(command.Command)).Append("</code> - ")
                     .AppendLine(WebUtility.HtmlEncode(command.About));
         }
 

@@ -1,21 +1,21 @@
 ﻿using Discord;
 using Discord.Commands;
-using DiscordTelegramFrontier;
 using Discord.WebSocket;
-using sblngavnav6.Core;
+using DiscordTelegramFrontier;
+using sblngavnav6.Audio8;
 using sblngavnav6.Common;
+using sblngavnav6.Core;
+using sblngavnav6.Data;
+using sblngavnav6.GVR;
+using sblngavnav6.Services;
+using System.Data;
+using System.Diagnostics;
+using System.Runtime;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using static sblngavnav6.Common.CommonUtils.Chat;
 using static sblngavnav6.Common.CommonUtils.Text;
 using static sblngavnav6.Common.CommonUtils.Time;
-using static sblngavnav6.Common.CommonUtils.Chat;
-using sblngavnav6.Data;
-using sblngavnav6.Services;
-using System.Diagnostics;
-using sblngavnav6.GVR;
-using sblngavnav6.Audio8;
-using System.Runtime;
-using System.Text.RegularExpressions;
-using System.Data;
-using System.Runtime.InteropServices;
 
 namespace sblngavnav6.Commands;
 
@@ -85,14 +85,6 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             Color = Color.Red
         }));
     }
-
-    [Frontier]
-    [Command("апт")]
-    public Task BotUptime() => ReplyAsync(embed: EmbedHandler.Simple(
-        "Время работы бота⌛",
-        $"🦾 - {FormatAge(Uptime)}",
-        Color.Blue,
-        StatsFooter));
 
     [Command("ст")]
     [RequireOwner]
@@ -181,7 +173,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            Title = $"🛠️ sblngavna {Versioning.Full}",
+            Title = $"🤖 sblngavna {Versioning.Full}",
             Description =
                 $"Аптайм: **{FormatAge(Uptime)}**, запущен <t:{ToUnix(process.StartTime.ToUniversalTime())}:R>\n" +
                 $".NET **{Environment.Version}**, GC **{collector}**, PID **{Environment.ProcessId}**",
@@ -294,7 +286,6 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         await notice.ModifyAsync(properties => properties.Content = $"снесено {removed} сообщений");
     }
 
-    [Frontier]
     [Command("зал славы")]
     public async Task HallOfGlory()
     {
@@ -343,7 +334,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            AuthorName = $"sblngavna {Versioning.Full}",
+            Title = $"🤖 sblngavna {Versioning.Full}",
             Color = Color.LighterGrey,
             Fields = fields,
             Footer = DevFooter,
