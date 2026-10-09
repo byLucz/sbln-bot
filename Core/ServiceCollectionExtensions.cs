@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
+using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Audio8;
 using sblngavnav6.Commands;
@@ -12,7 +13,8 @@ using sblngavnav6.Services.Twitch;
 using sblngavnav6.TelegramExtensions;
 using sblngavnav6.TelegramExtensions.Core;
 using sblngavnav6.TwitchService;
-using DiscordTelegramFrontier;
+using System.Net.Sockets;
+using Telegram.Bot.Exceptions;
 using CommandService = Discord.Commands.CommandService;
 using CommandServiceConfig = Discord.Commands.CommandServiceConfig;
 
@@ -72,7 +74,7 @@ namespace sblngavnav6.Core
                 {
                     o.TelegramToken = Global.Vars.Cfg.telegramToken;
                     o.DefaultGuildId = Global.Vars.Cfg.telegramDefaultGuild;
-                    o.ErrorHandler = ex => _ = LoggingService.LogErrorAsync("DTFTG", "Ошибка Telegram-моста", ex);
+                    o.ErrorHandler = ex => _ = ReportTelegramAsync(ex);
                     foreach (var (left, right) in Global.Vars.Cfg.IdMap("Telegram:ChatGuild"))
                         o.Chat(left, right);
                     foreach (var (left, right) in Global.Vars.Cfg.IdMap("Telegram:UserLink"))
@@ -80,6 +82,29 @@ namespace sblngavnav6.Core
                 })
                 .AddAudio8()
                 .AddHttpClient();
+        }
+
+        private static Task ReportTelegramAsync(Exception ex)
+        {
+            if (!IsTransient(ex))
+                return LoggingService.LogErrorAsync("DTFTG", "Ошибка Telegram-моста", ex);
+
+            var reason = ex.InnerException is null ? ex.Message : $"{ex.Message}: {ex.GetBaseException().Message}";
+            return LoggingService.LogWarningAsync("DTFTG", $"Telegram недоступен, сетевой сбой ({reason})");
+        }
+
+        private static bool IsTransient(Exception ex)
+        {
+            for (var current = ex; current is not null; current = current.InnerException)
+            {
+                if (current is ApiRequestException)
+                    return false;
+
+                if (current is RequestException or HttpRequestException or TimeoutException or IOException or SocketException)
+                    return true;
+            }
+
+            return false;
         }
     }
 }
