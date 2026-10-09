@@ -86,7 +86,7 @@ namespace sblngavnav6.PPM
 
         public static string Ttl(PpmMailbox box) =>
             box.IsPermanent ? "♾️ постоянный"
-            : box.ExpiresAt is DateTime expiresAt ? $"⏳ удалится <t:{ToUnix(expiresAt)}:R>"
+            : box.ExpiresAt is DateTime expiresAt ? $"⏳ удалится {Stamp(expiresAt)}"
             : "⏳ без срока";
 
         private static Embed Page(string description) => EmbedHandler.Build(new EmbedSpec

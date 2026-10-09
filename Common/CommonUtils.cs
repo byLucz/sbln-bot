@@ -214,6 +214,12 @@ namespace sblngavnav6.Common
             public static long ToUnix(DateTime utc)
                 => new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeSeconds();
 
+            public static string Stamp(DateTimeOffset at, char style = 'R') => $"<t:{at.ToUnixTimeSeconds()}:{style}>";
+
+            public static string Stamp(DateTime utc, char style = 'R') => $"<t:{ToUnix(utc)}:{style}>";
+
+            public static string DateAndAgo(DateTimeOffset at) => $"{Stamp(at, 'D')} ({Stamp(at)})";
+
             public static string FormatTime(TimeSpan time)
             {
                 if (time.TotalDays >= 1)

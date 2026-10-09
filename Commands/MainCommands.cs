@@ -175,7 +175,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         {
             Title = $"🤖 sblngavna {Versioning.Full}",
             Description =
-                $"Аптайм: **{FormatAge(Uptime)}**, запущен <t:{ToUnix(process.StartTime.ToUniversalTime())}:R>\n" +
+                $"Аптайм: **{FormatAge(Uptime)}**, запущен {Stamp(process.StartTime.ToUniversalTime())}\n" +
                 $".NET **{Environment.Version}**, GC **{collector}**, PID **{Environment.ProcessId}**",
             Color = Color.Blue,
             ThumbnailUrl = Avatar(_client.CurrentUser),
@@ -229,7 +229,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             [
                 new EmbedFieldSpec("📅 Основное",
                     $"Владелец: {guild.Owner.Mention}\n" +
-                    $"Создан: <t:{guild.CreatedAt.ToUnixTimeSeconds()}:D>\n" +
+                    $"Создан: {Stamp(guild.CreatedAt, 'D')}\n" +
                     $"Участников: **{guild.MemberCount}**", true),
                 new EmbedFieldSpec("💬 Структура",
                     $"Текстовых: **{guild.TextChannels.Count}**\n" +
@@ -374,26 +374,90 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     {
         user ??= (SocketGuildUser)Context.User;
 
-        var nickname = string.IsNullOrEmpty(user.Nickname) ? string.Empty : $"({user.Nickname})";
-        var roles = user.Roles.Where(role => !role.IsEveryone).Select(role => role.Mention).ToList();
-        var voice = user.VoiceChannel is { } channel ? channel.Name : "***нет***";
+        IUser profile = null;
+        try { profile = await _client.Rest.GetUserAsync(user.Id); }
+        catch (Exception ex) when (ex is Discord.Net.HttpException or TimeoutException) { }
+
+        var roles = user.Roles.Where(role => !role.IsEveryone).OrderByDescending(role => role.Position).ToList();
+        var colored = roles.FirstOrDefault(role => role.Colors.PrimaryColor != Color.Default);
+
+        var identity = new List<string>
+        {
+            $"Ник: **{user.Username}**",
+            $"Имя: **{user.GlobalName ?? user.Username}**"
+        };
+
+        if (!string.IsNullOrEmpty(user.Nickname))
+            identity.Add($"На сервере: **{user.Nickname}**");
+
+        identity.Add($"ID: `{user.Id}`");
+
+        if (user.Id == Context.Guild.OwnerId)
+            identity.Add("👑 владелец сервера");
+        else if (user.GuildPermissions.Administrator)
+            identity.Add("🛡️ администратор");
+
+        if (user.IsBot)
+            identity.Add("🤖 бот");
+
+        var devices = user.ActiveClients.Select(client => client switch
+        {
+            ClientType.Desktop => "🖥️ пк",
+            ClientType.Mobile => "📱 телефон",
+            ClientType.Web => "🌐 браузер",
+            _ => null
+        }).Where(device => device is not null).ToList();
+
+        if (devices.Count > 0)
+            identity.Add($"Сидит с: {string.Join(", ", devices)}");
 
         var fields = new List<EmbedFieldSpec>
         {
-            new("Состояние:", user.Status.ToString()),
-            new("Появился в Дискорде:", $"<t:{user.CreatedAt.ToUnixTimeSeconds()}:D> (<t:{user.CreatedAt.ToUnixTimeSeconds()}:R>)")
+            new("🪪 Профиль", string.Join("\n", identity), true)
         };
 
-        if (user.JoinedAt is { } joined)
-            fields.Add(new EmbedFieldSpec("Появился на этом сервере:", $"<t:{joined.ToUnixTimeSeconds()}:D> (<t:{joined.ToUnixTimeSeconds()}:R>)"));
+        var dates = $"Аккаунт: {DateAndAgo(user.CreatedAt)}";
 
-        fields.Add(new EmbedFieldSpec("Роли:", roles.Count > 0 ? string.Join(", ", roles) : "нет"));
-        fields.Add(new EmbedFieldSpec("В войсе:", voice));
+        if (user.JoinedAt is { } joined)
+        {
+            dates += $"\nНа сервере: {DateAndAgo(joined)}";
+
+            if (Context.Guild.HasAllMembers)
+            {
+                var position = Context.Guild.Users.Count(member => member.JoinedAt < joined) + 1;
+                dates += $"\nЗашёл **#{position}** из {Context.Guild.MemberCount}";
+            }
+        }
+
+        fields.Add(new EmbedFieldSpec("📅 Даты", dates));
+
+        if (user.PremiumSince is { } boosting)
+            fields.Add(new EmbedFieldSpec("💎 Бустит", $"с {Stamp(boosting, 'D')}", true));
+
+        if (user.TimedOutUntil is { } timeout && timeout > DateTimeOffset.UtcNow)
+            fields.Add(new EmbedFieldSpec("🔇 В муте", $"до {Stamp(timeout)}", true));
+
+        if (user.VoiceChannel is { } voice)
+        {
+            var flags = new List<string>();
+            if (user.IsSelfMuted || user.IsMuted) flags.Add("🔇");
+            if (user.IsSelfDeafened || user.IsDeafened) flags.Add("🎧");
+            if (user.IsStreaming) flags.Add("📺");
+            if (user.IsVideoing) flags.Add("📷");
+
+            fields.Add(new EmbedFieldSpec("🎙️ В войсе", $"{voice.Mention} {string.Join(" ", flags)}".TrimEnd(), true));
+        }
+
+        fields.Add(new EmbedFieldSpec(
+            $"🎭 Роли ({roles.Count})",
+            roles.Count > 0 ? string.Join(" ", roles.Select(role => role.Mention)) : "нет"));
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            Title = $"{user.Username} {nickname}",
+            Title = user.DisplayName,
             ThumbnailUrl = GuildAvatar(user),
+            ImageUrl = (profile as Discord.Rest.RestUser)?.GetBannerUrl(size: 1024),
+            Color = colored?.Colors.PrimaryColor ?? (profile as Discord.Rest.RestUser)?.AccentColor ?? Color.Default,
             Fields = fields,
             Footer = StatsFooter
         }));
@@ -495,7 +559,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                 "sbln калькулятор📚📐",
                 $"{math} = {result}",
                 Color.DarkerGrey,
-                "sbln"));
+                null));
         }
         catch (DivideByZeroException)
         {

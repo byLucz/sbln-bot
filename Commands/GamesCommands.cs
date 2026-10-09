@@ -10,6 +10,7 @@ namespace sblngavnav6.Commands;
 public class GamesCommands : ModuleBase<SocketCommandContext>
 {
     private const int RaceLength = 50;
+    private const int TrackCells = 12;
     private static readonly string[] ApexWeapons =
     [
         "R-301", "Alternator", "Rampage + Molly", "Flatline", "C.A.R", "Hemlok", "Devotion",
@@ -42,11 +43,12 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
 
         for (var i = 0; i < racers.Length; i++)
         {
-            track.Append('|')
-                 .Append(new string('ㅤ', progresses[i]))
+            var cell = progresses[i] * TrackCells / RaceLength;
+
+            track.Append(string.Concat(Enumerable.Repeat("➖", cell)))
                  .Append(racers[i])
-                 .Append(new string('ㅤ', RaceLength - progresses[i]))
-                 .AppendLine(progresses[i] >= RaceLength ? "🏆" : "🏁");
+                 .Append(string.Concat(Enumerable.Repeat("➖", TrackCells - cell)))
+                 .AppendLine("🏁");
         }
 
         return track.ToString();
@@ -104,8 +106,7 @@ public class GamesCommands : ModuleBase<SocketCommandContext>
             ? $"👑 Победитель {racers[finished[0]]}!"
             : $"🏁 Ничья между {string.Join(" и ", finished.Select(index => racers[index]))}";
 
-        var podium = Track(racers, progresses) + result;
-        await message.ModifyAsync(properties => properties.Content = podium);
+        await message.ModifyAsync(properties => properties.Content = result);
     }
 
     [Command("сапер")]
