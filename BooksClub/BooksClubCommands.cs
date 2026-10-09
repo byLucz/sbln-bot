@@ -376,7 +376,7 @@ namespace sblngavnav6.BooksClub
 
         private async Task<JsonNode> FetchVolumeAsync(string title)
         {
-            var url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru";
+            var url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru&country={Global.Vars.Cfg.booksCountry}";
 
             if (!string.IsNullOrWhiteSpace(Global.Vars.Cfg.gBooksApi))
                 url += $"&key={Global.Vars.Cfg.gBooksApi}";
@@ -393,16 +393,10 @@ namespace sblngavnav6.BooksClub
                     return null;
                 }
 
-                var json = JsonNode.Parse(body);
-
-                var volume = json?["items"]?[0]?["volumeInfo"];
+                var volume = JsonNode.Parse(body)?["items"]?[0]?["volumeInfo"];
 
                 if (volume is null)
-                {
-                    var keyed = string.IsNullOrWhiteSpace(Global.Vars.Cfg.gBooksApi) ? "без ключа" : "с ключом";
-                    await LoggingService.LogWarningAsync("BOOKS",
-                        $"Google Books ничего не нашёл по \"{title}\" ({keyed}), totalItems={json?["totalItems"]?.ToString() ?? "нет"}");
-                }
+                    await LoggingService.LogWarningAsync("BOOKS", $"Google Books ничего не нашёл по \"{title}\"");
 
                 return volume;
             }

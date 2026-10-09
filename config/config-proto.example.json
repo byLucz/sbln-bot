@@ -43,7 +43,8 @@
   },
   "Books": {
     "BooksSeason": "2",
-    "BooksJsonPath": "/opt/sbln/data/books.json"
+    "BooksJsonPath": "/opt/sbln/data/books.json",
+    "BooksCountry": "PL"
   },
   "Telegram": {
     "Token": "",
