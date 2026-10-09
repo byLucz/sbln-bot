@@ -3,7 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace sblngavnav6.TelegramExtensions.Core;
 
-internal sealed class CommandHandler(CommandCatalog commands) : IFrontierModule
+internal sealed class CommandHandler(CommandCatalog commands, FrontierOptions options) : IFrontierModule
 {
     public async Task<bool> HandleAsync(FrontierUpdateContext update)
     {
@@ -24,6 +24,7 @@ internal sealed class CommandHandler(CommandCatalog commands) : IFrontierModule
         }
         else
         {
+            if (!options.AcceptsPlainCommand(message.Chat)) return false;
             var end = 0;
             while (end < text.Length && !char.IsWhiteSpace(text[end])) end++;
             name = text[..end];

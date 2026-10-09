@@ -34,6 +34,13 @@ namespace sblngavnav6.Common
 
         public static IReadOnlyList<PackageVersion> Packages { get; } = BuildPackages();
 
+        public static IReadOnlyList<PackageVersion> Modules { get; } =
+        [
+            Resolve("DTF", typeof(DiscordTelegramFrontier.FrontierService)),
+            Resolve("TelegramExtensions", typeof(TelegramExtensions.ServiceCollectionExtensions)),
+            new PackageVersion("GVR", GVR.GVRConfig.NGNVersion)
+        ];
+
         public static string Of(Type marker) => Describe(marker.Assembly);
 
         private static List<PackageVersion> BuildPackages()
@@ -53,7 +60,6 @@ namespace sblngavnav6.Common
                 ("MailKit", typeof(MailKit.Net.Imap.ImapClient)),
                 ("MySqlConnector", typeof(MySqlConnector.MySqlConnection)),
                 ("TwitchLib.Api", typeof(TwitchLib.Api.TwitchAPI)),
-                ("DTF", typeof(DiscordTelegramFrontier.FrontierService)),
                 ("Telegram.Bot", typeof(Telegram.Bot.TelegramBotClient))
             };
 

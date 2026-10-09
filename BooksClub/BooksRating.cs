@@ -83,13 +83,13 @@ namespace sblngavnav6.BooksClub
                 Fields = Criteria
                     .Select((criterion, index) => new EmbedFieldSpec(
                         $"{criterion.Emoji} {criterion.Name}",
-                        scores[index] > 0 ? scores[index].ToString() : "—",
+                        scores[index] > 0 ? scores[index].ToString() : "-",
                         true))
                     .Append(new EmbedFieldSpec("⭐ Итоговый балл", total))
                     .ToArray(),
                 Footer = filled == Criteria.Length
                     ? $"{BooksClubCommands.Footer} / проверь и сохрани"
-                    : $"{BooksClubCommands.Footer} / выбери оценки 1–10"
+                    : $"{BooksClubCommands.Footer} / выбери оценки 1-10"
             });
         }
 

@@ -4,6 +4,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>sblngavnav6.TelegramExtensions</RootNamespace>
+    <ExtensionsMinor>3</ExtensionsMinor>
+    <ExtensionsVersion>$(SblnVersion.Split('.')[0]).$(ExtensionsMinor)</ExtensionsVersion>
+    <Version>$(ExtensionsVersion).0</Version>
+    <InformationalVersion>$(ExtensionsVersion)</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\external\DTF\DTF.csproj" />

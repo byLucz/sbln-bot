@@ -326,6 +326,9 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         var fields = new List<EmbedFieldSpec>
         {
+            new("🧩 Внутренние модули", CodeTable(
+                Versioning.Modules.Select(module => (module.Name, module.Version)),
+                "`нет данных`")),
             new("📦 Пакеты", CodeTable(
                 Versioning.Packages.Select(package => (package.Name, package.Version)),
                 "`нет данных`"))
