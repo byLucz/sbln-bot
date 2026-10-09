@@ -376,7 +376,7 @@ namespace sblngavnav6.BooksClub
 
         private async Task<JsonNode> FetchVolumeAsync(string title)
         {
-            var url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru&country={Global.Vars.Cfg.booksCountry}";
+            var url = $"https://www.googleapis.com/books/v1/volumes?q={Uri.EscapeDataString(title)}&langRestrict=ru&country={Global.Vars.Cfg.booksCountry}";
 
             if (!string.IsNullOrWhiteSpace(Global.Vars.Cfg.gBooksApi))
                 url += $"&key={Global.Vars.Cfg.gBooksApi}";
