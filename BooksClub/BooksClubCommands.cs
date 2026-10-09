@@ -6,6 +6,7 @@ using sblngavnav6.Core;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using static sblngavnav6.Common.CommonUtils.Text;
 using static sblngavnav6.Data.DataRoots;
 
@@ -37,17 +38,38 @@ namespace sblngavnav6.BooksClub
                 return;
             }
 
+            var subtitle = Text(info, "subtitle", null);
+            var year = Text(info, "publishedDate", null);
+            var pages = info["pageCount"]?.GetValue<int>() ?? 0;
+            var genre = (info["categories"] as JsonArray)?.FirstOrDefault()?.ToString();
+            var rating = info["averageRating"]?.ToString();
+            var description = Regex.Replace(Text(info, "description", "Описания нет"), "<[^>]+>", " ");
+
+            var fields = new List<EmbedFieldSpec> { new("✍️ Автор(ы)", Authors(info), true) };
+
+            if (year is not null)
+                fields.Add(new EmbedFieldSpec("📅 Год", year.Length >= 4 ? year[..4] : year, true));
+
+            if (pages > 0)
+                fields.Add(new EmbedFieldSpec("📄 Страниц", pages.ToString(), true));
+
+            if (Text(info, "publisher", null) is { } publisher)
+                fields.Add(new EmbedFieldSpec("🏢 Издательство", publisher, true));
+
+            if (genre is not null)
+                fields.Add(new EmbedFieldSpec("🏷️ Жанр", genre, true));
+
+            if (rating is not null)
+                fields.Add(new EmbedFieldSpec("⭐ Рейтинг", $"{rating} ({Text(info, "ratingsCount", "0")} оценок)", true));
+
             await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
-                Title = $"{Logo} {Text(info, "title", "Неизвестно")}",
-                Description =
-                    $"✍️ **Автор(ы):** {Authors(info)}\n" +
-                    $"📅 **Год издания:** {Text(info, "publishedDate", "Неизвестно")}\n" +
-                    $"📄 **Страниц:** {Text(info, "pageCount", "Не указано")}\n" +
-                    $"🖼️ **Описание:** {Truncate(Text(info, "description", "Нет описания"), 200)}",
+                Title = $"{Logo} {Text(info, "title", "Неизвестно")}{(subtitle is null ? "" : $". {subtitle}")}",
+                Url = Text(info, "infoLink", null),
+                Description = Truncate(CollapseSpaces(description), 400),
                 ThumbnailUrl = Thumbnail(info),
                 Color = Color.Purple,
-                Fields = [new EmbedFieldSpec("🔗 Подробнее", $"[Gbooks]({Text(info, "infoLink", "https://books.google.com")})", true)],
+                Fields = fields,
                 Footer = Footer
             }));
         }
@@ -393,7 +415,15 @@ namespace sblngavnav6.BooksClub
                     return null;
                 }
 
-                var volume = JsonNode.Parse(body)?["items"]?[0]?["volumeInfo"];
+                var volumes = (JsonNode.Parse(body)?["items"] as JsonArray)?
+                    .Select(item => item?["volumeInfo"])
+                    .Where(info => info is not null)
+                    .ToList() ?? [];
+
+                var volume = volumes
+                    .OrderByDescending(info => !string.IsNullOrWhiteSpace(info["description"]?.ToString()))
+                    .ThenByDescending(info => Thumbnail(info) is not null)
+                    .FirstOrDefault();
 
                 if (volume is null)
                     await LoggingService.LogWarningAsync("BOOKS", $"Google Books ничего не нашёл по \"{title}\"");
@@ -421,7 +451,8 @@ namespace sblngavnav6.BooksClub
                 ? string.Join(", ", authors.Select(author => author?.ToString()))
                 : "Автор неизвестен";
 
-        private static string Thumbnail(JsonNode info) => info["imageLinks"]?["thumbnail"]?.ToString();
+        private static string Thumbnail(JsonNode info) =>
+            info["imageLinks"]?["thumbnail"]?.ToString().Replace("http://", "https://").Replace("&edge=curl", "");
 
         private static Embed Simple(string description, Color color) => EmbedHandler.Build(new EmbedSpec
         {
