@@ -420,8 +420,17 @@ namespace sblngavnav6.BooksClub
                     .Where(info => info is not null)
                     .ToList() ?? [];
 
+                var words = title.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
                 var volume = volumes
-                    .OrderByDescending(info => !string.IsNullOrWhiteSpace(info["description"]?.ToString()))
+                    .OrderByDescending(info =>
+                    {
+                        var name = info["title"]?.ToString() ?? "";
+                        return name.Contains(title.Trim(), StringComparison.OrdinalIgnoreCase) ? 2
+                            : words.All(word => name.Contains(word, StringComparison.OrdinalIgnoreCase)) ? 1
+                            : 0;
+                    })
+                    .ThenByDescending(info => !string.IsNullOrWhiteSpace(info["description"]?.ToString()))
                     .ThenByDescending(info => Thumbnail(info) is not null)
                     .FirstOrDefault();
 
