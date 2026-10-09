@@ -29,7 +29,7 @@ namespace sblngavnav6.BooksClub
         [Command("книга")]
         public async Task FindBookAsync([Remainder] string title)
         {
-            var info = await FetchVolumeAsync(title, withKey: true);
+            var info = await FetchVolumeAsync(title);
 
             if (info is null)
             {
@@ -94,11 +94,11 @@ namespace sblngavnav6.BooksClub
                     ThumbnailUrl = current.image,
                     Color = Color.DarkPurple,
                     Footer = Footer
-                }), components: current.id == 0 ? null : BookRating.OpenButton());
+                }), components: current.id == 0 ? null : _pager.BuildControls(BookRating.OpenButton()));
                 return;
             }
 
-            var info = await FetchVolumeAsync(trimmed, withKey: false);
+            var info = await FetchVolumeAsync(trimmed);
 
             if (info is null)
             {
@@ -119,7 +119,7 @@ namespace sblngavnav6.BooksClub
                 ThumbnailUrl = image,
                 Color = Color.Purple,
                 Footer = Footer
-            }), components: BookRating.OpenButton());
+            }), components: _pager.BuildControls(BookRating.OpenButton()));
         }
 
         [RequireGuild]
@@ -138,7 +138,7 @@ namespace sblngavnav6.BooksClub
 
                 await ReplyAsync(
                     embed: Simple($"⭐ Оценка книги **{current.title}**, жми кнопку", Color.Purple),
-                    components: BookRating.OpenButton());
+                    components: _pager.BuildControls(BookRating.OpenButton()));
                 return;
             }
 
@@ -374,21 +374,26 @@ namespace sblngavnav6.BooksClub
                 Math.Max(0, Math.Round(basePercent * (1.0 - vibe / 10.0))));
         }
 
-        private async Task<JsonNode> FetchVolumeAsync(string title, bool withKey)
+        private async Task<JsonNode> FetchVolumeAsync(string title)
         {
             var url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(title)}&langRestrict=ru";
 
-            if (withKey && !string.IsNullOrWhiteSpace(Global.Vars.Cfg.gBooksApi))
+            if (!string.IsNullOrWhiteSpace(Global.Vars.Cfg.gBooksApi))
                 url += $"&key={Global.Vars.Cfg.gBooksApi}";
 
             try
             {
                 using var response = await _http.GetAsync(url);
+                var body = await response.Content.ReadAsStringAsync();
 
                 if (!response.IsSuccessStatusCode)
+                {
+                    var reason = JsonNode.Parse(body)?["error"]?["message"]?.ToString() ?? response.ReasonPhrase;
+                    await LoggingService.LogWarningAsync("BOOKS", $"Google Books ответил {(int)response.StatusCode}: {reason}");
                     return null;
+                }
 
-                var json = JsonNode.Parse(await response.Content.ReadAsStringAsync());
+                var json = JsonNode.Parse(body);
 
                 return json?["items"]?[0]?["volumeInfo"];
             }

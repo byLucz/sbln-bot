@@ -27,10 +27,8 @@ namespace sblngavnav6.BooksClub
 
         public static double Final(IReadOnlyList<int> scores) => Math.Round(Base(scores) * Multiplier(scores[4]), 0);
 
-        public static MessageComponent OpenButton() =>
-            new ComponentBuilder()
-                .WithButton("Оценить", OpenId, ButtonStyle.Primary, new Emoji("⭐"))
-                .Build();
+        public static Action<ComponentBuilder, int> OpenButton() => (builder, _) =>
+            builder.WithButton("Оценить", OpenId, ButtonStyle.Primary, new Emoji("⭐"));
 
         public static int[] Decode(string state)
         {
@@ -89,10 +87,9 @@ namespace sblngavnav6.BooksClub
             });
         }
 
-        public static MessageComponent Selects(int bookId, IReadOnlyList<int> scores)
+        public static Action<ComponentBuilder, int> Selects(int bookId, IReadOnlyList<int> scores) => (builder, _) =>
         {
             var state = Encode(scores);
-            var builder = new ComponentBuilder();
 
             for (var index = 0; index < Criteria.Length; index++)
             {
@@ -108,19 +105,16 @@ namespace sblngavnav6.BooksClub
 
                 builder.WithSelectMenu(menu, row: index);
             }
+        };
 
-            return builder.Build();
-        }
-
-        public static MessageComponent Confirm(int bookId, IReadOnlyList<int> scores)
+        public static Action<ComponentBuilder, int> Confirm(int bookId, IReadOnlyList<int> scores) => (builder, _) =>
         {
             var state = Encode(scores);
 
-            return new ComponentBuilder()
+            builder
                 .WithButton("Сохранить", $"kkr_save:{bookId}:{state}", ButtonStyle.Success, new Emoji("💾"))
-                .WithButton("Изменить", $"kkr_edit:{bookId}:{state}", ButtonStyle.Secondary, new Emoji("✏️"))
-                .Build();
-        }
+                .WithButton("Изменить", $"kkr_edit:{bookId}:{state}", ButtonStyle.Secondary, new Emoji("✏️"));
+        };
 
         public static Embed Result(string title, string authors, string userName, IReadOnlyList<int> scores, double final) =>
             EmbedHandler.Build(new EmbedSpec
@@ -158,6 +152,13 @@ namespace sblngavnav6.BooksClub
     {
         private static readonly SemaphoreSlim SaveGate = new(1, 1);
 
+        private readonly PaginatorService _pager;
+
+        public BooksRatingInteractions(PaginatorService pager)
+        {
+            _pager = pager;
+        }
+
         [ComponentInteraction(BookRating.OpenId)]
         public async Task OpenAsync()
         {
@@ -185,7 +186,7 @@ namespace sblngavnav6.BooksClub
 
             await RespondAsync(
                 embed: BookRating.Draft(book.title, book.authors, scores),
-                components: BookRating.Selects(book.id, scores),
+                components: _pager.BuildControls(BookRating.Selects(book.id, scores)),
                 ephemeral: true);
         }
 
@@ -304,12 +305,16 @@ namespace sblngavnav6.BooksClub
             return null;
         }
 
-        private Task UpdateAsync(Embed embed, MessageComponent components) =>
-            ((SocketMessageComponent)Context.Interaction).UpdateAsync(message =>
+        private Task UpdateAsync(Embed embed, Action<ComponentBuilder, int> controls)
+        {
+            var components = _pager.BuildControls(controls);
+
+            return ((SocketMessageComponent)Context.Interaction).UpdateAsync(message =>
             {
                 message.Embed = embed;
-                message.Components = components ?? new ComponentBuilder().Build();
+                message.Components = components;
             });
+        }
 
         private async Task FailAsync(string reason) =>
             await RespondAsync(embed: await EmbedHandler.CreateErrorEmbed("книжный клуб", reason), ephemeral: true);
