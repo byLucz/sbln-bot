@@ -1,15 +1,15 @@
 ﻿using Discord;
-using System.Collections.Concurrent;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
-using sblngavnav6.Core;
 using sblngavnav6.Common;
+using sblngavnav6.Core;
 using sblngavnav6.Data;
 using sblngavnav6.Services;
+using System.Collections.Concurrent;
+using static sblngavnav6.Common.CommonUtils.Chat;
 using static sblngavnav6.Common.CommonUtils.Text;
 using static sblngavnav6.Common.CommonUtils.Time;
-using static sblngavnav6.Common.CommonUtils.Chat;
 using static sblngavnav6.Data.DataRoots;
 
 namespace sblngavnav6.PPM
@@ -208,7 +208,7 @@ namespace sblngavnav6.PPM
         }
 
         [Command("печкин")]
-        [Alias("ппм","емейл")]
+        [Alias("ппм", "емейл")]
 
         public async Task Panel()
         {

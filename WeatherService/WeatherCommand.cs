@@ -2,7 +2,6 @@
 using DiscordTelegramFrontier;
 using sblngavnav6.Common;
 using sblngavnav6.Core;
-using static sblngavnav6.Data.DataRoots;
 
 namespace sblngavnav6.Commands
 {

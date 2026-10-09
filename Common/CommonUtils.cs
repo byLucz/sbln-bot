@@ -192,8 +192,15 @@ namespace sblngavnav6.Common
                     if (char.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.Format) continue;
                     switch (ch)
                     {
-                        case 'ㅤ': case '⠀': case 'ᅟ': case 'ᅠ':
-                        case 'ﾠ': case '　': case '᠎': case '⁠': case '﻿':
+                        case 'ㅤ':
+                        case '⠀':
+                        case 'ᅟ':
+                        case 'ᅠ':
+                        case 'ﾠ':
+                        case '　':
+                        case '᠎':
+                        case '⁠':
+                        case '﻿':
                             continue;
                     }
                     return true;

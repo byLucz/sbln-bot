@@ -4,12 +4,12 @@ using Discord.WebSocket;
 using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Common;
-using static sblngavnav6.Common.CommonUtils.Text;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.Services;
 using System.Collections.Concurrent;
 using System.Reflection;
+using static sblngavnav6.Common.CommonUtils.Text;
 using Timer = System.Timers.Timer;
 
 namespace sblngavnav6.Core

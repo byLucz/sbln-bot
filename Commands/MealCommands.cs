@@ -1,13 +1,13 @@
 ﻿using Discord;
 using Discord.Commands;
+using DiscordTelegramFrontier;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.RegularExpressions;
-using sblngavnav6.Common;
-using DiscordTelegramFrontier;
-using sblngavnav6.Data;
-using static sblngavnav6.Data.DataRoots;
 using static sblngavnav6.Common.CommonUtils.Text;
+using static sblngavnav6.Data.DataRoots;
 
 namespace sblngavnav6.Commands
 {

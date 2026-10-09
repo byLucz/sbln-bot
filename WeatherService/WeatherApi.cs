@@ -1,7 +1,4 @@
-﻿using System.Text.Json.Serialization;
-using static sblngavnav6.Data.DataRoots;
-
-namespace sblngavnav6.Commands
+﻿namespace sblngavnav6.Commands
 {
     public static class WeatherUrl
     {

@@ -1,7 +1,7 @@
-using System.Net;
-using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.TelegramExtensions.Core;
+using System.Net;
+using System.Text;
 using Telegram.Bot.Types.Enums;
 
 namespace sblngavnav6.TelegramExtensions.Modules;

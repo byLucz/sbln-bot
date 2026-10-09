@@ -1,9 +1,8 @@
 ﻿using Discord;
 using Discord.Commands;
+using DiscordTelegramFrontier;
 using sblngavnav6.Common;
-using static sblngavnav6.Common.CommonUtils.Chat;
 using sblngavnav6.Data;
-using static sblngavnav6.Data.DataRoots;
 using sblngavnav6.Services;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -11,7 +10,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using DiscordTelegramFrontier;
+using static sblngavnav6.Common.CommonUtils.Chat;
+using static sblngavnav6.Data.DataRoots;
 
 namespace sblngavnav6.Commands;
 
@@ -132,7 +132,6 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
             AuthorName = "sbln крипта💰📈",
-            AuthorIconUrl = "https://cdn0.iconfinder.com/data/icons/bitcoin-94/64/chip-bitcoin-512.png",
             Color = Color.LightOrange,
             Fields = fields,
             Footer = "powered by bitfinex💸"
@@ -196,7 +195,6 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
         {
             AuthorName = "sbln курс валют💱💵",
             Color = Color.DarkTeal,
-            ThumbnailUrl = "https://upload.wikimedia.org/wikipedia/commons/1/18/Russia-Coin-1-2009-a.png",
             Fields = fields,
             Footer = "powered by CENTROBANK OF RUSSIA🏦🇷🇺"
         }));

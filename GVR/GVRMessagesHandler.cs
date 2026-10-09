@@ -1,6 +1,6 @@
-﻿using sblngavnav6.Common;
-using Discord;
+﻿using Discord;
 using Discord.Commands;
+using sblngavnav6.Common;
 using sblngavnav6.Services;
 using System.Text;
 using System.Text.RegularExpressions;

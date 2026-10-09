@@ -2,8 +2,8 @@
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
-using sblngavnav6.Core;
 using sblngavnav6.Common;
+using sblngavnav6.Core;
 using sblngavnav6.Services;
 
 namespace sblngavnav6.Commands;
@@ -151,16 +151,16 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         {
             result = action switch
             {
-                "projects"    => await _pgApi.ProjectsAsync(),
-                "status"      => await _pgApi.ProjectStatusAsync(PgApiPanelBuilder.DefaultProject),
-                "services"    => await _pgApi.ServicesAsync(PgApiPanelBuilder.DefaultProject),
-                "logs"        => await _pgApi.LogsAsync(PgApiPanelBuilder.DefaultProject),
-                "logs_bot"    => await _pgApi.LogsAsync(PgApiPanelBuilder.DefaultProject, "bot"),
-                "restart"     => await _pgApi.RestartProjectAsync(PgApiPanelBuilder.DefaultProject),
+                "projects" => await _pgApi.ProjectsAsync(),
+                "status" => await _pgApi.ProjectStatusAsync(PgApiPanelBuilder.DefaultProject),
+                "services" => await _pgApi.ServicesAsync(PgApiPanelBuilder.DefaultProject),
+                "logs" => await _pgApi.LogsAsync(PgApiPanelBuilder.DefaultProject),
+                "logs_bot" => await _pgApi.LogsAsync(PgApiPanelBuilder.DefaultProject, "bot"),
+                "restart" => await _pgApi.RestartProjectAsync(PgApiPanelBuilder.DefaultProject),
                 "restart_bot" => await _pgApi.RestartServiceAsync(PgApiPanelBuilder.DefaultProject, "bot"),
-                "stop"        => await _pgApi.StopProjectAsync(PgApiPanelBuilder.DefaultProject),
-                "start"       => await _pgApi.StartProjectAsync(PgApiPanelBuilder.DefaultProject),
-                _             => PgApiResult.Fail("неизвестное действие")
+                "stop" => await _pgApi.StopProjectAsync(PgApiPanelBuilder.DefaultProject),
+                "start" => await _pgApi.StartProjectAsync(PgApiPanelBuilder.DefaultProject),
+                _ => PgApiResult.Fail("неизвестное действие")
             };
         }
         catch (Exception ex)

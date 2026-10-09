@@ -112,14 +112,14 @@ namespace sblngavnav6.Data
                 "SELECT superuser_role_id, welcome_channel_id, welcome_message, welcome_role_id, stream_notif_channel_id FROM guild_settings WHERE guild_id=@g LIMIT 1",
                 cmd => cmd.Parameters.AddWithValue("@g", guildId),
                 r => new GuildSettings
-            {
-                GuildId = guildId,
-                SuperuserRoleId = r.IsDBNull(0) ? null : r.GetUInt64(0),
-                WelcomeChannelId = r.IsDBNull(1) ? null : r.GetUInt64(1),
-                WelcomeMessage = r.IsDBNull(2) ? null : r.GetString(2),
-                WelcomeRoleId = r.IsDBNull(3) ? null : r.GetUInt64(3),
-                StreamNotifChannelId = r.IsDBNull(4) ? null : r.GetUInt64(4),
-            });
+                {
+                    GuildId = guildId,
+                    SuperuserRoleId = r.IsDBNull(0) ? null : r.GetUInt64(0),
+                    WelcomeChannelId = r.IsDBNull(1) ? null : r.GetUInt64(1),
+                    WelcomeMessage = r.IsDBNull(2) ? null : r.GetString(2),
+                    WelcomeRoleId = r.IsDBNull(3) ? null : r.GetUInt64(3),
+                    StreamNotifChannelId = r.IsDBNull(4) ? null : r.GetUInt64(4),
+                });
         }
 
         public static Task SetSuperuserRole(ulong guildId, ulong? roleId)
@@ -247,7 +247,7 @@ namespace sblngavnav6.Data
             using var conn = new MySqlConnection(Global.Vars.Cfg.connectionString);
             await conn.OpenAsync();
 
-            const string sql = 
+            const string sql =
                 @"SELECT StatusText, StatusPos, StatusLink, StatusType
                 FROM statusbar
                 ORDER BY id DESC
@@ -520,18 +520,18 @@ namespace sblngavnav6.Data
                 {
                     book = new BookExportDto
                     {
-                        id         = id,
-                        title      = reader.GetString("title"),
-                        authors    = reader.GetString("authors"),
+                        id = id,
+                        title = reader.GetString("title"),
+                        authors = reader.GetString("authors"),
                         suggestedBy = reader.GetString("suggested_by"),
-                        season     = reader.GetInt32("season")
+                        season = reader.GetInt32("season")
                     };
                     books[id] = book;
                 }
 
                 if (!reader.IsDBNull(reader.GetOrdinal("user_id")))
                 {
-                    string uid  = reader.GetString("user_id");
+                    string uid = reader.GetString("user_id");
                     string name = userNames.TryGetValue(uid, out var n) ? n : uid;
                     book.ratings[name] = new RatingExportDto
                     {

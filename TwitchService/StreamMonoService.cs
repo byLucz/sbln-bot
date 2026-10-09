@@ -1,14 +1,14 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
 using TwitchLib.Api;
 using TwitchLib.Api.Helix.Models.Games;
 using TwitchLib.Api.Helix.Models.Users.GetUsers;
 using TwitchLib.Api.Services;
 using TwitchLib.Api.Services.Events;
 using TwitchLib.Api.Services.Events.LiveStreamMonitor;
-using sblngavnav6.Common;
-using sblngavnav6.Data;
-using sblngavnav6.Services;
 
 namespace sblngavnav6.TwitchService
 {

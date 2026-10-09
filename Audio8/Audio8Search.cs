@@ -1,7 +1,6 @@
 ﻿using Discord;
 using Lavalink4NET.Rest.Entities.Tracks;
 using Lavalink4NET.Tracks;
-using static sblngavnav6.Common.CommonUtils.Text;
 
 namespace sblngavnav6.Audio8
 {

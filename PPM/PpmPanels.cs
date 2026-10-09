@@ -1,8 +1,8 @@
-﻿using System.Collections.Concurrent;
-using Discord;
+﻿using Discord;
 using Discord.WebSocket;
 using sblngavnav6.Core;
 using sblngavnav6.Data;
+using System.Collections.Concurrent;
 
 namespace sblngavnav6.PPM
 {

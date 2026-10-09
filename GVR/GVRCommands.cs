@@ -1,8 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
-using sblngavnav6.Core;
 using sblngavnav6.Common;
-using sblngavnav6.Data;
+using sblngavnav6.Core;
 
 namespace sblngavnav6.GVR
 {

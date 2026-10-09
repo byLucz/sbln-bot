@@ -1,10 +1,9 @@
 ﻿using Discord;
 using Discord.Commands;
-using sblngavnav6.Core;
-using sblngavnav6.Common;
 using DiscordTelegramFrontier;
-using static sblngavnav6.Common.CommonUtils.Chat;
+using sblngavnav6.Common;
 using System.Text;
+using static sblngavnav6.Common.CommonUtils.Chat;
 
 namespace sblngavnav6.Commands;
 
