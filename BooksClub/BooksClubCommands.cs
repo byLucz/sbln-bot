@@ -395,7 +395,16 @@ namespace sblngavnav6.BooksClub
 
                 var json = JsonNode.Parse(body);
 
-                return json?["items"]?[0]?["volumeInfo"];
+                var volume = json?["items"]?[0]?["volumeInfo"];
+
+                if (volume is null)
+                {
+                    var keyed = string.IsNullOrWhiteSpace(Global.Vars.Cfg.gBooksApi) ? "без ключа" : "с ключом";
+                    await LoggingService.LogWarningAsync("BOOKS",
+                        $"Google Books ничего не нашёл по \"{title}\" ({keyed}), totalItems={json?["totalItems"]?.ToString() ?? "нет"}");
+                }
+
+                return volume;
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
             {
