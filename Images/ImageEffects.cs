@@ -81,38 +81,48 @@ namespace sblngavnav6.Images
 
             var padX = overlay.Width * 0.15f;
             var padY = overlay.Height * 0.15f;
-            var paddedWidth = overlay.Width + padX * 2;
-            var paddedHeight = overlay.Height * 1.45f;
 
-            using var padded = Pad(overlay, paddedWidth, paddedHeight, padX, padY);
+            var fill = Average(overlay, SKRect.Create(overlay.Width * 0.3f, overlay.Height * 0.02f, overlay.Width * 0.4f, overlay.Height * 0.16f));
+
+            using var padded = Pad(overlay, overlay.Width + padX * 2, overlay.Height + padY * 2, padX, padY, fill);
 
             var anchors = template.Select(point => new SKPoint(point.X * overlay.Width + padX, point.Y * overlay.Height + padY)).ToArray();
             var overlayTone = Average(overlay, SKRect.Create(overlay.Width, overlay.Height));
-            using var mask = FaceMask(padded.Width, padded.Height,
-                padX + overlay.Width / 2f, padY - overlay.Height * 0.02f, padY + overlay.Height * 1.12f, overlay.Width * 0.5f, overlay.Width * 0.08f);
 
             foreach (var face in faces)
             {
                 var skinTone = Average(sourceImage, SKRect.Intersect(face.Box, SKRect.Create(source.Width, source.Height)));
+                var fit = Fit(anchors, face.Points);
+                var box = face.Box;
 
-                using var tone = new SKPaint
-                {
-                    ColorFilter = SKColorFilter.CreateColorMatrix(
-                    [
-                        Blend(skinTone.Red, overlayTone.Red), 0, 0, 0, 0,
-                        0, Blend(skinTone.Green, overlayTone.Green), 0, 0, 0,
-                        0, 0, Blend(skinTone.Blue, overlayTone.Blue), 0, 0,
-                        0, 0, 0, 1, 0
-                    ])
-                };
+                using var tone = SKColorFilter.CreateColorMatrix(
+                [
+                    Blend(skinTone.Red, overlayTone.Red), 0, 0, 0, 0,
+                    0, Blend(skinTone.Green, overlayTone.Green), 0, 0, 0,
+                    0, 0, Blend(skinTone.Blue, overlayTone.Blue), 0, 0,
+                    0, 0, 0, 1, 0
+                ]);
 
-                using var feather = new SKPaint { BlendMode = SKBlendMode.DstIn };
+                canvas.SaveLayer();
 
                 canvas.Save();
-                canvas.Concat(Fit(anchors, face.Points, face.Box, new SKSize(overlay.Width, overlay.Height * 1.14f)));
-                canvas.SaveLayer();
-                canvas.DrawImage(padded, 0, 0, Smooth, tone);
-                canvas.DrawImage(mask, 0, 0, feather);
+                canvas.RotateDegrees(MathF.Atan2(fit.SkewY, fit.ScaleX) * 180 / MathF.PI, box.MidX, box.MidY);
+
+                using (var shape = FaceShape(box.MidX, box.Top - box.Height * 0.04f, box.Bottom + box.Height * 0.02f, box.Width * 0.54f))
+                using (var mask = new SKPaint { Color = SKColors.Black, IsAntialias = true, MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, box.Width * 0.05f) })
+                    canvas.DrawPath(shape, mask);
+
+                canvas.Restore();
+
+                using (var skin = new SKPaint { Color = fill, BlendMode = SKBlendMode.SrcIn, ColorFilter = tone })
+                    canvas.DrawPaint(skin);
+
+                canvas.Save();
+                canvas.Concat(fit);
+
+                using (var paint = new SKPaint { BlendMode = SKBlendMode.SrcATop, ColorFilter = tone })
+                    canvas.DrawImage(padded, 0, 0, Smooth, paint);
+
                 canvas.Restore();
                 canvas.Restore();
             }
@@ -120,10 +130,10 @@ namespace sblngavnav6.Images
             return ImageTools.Jpeg(surface);
         }
 
-        private static SKImage FaceMask(int width, int height, float centerX, float top, float bottom, float radius, float softness)
+        private static SKPath FaceShape(float centerX, float top, float bottom, float radius)
         {
             var widest = top + (bottom - top) * 0.42f;
-            using var path = new SKPath();
+            var path = new SKPath();
 
             path.MoveTo(centerX, top);
             path.CubicTo(centerX + radius * 0.56f, top, centerX + radius, widest - (widest - top) * 0.55f, centerX + radius, widest);
@@ -132,34 +142,33 @@ namespace sblngavnav6.Images
             path.CubicTo(centerX - radius, widest - (widest - top) * 0.55f, centerX - radius * 0.56f, top, centerX, top);
             path.Close();
 
-            using var surface = SKSurface.Create(new SKImageInfo(width, height));
-            surface.Canvas.Clear(SKColors.Transparent);
-
-            using var paint = new SKPaint { Color = SKColors.Black, IsAntialias = true, MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, softness) };
-            surface.Canvas.DrawPath(path, paint);
-
-            return surface.Snapshot();
+            return path;
         }
 
-        private static SKImage Pad(SKImage image, float width, float height, float offsetX, float offsetY)
+        private static SKImage Pad(SKImage image, float width, float height, float offsetX, float offsetY, SKColor background)
         {
             using var surface = SKSurface.Create(new SKImageInfo((int)Math.Ceiling(width), (int)Math.Ceiling(height)));
             var canvas = surface.Canvas;
             var area = SKRect.Create(offsetX, offsetY, image.Width, image.Height);
-            var soften = Math.Min(image.Width, image.Height) * 0.05f;
 
-            canvas.Clear(Average(image, SKRect.Create(image.Width, image.Height * 0.7f)));
+            canvas.Clear(background);
             canvas.SaveLayer();
             canvas.DrawImage(image, area, Smooth);
 
-            using (var edge = new SKPaint { Color = SKColors.Black, BlendMode = SKBlendMode.DstIn, MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, soften) })
-                canvas.DrawRect(SKRect.Inflate(area, -soften * 1.5f, -soften * 1.5f), edge);
+            using (var edge = new SKPaint
+            {
+                BlendMode = SKBlendMode.DstIn,
+                Shader = SKShader.CreateRadialGradient(
+                    new SKPoint(area.MidX, area.MidY), Math.Min(area.Width, area.Height) / 2,
+                    [SKColors.Black, SKColors.Black, SKColors.Transparent], [0, 0.84f, 1], SKShaderTileMode.Clamp)
+            })
+                canvas.DrawPaint(edge);
 
             canvas.Restore();
             return surface.Snapshot();
         }
 
-        private static SKMatrix Fit(SKPoint[] from, SKPoint[] to, SKRect box, SKSize face)
+        private static SKMatrix Fit(SKPoint[] from, SKPoint[] to)
         {
             double fromX = from.Average(point => point.X), fromY = from.Average(point => point.Y);
             double toX = to.Average(point => point.X), toY = to.Average(point => point.Y);
@@ -176,11 +185,6 @@ namespace sblngavnav6.Images
 
             var a = dot / norm;
             var b = cross / norm;
-            var scale = Math.Sqrt(a * a + b * b);
-            var cover = Math.Clamp(Math.Max(box.Width / (scale * face.Width), box.Height / (scale * face.Height)), 1, 1.6);
-
-            a *= cover;
-            b *= cover;
 
             return new SKMatrix(
                 (float)a, (float)-b, (float)(toX - a * fromX + b * fromY),
