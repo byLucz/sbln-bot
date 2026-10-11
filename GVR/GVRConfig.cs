@@ -3,7 +3,7 @@
     public class GVRConfig
     {
         public const int DefaultIntervalMs = 86400000;
-        public const string NGNVersion = "1.9";
+        public const string NGNVersion = "2.0";
         public uint Step { get; set; } = 1;
         public int Count { get; set; } = 10;
         public uint Collection { get; set; } = 100;

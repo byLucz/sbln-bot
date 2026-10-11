@@ -41,6 +41,41 @@ namespace sblngavnav6.GVR
             _httpClientFactory = httpClientFactory;
         }
 
+        public async Task<(int Added, int Images, int Scanned, int Removed, int Total)> CollectAsync(
+            IMessageChannel channel, int count, CancellationToken cancellationToken = default)
+        {
+            var lines = new List<string>();
+            var images = new List<GVRImage>();
+            var scanned = 0;
+
+            if (count > 0)
+            {
+                var options = new RequestOptions { CancelToken = cancellationToken };
+
+                await foreach (var message in channel.GetMessagesAsync(count, options: options).Flatten().ConfigureAwait(false))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (message is null)
+                        continue;
+
+                    scanned++;
+                    images.AddRange(GVRText.Images(message));
+
+                    if (!message.Author.IsBot && !message.Attachments.Any() && !message.Embeds.Any()
+                        && GVRText.Sanitize(message.Content) is { } content)
+                        lines.Add(content);
+                }
+            }
+
+            var added = await _db.AddAsync((channel as IGuildChannel)?.GuildId ?? 0, lines, cancellationToken).ConfigureAwait(false);
+            var addedImages = await _db.AddImagesAsync(images, cancellationToken).ConfigureAwait(false);
+            var removed = await _db.PruneAsync(cancellationToken).ConfigureAwait(false);
+            var (total, _) = await _db.StampAsync(cancellationToken).ConfigureAwait(false);
+
+            return (added, addedImages, scanned, removed, total);
+        }
+
         public async Task TrySendGeneratedMessageAsync(SocketCommandContext context)
         {
             if (CommonUtils.RandomNumber(1, 100) > _config.Chance)

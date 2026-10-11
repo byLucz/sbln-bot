@@ -16,21 +16,19 @@ namespace sblngavnav6.GVR
         private const string Icon = "https://assets.piliapp.com/s3pxy/emoji/meaning/preview/brain.png?polish=2";
         private const string Source = "говорилка";
 
-        private const int PageSize = 100;
-        private const int FlushSize = 200;
-        private const int MaxScan = 20000;
-
         private static readonly Color Tint = Color.LighterGrey;
 
         private readonly GVRConfig _config;
         private readonly CommandHandler _commandHandler;
         private readonly GVRDb _db;
+        private readonly GVRMessagesHandler _messages;
 
-        public GVRCommands(GVRConfig config, CommandHandler commandHandler, GVRDb db)
+        public GVRCommands(GVRConfig config, CommandHandler commandHandler, GVRDb db, GVRMessagesHandler messages)
         {
             _config = config;
             _commandHandler = commandHandler;
             _db = db;
+            _messages = messages;
         }
 
         [Command]
@@ -38,13 +36,13 @@ namespace sblngavnav6.GVR
         {
             (string Name, string About)[] commands =
             [
-                ("говор доб <кол-во>", "добавляет сообщения к уже накопленным"),
+                ("говор доб <кол-во>", "берёт последние N сообщений канала, добавляет подходящие и чистит базу"),
                 ("говор чист", "прогоняет базу через фильтры и чистит дубли"),
                 ("говор настройки", "показывает настройки нейросетки"),
                 ("говор шаг <1-15>", "изменение шагов цепей рандома"),
                 ("говор слов <3-50|рандом>", "число слов в сообщении на выдаче"),
                 ("говор шанс <0-100>", "шанс что говорилка пропиздиться, роллится на каждое сообщение"),
-                ("говор кол <0-300>", "количество сообщений для подзагрузки"),
+                ("говор кол <0-300>", "сколько последних сообщений берёт автосбор"),
                 ("говор вр <мс>", "интервал через который произойдёт подзагрузка"),
                 ("говор нищета <вкл|выкл>", "включает особый режим вербальной нищеты **(идея шефа)**"),
                 ("говор сброс", "сброс настроек на дефолт")
@@ -85,7 +83,23 @@ namespace sblngavnav6.GVR
         }
 
         [Command("добавить"), Alias("доб")]
-        public Task AppendData(uint amount) => CollectAsync(amount);
+        public async Task AppendData(uint amount)
+        {
+            if (amount is 0 or > 1000)
+            {
+                await FailAsync("от 1 до 1000 сообщений за раз");
+                return;
+            }
+
+            using (Context.Channel.EnterTypingState())
+            {
+                var (added, images, scanned, removed, total) = await _messages.CollectAsync(Context.Channel, (int)amount);
+
+                await DoneAsync(
+                    "добавлено",
+                    $"**{added}** новых, картинок **{images}**, просмотрено **{scanned}**, вычищено **{removed}**, в базе **{total}**");
+            }
+        }
 
         [Command("время"), Alias("вр")]
         public async Task TimeMS(int amount)
@@ -113,16 +127,8 @@ namespace sblngavnav6.GVR
                 return;
             }
 
-            await _db.CleanupAsync();
-
-            var kept = (await _db.LoadRowsAsync())
-                .Select(row => (row.GuildId, Content: GVRText.Sanitize(row.Content)))
-                .Where(row => row.Content is not null)
-                .DistinctBy(row => row.Content, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            var after = await _db.ReplaceAsync(kept);
-            var removed = before - after;
+            var removed = await _db.PruneAsync();
+            var (after, _) = await _db.StampAsync();
 
             await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
@@ -226,86 +232,6 @@ namespace sblngavnav6.GVR
             await SaveAsync();
 
             await DoneAsync("настройки", "**сброшены на дефолтыч**");
-        }
-
-        private async Task CollectAsync(uint amount)
-        {
-            if (amount is 0 or > 1000)
-            {
-                await FailAsync("от 1 до 1000 сообщений за раз");
-                return;
-            }
-
-            var target = (int)amount;
-            var stored = 0;
-            var images = 0;
-            var scanned = 0;
-            var buffer = new List<string>(FlushSize);
-            ulong? before = null;
-            var exhausted = false;
-
-            using (Context.Channel.EnterTypingState())
-            {
-                while (stored + buffer.Count + images < target && scanned < MaxScan)
-                {
-                    var page = (before is null
-                        ? await Context.Channel.GetMessagesAsync(PageSize).FlattenAsync()
-                        : await Context.Channel.GetMessagesAsync(before.Value, Direction.Before, PageSize).FlattenAsync())
-                        .OrderByDescending(message => message.Id)
-                        .ToList();
-
-                    if (page.Count == 0)
-                    {
-                        exhausted = true;
-                        break;
-                    }
-
-                    var pageImages = new List<GVRImage>();
-
-                    foreach (var message in page)
-                    {
-                        if (stored + buffer.Count + images + pageImages.Count >= target)
-                            break;
-
-                        scanned++;
-                        before = message.Id;
-                        pageImages.AddRange(GVRText.Images(message));
-
-                        if (message.Author.IsBot || message.Attachments.Any() || message.Embeds.Any())
-                            continue;
-
-                        var content = GVRText.Sanitize(message.Content);
-
-                        if (content is not null)
-                            buffer.Add(content);
-                    }
-
-                    images += await _db.AddImagesAsync(pageImages);
-
-                    if (buffer.Count >= FlushSize)
-                        stored += await FlushAsync(buffer);
-                }
-
-                if (buffer.Count > 0)
-                    stored += await FlushAsync(buffer);
-            }
-
-            var (total, _) = await _db.StampAsync();
-            var tail = exhausted
-                ? ", история канала кончилась"
-                : scanned >= MaxScan ? $", предел просмотра {MaxScan}" : string.Empty;
-
-            await DoneAsync(
-                "добавлено",
-                $"**{stored}** новых, картинок **{images}**, просмотрено **{scanned}**, в базе **{total}**{tail}");
-        }
-
-        private async Task<int> FlushAsync(List<string> buffer)
-        {
-            var batch = buffer.ToArray();
-            buffer.Clear();
-
-            return await _db.AddAsync(Context.Guild.Id, batch);
         }
 
         private Task SaveAsync() => _db.SaveSettingsAsync(_config);

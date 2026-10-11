@@ -96,23 +96,6 @@ namespace sblngavnav6.GVR
             return lines;
         }
 
-        public async Task<List<(ulong GuildId, string Content)>> LoadRowsAsync(CancellationToken cancellationToken = default)
-        {
-            var rows = new List<(ulong GuildId, string Content)>();
-
-            if (!await ReadyAsync().ConfigureAwait(false))
-                return rows;
-
-            await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-            await using var cmd = Command(conn, "SELECT guild_id, content FROM messages ORDER BY id");
-            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                rows.Add((reader.GetUInt64(0), reader.GetString(1)));
-
-            return rows;
-        }
-
         public async Task<(int Count, long MaxId)> StampAsync(CancellationToken cancellationToken = default)
         {
             if (!await ReadyAsync().ConfigureAwait(false))
@@ -237,47 +220,62 @@ namespace sblngavnav6.GVR
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task<int> ReplaceAsync(IReadOnlyCollection<(ulong GuildId, string Content)> rows, CancellationToken cancellationToken = default)
-        {
-            if (!await ReadyAsync().ConfigureAwait(false))
-                return 0;
-
-            await using (var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false))
-            {
-                await using var cmd = Command(conn, "TRUNCATE TABLE messages");
-                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            Interlocked.Increment(ref _revision);
-
-            var added = 0;
-
-            foreach (var guild in rows.GroupBy(row => row.GuildId))
-                added += await AddAsync(guild.Key, guild.Select(row => row.Content).ToArray(), cancellationToken).ConfigureAwait(false);
-
-            return added;
-        }
-
-        public async Task<int> CleanupAsync(CancellationToken cancellationToken = default)
+        public async Task<int> PruneAsync(CancellationToken cancellationToken = default)
         {
             if (!await ReadyAsync().ConfigureAwait(false))
                 return 0;
 
             await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-            await using var cmd = Command(conn, """
+            int removed;
+
+            await using (var cmd = Command(conn, """
                 DELETE FROM messages
                 WHERE TRIM(content) = ''
                    OR content LIKE '%https://%'
                    OR content LIKE CONCAT(@p1, '%')
                    OR content LIKE CONCAT(@p2, '%')
-                """);
+                """))
+            {
+                cmd.Parameters.AddWithValue("@p1", Global.Vars.Cfg.pref1);
+                cmd.Parameters.AddWithValue("@p2", Global.Vars.Cfg.pref2);
+                removed = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
 
-            cmd.Parameters.AddWithValue("@p1", Global.Vars.Cfg.pref1);
-            cmd.Parameters.AddWithValue("@p2", Global.Vars.Cfg.pref2);
+            var drop = new List<ulong>();
+            var fix = new List<(ulong Id, string Content)>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var removed = await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await using (var cmd = Command(conn, "SELECT id, content FROM messages ORDER BY id"))
+            await using (var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
+            {
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    var id = reader.GetUInt64(0);
+                    var content = reader.GetString(1);
+                    var clean = GVRText.Sanitize(content);
 
-            if (removed > 0)
+                    if (clean is null || !seen.Add(clean))
+                        drop.Add(id);
+                    else if (clean != content)
+                        fix.Add((id, clean));
+                }
+            }
+
+            foreach (var batch in drop.Chunk(BatchSize))
+            {
+                await using var cmd = Command(conn, $"DELETE FROM messages WHERE id IN ({string.Join(", ", batch)})");
+                removed += await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            foreach (var (id, content) in fix)
+            {
+                await using var cmd = Command(conn, "UPDATE IGNORE messages SET content = @c WHERE id = @id");
+                cmd.Parameters.AddWithValue("@c", Trim(content));
+                cmd.Parameters.AddWithValue("@id", id);
+                await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            if (removed > 0 || fix.Count > 0)
                 Interlocked.Increment(ref _revision);
 
             return removed;

@@ -341,54 +341,10 @@ namespace sblngavnav6.Core
                     return;
                 }
 
-                var newLines = new List<string>();
-                var newImages = new List<GVRImage>();
-                var options = new RequestOptions { CancelToken = cancellationToken };
+                var (added, images, scanned, removed, total) = await _gvrMessages.CollectAsync(channel, (int)_govorilka.Collection, cancellationToken);
 
-                await foreach (var message in channel.GetMessagesAsync((int)_govorilka.Collection, options: options).Flatten())
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    if (message == null)
-                        continue;
-
-                    newImages.AddRange(GVRText.Images(message));
-
-                    if (string.IsNullOrWhiteSpace(message.Content) ||
-                        message.Author.IsBot ||
-                        message.Attachments.Any() ||
-                        message.Embeds.Any())
-                    {
-                        continue;
-                    }
-
-                    var content = message.Content.Trim();
-
-                    if (content.Contains("https://", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    var clean = GVRText.Sanitize(content);
-
-                    if (clean is not null)
-                        newLines.Add(clean);
-                }
-
-                var storedImages = await _gvrDb.AddImagesAsync(newImages, cancellationToken);
-
-                if (storedImages > 0)
-                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено картинок: {storedImages} из {newImages.Count}");
-
-                if (newLines.Count > 0)
-                {
-                    var stored = await _gvrDb.AddAsync((channel as IGuildChannel)?.GuildId ?? 0, newLines, cancellationToken);
-                    var (total, _) = await _gvrDb.StampAsync(cancellationToken);
-
-                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых: {stored} из {newLines.Count}, всего в базе: {total}");
-                }
-                else
-                {
-                    await LoggingService.LogInformationAsync("GOVOR", "Подходящих сообщений не набралось");
-                }
+                await LoggingService.LogInformationAsync("GOVOR",
+                    $"Сбор: просмотрено {scanned}, новых {added}, картинок {images}, вычищено {removed}, всего в базе {total}");
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception ex)

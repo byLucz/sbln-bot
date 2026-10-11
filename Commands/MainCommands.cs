@@ -251,7 +251,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         await Context.Channel.SendMessageAsync(embed: embed, components: components);
     }
 
-    [RequireGuild]
+    [RequireSuperuser]
     [Command("анонс")]
     [Cooldown(10)]
     public async Task AnnounceMessage([Remainder] string message)
