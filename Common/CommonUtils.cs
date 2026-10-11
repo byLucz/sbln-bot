@@ -209,6 +209,42 @@ namespace sblngavnav6.Common
             }
         }
 
+        public static class Web
+        {
+            public static async Task<byte[]> DownloadAsync(HttpClient http, string url, int maxBytes, CancellationToken cancellationToken = default)
+            {
+                if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+                    return null;
+
+                try
+                {
+                    using var response = await http.GetAsync(uri,HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+                    if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > maxBytes)
+                        return null;
+
+                    await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                    using var output = new MemoryStream();
+                    var buffer = new byte[81920];
+                    int read;
+
+                    while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                    {
+                        if (output.Length + read > maxBytes)
+                            return null;
+
+                        output.Write(buffer, 0, read);
+                    }
+
+                    return output.ToArray();
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+                {
+                    return null;
+                }
+            }
+        }
+
         public static class Time
         {
             public static long ToUnix(DateTime utc)

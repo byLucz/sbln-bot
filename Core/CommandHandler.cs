@@ -341,13 +341,19 @@ namespace sblngavnav6.Core
                 }
 
                 var newLines = new List<string>();
+                var newImages = new List<GVRImage>();
                 var options = new RequestOptions { CancelToken = cancellationToken };
 
                 await foreach (var message in channel.GetMessagesAsync((int)_govorilka.Collection, options: options).Flatten())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    if (message == null ||
-                        string.IsNullOrWhiteSpace(message.Content) ||
+
+                    if (message == null)
+                        continue;
+
+                    newImages.AddRange(GVRText.Images(message));
+
+                    if (string.IsNullOrWhiteSpace(message.Content) ||
                         message.Author.IsBot ||
                         message.Attachments.Any() ||
                         message.Embeds.Any())
@@ -365,6 +371,11 @@ namespace sblngavnav6.Core
                     if (clean is not null)
                         newLines.Add(clean);
                 }
+
+                var storedImages = await _gvrDb.AddImagesAsync(newImages, cancellationToken);
+
+                if (storedImages > 0)
+                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено картинок: {storedImages} из {newImages.Count}");
 
                 if (newLines.Count > 0)
                 {
