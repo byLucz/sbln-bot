@@ -20,6 +20,7 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
     private const string CatApiUrl = "https://api.thecatapi.com/v1/images/search?format=json";
     private const string BitfinexApiUrl = "https://api-pub.bitfinex.com/v2/tickers?symbols=tBTCUSD,tETHUSD,tSOLUSD,tTONUSD";
     private const string CurrencyApiUrl = "https://www.cbr-xml-daily.ru/latest.js";
+    private const string ApexMapsUrl = "https://api.apexlegendsstatus.com/maprotation?version=2";
 
     private static readonly Regex JokeRegex =
         new(@"""content""\s*:\s*""(?<joke>.*?)""", RegexOptions.Singleline | RegexOptions.Compiled);
@@ -74,7 +75,7 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
 
     [FrontierAsImage]
     [Command("биток")]
-    [Alias("монетки", "мон")]
+    [Alias("крипта")]
     public async Task GetCoins([Remainder] string unused = null)
     {
         const string down = "битфинекс упал, статистики не будет((";
@@ -236,6 +237,96 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
 
         var message = await ReplyAsync(embed: EmbedHandler.Authored(author, joke, Color.Orange, footer));
         await ReactAsync(message, "<:slyr4head:816639053008338944>");
+    }
+
+    [Frontier]
+    [Command("карты")]
+    [Alias("ротация")]
+    public async Task ApexMaps()
+    {
+        const string source = "апекс";
+
+        if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.apexKey))
+        {
+            await FailAsync(source, "не задан Api:ApexKey");
+            return;
+        }
+
+        JsonNode rotation;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, ApexMapsUrl);
+            request.Headers.TryAddWithoutValidation("Authorization", Global.Vars.Cfg.apexKey);
+
+            using var response = await _http.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await FailAsync(source, $"апи ответило {(int)response.StatusCode}");
+                return;
+            }
+
+            rotation = JsonNode.Parse(await response.Content.ReadAsStringAsync());
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            await FailAsync(source, ex.Message);
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        string Rotation(string mode)
+        {
+            var current = rotation?[mode]?["current"];
+            var next = rotation?[mode]?["next"];
+
+            if (current?["map"] is not JsonValue mapValue || !mapValue.TryGetValue<string>(out var map))
+                return null;
+
+            if (current["eventName"] is JsonValue eventValue && eventValue.TryGetValue<string>(out var eventName))
+                map = $"{eventName}: {map}";
+
+            var line = $"**{map}**";
+
+            if (current["end"] is JsonValue endValue && endValue.TryGetValue<long>(out var end) && end > now)
+                line += $", ещё {CommonUtils.Time.FormatAge(TimeSpan.FromSeconds(end - now))}";
+
+            if (next?["map"] is JsonValue nextValue && nextValue.TryGetValue<string>(out var nextMap))
+                line += $"\nдальше: {(next["eventName"] is JsonValue nextEvent && nextEvent.TryGetValue<string>(out var nextName) ? $"{nextName}: {nextMap}" : nextMap)}";
+
+            return line;
+        }
+
+        (string Name, string Mode)[] modes =
+        [
+            ("🎯 Паблики", "battle_royale"),
+            ("🏆 Ранкед", "ranked"),
+            ("🎪 Режим дня", "ltm")
+        ];
+
+        var fields = modes
+            .Select(mode => (mode.Name, Value: Rotation(mode.Mode)))
+            .Where(mode => mode.Value is not null)
+            .Select(mode => new EmbedFieldSpec(mode.Name, mode.Value))
+            .ToArray();
+
+        if (fields.Length == 0)
+        {
+            await FailAsync(source, "апи не отдало ротацию");
+            return;
+        }
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            Title = "sbln апекс карты🗺️",
+            Fields = fields,
+            ImageUrl = rotation?["battle_royale"]?["current"]?["asset"] is JsonValue asset && asset.TryGetValue<string>(out var assetUrl) ? EmbedHandler.Link(assetUrl) : null,
+            Color = Color.Red,
+            Footer = "powered by apexlegendsstatus.com",
+            Timestamp = true
+        }));
     }
 
     private async Task<string> FetchJokeAsync(int categoryId)

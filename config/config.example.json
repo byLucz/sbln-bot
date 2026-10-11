@@ -21,7 +21,8 @@
     "StreamAuth": "",
     "GBooksApi": "",
     "PgApiBaseUrl": "",
-    "PgApiToken": ""
+    "PgApiToken": "",
+    "ApexKey": ""
   },
   "Docker": {
     "NetworkMode": "bridge"

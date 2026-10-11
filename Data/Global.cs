@@ -68,6 +68,7 @@ namespace sblngavnav6.Data
                 public static readonly string gBooksApi = Str("Api:GBooksApi");
                 public static readonly string pgApiBaseUrl = Str("Api:PgApiBaseUrl");
                 public static readonly string pgApiToken = Str("Api:PgApiToken");
+                public static readonly string apexKey = Str("Api:ApexKey");
 
                 public static readonly string lavaHost = Str("Lava:LavaHost", "127.0.0.1");
                 public static readonly string lavaPass = Str("Lava:LavaPass", "youshallnotpass");
