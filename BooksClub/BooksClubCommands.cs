@@ -74,7 +74,7 @@ namespace sblngavnav6.BooksClub
             }));
         }
 
-        [RequireGuild]
+        [RequireDevGuild]
         [Command("выбор книги")]
         public async Task SelectBook([Remainder] string input = "")
         {
@@ -144,7 +144,7 @@ namespace sblngavnav6.BooksClub
             }), components: _pager.BuildControls(BookRating.OpenButton()));
         }
 
-        [RequireGuild]
+        [RequireDevGuild]
         [Command("оценить")]
         public async Task Rate([Remainder] string input = null)
         {
@@ -200,7 +200,7 @@ namespace sblngavnav6.BooksClub
             await ReplyAsync(embed: BookRating.Result(book.title, book.authors, Context.User.Username, scores, finalScore));
         }
 
-        [RequireGuild]
+        [RequireDevGuild]
         [Command("клуб")]
         public Task ClubInfoAsync() => ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
@@ -238,7 +238,7 @@ namespace sblngavnav6.BooksClub
             Footer = Footer
         }));
 
-        [RequireGuild]
+        [RequireDevGuild]
         [Command("членыклуба")]
         public async Task ClubMembersAsync()
         {
@@ -282,7 +282,7 @@ namespace sblngavnav6.BooksClub
             await _pager.SendAsync(Context.Channel, pages);
         }
 
-        [RequireGuild]
+        [RequireDevGuild]
         [Command("рейтинг")]
         public async Task ShowSeasonRatingAsync(int? season = null)
         {
@@ -336,7 +336,7 @@ namespace sblngavnav6.BooksClub
                 .ToList();
         }
 
-        [RequireGuild]
+        [RequireDevGuild]
         [Command("книжныйэкспорт")]
         public async Task ManualExportAsync()
         {

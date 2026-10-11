@@ -27,6 +27,7 @@ namespace sblngavnav6.Commands.Twitch
             _streamers = streamers;
         }
 
+        [RequireDevGuild]
         [RequireUserPermission(GuildPermission.ManageRoles)]
         [Command("добавить стримера")]
         public async Task AddStreamerAsync(string streamer)
@@ -51,6 +52,7 @@ namespace sblngavnav6.Commands.Twitch
             });
         }
 
+        [RequireDevGuild]
         [RequireUserPermission(GuildPermission.ManageRoles)]
         [Command("убрать стримера")]
         public async Task RemoveStreamerAsync(string streamer)

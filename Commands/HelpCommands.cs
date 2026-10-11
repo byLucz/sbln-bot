@@ -14,6 +14,6 @@ public class HelpCommands : ModuleBase<SocketCommandContext>
     [Alias("помоги", "помощь", "хелп")]
     public async Task HelpAll()
     {
-        await _pager.SendAsync(Context.Channel, HelpEmbedService.GetHelpPages());
+        await _pager.SendAsync(Context.Channel, HelpEmbedService.GetHelpPages(DevGuildGate.IsDevGuild(Context.Guild)));
     }
 }

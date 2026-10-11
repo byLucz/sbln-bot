@@ -154,7 +154,8 @@ namespace sblngavnav6.Core
                 return;
             }
 
-            _ = Task.Run(() => TrySendGeneratedAsync(context));
+            if (DevGuildGate.IsDevGuild(context.Guild))
+                _ = Task.Run(() => TrySendGeneratedAsync(context));
         }
 
         private async Task TrySendGeneratedAsync(SocketCommandContext context)
@@ -379,7 +380,7 @@ namespace sblngavnav6.Core
 
                 if (newLines.Count > 0)
                 {
-                    var stored = await _gvrDb.AddAsync(0, newLines, cancellationToken);
+                    var stored = await _gvrDb.AddAsync((channel as IGuildChannel)?.GuildId ?? 0, newLines, cancellationToken);
                     var (total, _) = await _gvrDb.StampAsync(cancellationToken);
 
                     await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых: {stored} из {newLines.Count}, всего в базе: {total}");

@@ -91,19 +91,25 @@ public static class HelpEmbedService
             ("ст", "меняет статус бота", false),
             ("актив", "ставит активность бота", false),
             ("инфа разрабов|ир", "состояние процесса, базы и модулей", false),
-            ("пг", "панель pgAPI", false),
             ("111", "девлог текущей версии", false),
-            ("клуб", "книжный клуб: правила, оценки и свои команды", false),
-            ("говор|говорилка|гвр", "говорилка: справка, настройки и подкоманды", false),
             ("почта @ник", "внутренняя почта, письмо челиксу в лс", false),
-            ("печкин|ппм|емейл", "панель почтовых ящиков PPM", false),
-            ("добавить стримера", "добавить twitch-стримера в отслеживание", false),
-            ("убрать стримера", "убрать twitch-стримера из отслеживания", false),
             ("стримеры|стримерши", "список отслеживаемых стримеров", false)
         ])
     ];
 
-    public static List<Embed> GetHelpPages() => Sections.Select(Page).ToList();
+    private static readonly (string Title, (string Command, string About, bool Telegram)[] Commands) DevSection =
+        ("Команды экосистемы Lois Media",
+        [
+            ("пг", "панель pgAPI", false),
+            ("печкин|ппм|емейл", "панель почтовых ящиков PPM", false),
+            ("говор|говорилка|гвр", "говорилка: справка, настройки и подкоманды", false),
+            ("клуб", "книжный клуб: правила, оценки и свои команды", false),
+            ("добавить стримера", "добавить twitch-стримера в отслеживание", false),
+            ("убрать стримера", "убрать twitch-стримера из отслеживания", false)
+        ]);
+
+    public static List<Embed> GetHelpPages(bool devGuild = false) =>
+        (devGuild ? Sections.Append(DevSection) : Sections).Select(Page).ToList();
 
     public static IReadOnlyList<(string Title, IReadOnlyList<(string Command, string About)> Commands)> TelegramSections() => Sections
         .Select(section => (section.Title, (IReadOnlyList<(string, string)>)section.Commands

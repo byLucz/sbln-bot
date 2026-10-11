@@ -1,4 +1,4 @@
-using Discord;
+﻿using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using sblngavnav6.Common;
@@ -148,6 +148,7 @@ namespace sblngavnav6.BooksClub
         }
     }
 
+    [RequireDevGuildInteraction]
     public class BooksRatingInteractions : InteractionModuleBase<SocketInteractionContext>
     {
         private static readonly SemaphoreSlim SaveGate = new(1, 1);

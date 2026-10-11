@@ -98,6 +98,7 @@ namespace sblngavnav6.PPM
         });
     }
 
+    [RequireDevGuild]
     [RequireSuperuser]
     public class PpmCommands : ModuleBase<SocketCommandContext>
     {
@@ -242,6 +243,7 @@ namespace sblngavnav6.PPM
         public string Password { get; set; }
     }
 
+    [RequireDevGuildInteraction]
     public class PpmInteractions : InteractionModuleBase<SocketInteractionContext>
     {
         private static readonly ConcurrentDictionary<ulong, byte> _creating = new();

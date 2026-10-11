@@ -7,7 +7,7 @@ namespace sblngavnav6.GVR
 {
     [Group("говор")]
     [Alias("говорилка", "гвр")]
-    [RequireGuild]
+    [RequireDevGuild]
     [RequireUserPermission(GuildPermission.Administrator)]
     public class GVRCommands : ModuleBase<SocketCommandContext>
     {
@@ -115,13 +115,13 @@ namespace sblngavnav6.GVR
 
             await _db.CleanupAsync();
 
-            var kept = (await _db.LoadAsync())
-                .Select(GVRText.Sanitize)
-                .Where(line => line is not null)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
+            var kept = (await _db.LoadRowsAsync())
+                .Select(row => (row.GuildId, Content: GVRText.Sanitize(row.Content)))
+                .Where(row => row.Content is not null)
+                .DistinctBy(row => row.Content, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            var after = await _db.ReplaceAsync(0, kept);
+            var after = await _db.ReplaceAsync(kept);
             var removed = before - after;
 
             await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
@@ -246,11 +246,12 @@ namespace sblngavnav6.GVR
 
             using (Context.Channel.EnterTypingState())
             {
-                while (stored + buffer.Count < target && scanned < MaxScan)
+                while (stored + buffer.Count + images < target && scanned < MaxScan)
                 {
                     var page = (before is null
                         ? await Context.Channel.GetMessagesAsync(PageSize).FlattenAsync()
                         : await Context.Channel.GetMessagesAsync(before.Value, Direction.Before, PageSize).FlattenAsync())
+                        .OrderByDescending(message => message.Id)
                         .ToList();
 
                     if (page.Count == 0)
@@ -259,12 +260,17 @@ namespace sblngavnav6.GVR
                         break;
                     }
 
-                    scanned += page.Count;
-                    before = page.Min(message => message.Id);
-                    images += await _db.AddImagesAsync(page.SelectMany(GVRText.Images).ToArray());
+                    var pageImages = new List<GVRImage>();
 
                     foreach (var message in page)
                     {
+                        if (stored + buffer.Count + images + pageImages.Count >= target)
+                            break;
+
+                        scanned++;
+                        before = message.Id;
+                        pageImages.AddRange(GVRText.Images(message));
+
                         if (message.Author.IsBot || message.Attachments.Any() || message.Embeds.Any())
                             continue;
 
@@ -273,6 +279,8 @@ namespace sblngavnav6.GVR
                         if (content is not null)
                             buffer.Add(content);
                     }
+
+                    images += await _db.AddImagesAsync(pageImages);
 
                     if (buffer.Count >= FlushSize)
                         stored += await FlushAsync(buffer);

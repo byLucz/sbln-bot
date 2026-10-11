@@ -12,7 +12,8 @@ namespace sblngavnav6.Images
     [RequireGuild]
     public sealed class ImageCommands : ModuleBase<SocketCommandContext>
     {
-        private const string Footer = "sbln картинки🖼️";
+        private const string Author = "sbln картинки🖼️";
+        private const string Footer = "powered by SkiaSharp";
         private const string NoPicture = "прикрепи картинку, ответь на сообщение с ней или дай ссылку";
 
         private readonly HttpClient _http;
@@ -42,7 +43,7 @@ namespace sblngavnav6.Images
             var attackerBytes = await AvatarBytesAsync(Context.User);
             var victimBytes = await AvatarBytesAsync(target);
 
-            await RenderAsync("💦 Обоссать", "piss.gif", $"{Context.User.Mention} обоссал {target.Mention}", async () =>
+            await RenderAsync("piss.gif", $"{Context.User.Mention} обоссал {target.Mention} 💦", async () =>
             {
                 using var attacker = ImageTools.Circle(attackerBytes, 160);
                 using var victim = ImageTools.Circle(victimBytes, 160);
@@ -72,7 +73,7 @@ namespace sblngavnav6.Images
             var headsBytes = await AvatarBytesAsync(heads);
             var tailsBytes = await AvatarBytesAsync(tails);
 
-            await RenderAsync("🪙 Монетка", "coin.gif", $"{heads.Mention} против {tails.Mention}\nвыпал: ||{(headsWins ? heads : tails).Mention}||", async () =>
+            await RenderAsync("coin.gif", $"🪙 {heads.Mention} против {tails.Mention}\nвыпал: ||{(headsWins ? heads : tails).Mention}||", async () =>
             {
                 using var headsImage = ImageTools.Circle(headsBytes, 160);
                 using var tailsImage = ImageTools.Circle(tailsBytes, 160);
@@ -105,7 +106,7 @@ namespace sblngavnav6.Images
                 return;
             }
 
-            await RenderAsync("🖼️ Демотиватор", "demotivator.jpg", null, () =>
+            await RenderAsync("demotivator.jpg", null, () =>
                 Task.FromResult(ImageEffects.Demotivator(source, Truncate(text[0], 120), text.Length > 1 ? Truncate(text[1], 240) : null)));
         }
 
@@ -133,7 +134,7 @@ namespace sblngavnav6.Images
             var mentioned = Mentioned(args);
             var avatarBytes = mentioned is null ? null : await AvatarBytesAsync(mentioned);
 
-            await RenderAsync("🧑‍🍳 Шефограм", "sheffogram.jpg", $"⬇️ {(faces.Count > 1 ? "еще челы превращены" : "еще один челик превращен")} в {(mentioned is null ? "шефа" : mentioned.Mention)}... ⬇️", () =>
+            await RenderAsync("sheffogram.jpg", $"⬇️ {(faces.Count > 1 ? "еще челы превращены" : "еще один челик превращен")} в {(mentioned is null ? "шефа" : mentioned.Mention)}... ⬇️", () =>
             {
                 using var avatar = mentioned is null ? null : ImageTools.Circle(avatarBytes, 256);
 
@@ -186,14 +187,14 @@ namespace sblngavnav6.Images
 
             await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
-                Title = "🖨️ Скан",
+                AuthorName = Author,
                 Description = Truncate(text, EmbedHandler.MaxDescription),
                 Color = Color.Gold,
-                Footer = $"{Footer} / {languages}"
+                Footer = $"powered by Tesseract / {languages}"
             }));
         }
 
-        private async Task RenderAsync(string title, string fileName, string description, Func<Task<byte[]>> render)
+        private async Task RenderAsync(string fileName, string description, Func<Task<byte[]>> render)
         {
             using var typing = Context.Channel.EnterTypingState();
 
@@ -218,7 +219,7 @@ namespace sblngavnav6.Images
 
             await Context.Channel.SendFileAsync(stream, fileName, embed: EmbedHandler.Build(new EmbedSpec
             {
-                Title = title,
+                AuthorName = Author,
                 Description = description,
                 ImageUrl = $"attachment://{fileName}",
                 Color = Color.Gold,

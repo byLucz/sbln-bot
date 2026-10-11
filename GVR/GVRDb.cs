@@ -4,7 +4,7 @@ using sblngavnav6.Services;
 
 namespace sblngavnav6.GVR
 {
-    public sealed record GVRImage(long Id, ulong ChannelId, ulong MessageId, ulong ItemId, bool IsEmbed);
+    public sealed record GVRImage(long Id, ulong GuildId, ulong ChannelId, ulong MessageId, ulong ItemId, bool IsEmbed);
 
     public sealed class GVRDb
     {
@@ -96,6 +96,23 @@ namespace sblngavnav6.GVR
             return lines;
         }
 
+        public async Task<List<(ulong GuildId, string Content)>> LoadRowsAsync(CancellationToken cancellationToken = default)
+        {
+            var rows = new List<(ulong GuildId, string Content)>();
+
+            if (!await ReadyAsync().ConfigureAwait(false))
+                return rows;
+
+            await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            await using var cmd = Command(conn, "SELECT guild_id, content FROM messages ORDER BY id");
+            await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                rows.Add((reader.GetUInt64(0), reader.GetString(1)));
+
+            return rows;
+        }
+
         public async Task<(int Count, long MaxId)> StampAsync(CancellationToken cancellationToken = default)
         {
             if (!await ReadyAsync().ConfigureAwait(false))
@@ -164,14 +181,15 @@ namespace sblngavnav6.GVR
 
                     for (var index = 0; index < batch.Length; index++)
                     {
-                        values.Add($"(@c{index}, @m{index}, @i{index}, @e{index})");
+                        values.Add($"(@g{index}, @c{index}, @m{index}, @i{index}, @e{index})");
+                        cmd.Parameters.AddWithValue($"@g{index}", batch[index].GuildId);
                         cmd.Parameters.AddWithValue($"@c{index}", batch[index].ChannelId);
                         cmd.Parameters.AddWithValue($"@m{index}", batch[index].MessageId);
                         cmd.Parameters.AddWithValue($"@i{index}", batch[index].ItemId);
                         cmd.Parameters.AddWithValue($"@e{index}", batch[index].IsEmbed ? 1 : 0);
                     }
 
-                    cmd.CommandText = $"INSERT IGNORE INTO images (channel_id, message_id, item_id, is_embed) VALUES {string.Join(", ", values)}";
+                    cmd.CommandText = $"INSERT IGNORE INTO images (guild_id, channel_id, message_id, item_id, is_embed) VALUES {string.Join(", ", values)}";
 
                     added += await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                 }
@@ -192,13 +210,13 @@ namespace sblngavnav6.GVR
             try
             {
                 await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-                await using var cmd = Command(conn, "SELECT id, channel_id, message_id, item_id, is_embed FROM images ORDER BY RAND() LIMIT 1");
+                await using var cmd = Command(conn, "SELECT id, guild_id, channel_id, message_id, item_id, is_embed FROM images ORDER BY RAND() LIMIT 1");
                 await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
                 if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     return null;
 
-                return new GVRImage(reader.GetInt64(0), reader.GetUInt64(1), reader.GetUInt64(2), reader.GetUInt64(3), reader.GetBoolean(4));
+                return new GVRImage(reader.GetInt64(0), reader.GetUInt64(1), reader.GetUInt64(2), reader.GetUInt64(3), reader.GetUInt64(4), reader.GetBoolean(5));
             }
             catch (MySqlException ex)
             {
@@ -219,7 +237,7 @@ namespace sblngavnav6.GVR
             await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        public async Task<int> ReplaceAsync(ulong guildId, IReadOnlyCollection<string> contents, CancellationToken cancellationToken = default)
+        public async Task<int> ReplaceAsync(IReadOnlyCollection<(ulong GuildId, string Content)> rows, CancellationToken cancellationToken = default)
         {
             if (!await ReadyAsync().ConfigureAwait(false))
                 return 0;
@@ -232,7 +250,12 @@ namespace sblngavnav6.GVR
 
             Interlocked.Increment(ref _revision);
 
-            return await AddAsync(guildId, contents, cancellationToken).ConfigureAwait(false);
+            var added = 0;
+
+            foreach (var guild in rows.GroupBy(row => row.GuildId))
+                added += await AddAsync(guild.Key, guild.Select(row => row.Content).ToArray(), cancellationToken).ConfigureAwait(false);
+
+            return added;
         }
 
         public async Task<int> CleanupAsync(CancellationToken cancellationToken = default)
