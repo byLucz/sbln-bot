@@ -4,6 +4,8 @@ using sblngavnav6.Services;
 
 namespace sblngavnav6.GVR
 {
+    public sealed record GVRImage(long Id, ulong ChannelId, ulong MessageId, ulong AttachmentId);
+
     public sealed class GVRDb
     {
         private const string LogSource = "GOVOR";
@@ -140,6 +142,80 @@ namespace sblngavnav6.GVR
                 Interlocked.Increment(ref _revision);
 
             return added;
+        }
+
+        public async Task<int> AddImagesAsync(IReadOnlyCollection<GVRImage> images, CancellationToken cancellationToken = default)
+        {
+            if (images.Count == 0 || !await ReadyAsync().ConfigureAwait(false))
+                return 0;
+
+            var added = 0;
+
+            try
+            {
+                await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+
+                foreach (var batch in images.Chunk(BatchSize))
+                {
+                    await using var cmd = conn.CreateCommand();
+                    cmd.CommandTimeout = CommandTimeoutSeconds;
+
+                    var values = new List<string>(batch.Length);
+
+                    for (var index = 0; index < batch.Length; index++)
+                    {
+                        values.Add($"(@c{index}, @m{index}, @a{index})");
+                        cmd.Parameters.AddWithValue($"@c{index}", batch[index].ChannelId);
+                        cmd.Parameters.AddWithValue($"@m{index}", batch[index].MessageId);
+                        cmd.Parameters.AddWithValue($"@a{index}", batch[index].AttachmentId);
+                    }
+
+                    cmd.CommandText = $"INSERT IGNORE INTO images (channel_id, message_id, attachment_id) VALUES {string.Join(", ", values)}";
+
+                    added += await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+            catch (MySqlException ex)
+            {
+                await LoggingService.LogWarningAsync(LogSource, $"Картинки не сохранены: {ex.Message}");
+            }
+
+            return added;
+        }
+
+        public async Task<GVRImage> RandomImageAsync(CancellationToken cancellationToken = default)
+        {
+            if (!await ReadyAsync().ConfigureAwait(false))
+                return null;
+
+            try
+            {
+                await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+                await using var cmd = Command(conn, "SELECT id, channel_id, message_id, attachment_id FROM images ORDER BY RAND() LIMIT 1");
+                await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+                if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    return null;
+
+                return new GVRImage(reader.GetInt64(0), reader.GetUInt64(1), reader.GetUInt64(2), reader.GetUInt64(3));
+            }
+            catch (MySqlException ex)
+            {
+                await LoggingService.LogWarningAsync(LogSource, $"Картинка не загружена: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task RemoveImageAsync(long id, CancellationToken cancellationToken = default)
+        {
+            if (!await ReadyAsync().ConfigureAwait(false))
+                return;
+
+            await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            await using var cmd = Command(conn, "DELETE FROM images WHERE id = @id");
+            cmd.Parameters.AddWithValue("@id", id);
+
+            await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<int> ReplaceAsync(ulong guildId, IReadOnlyCollection<string> contents, CancellationToken cancellationToken = default)

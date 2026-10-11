@@ -1,16 +1,23 @@
 ﻿using Discord;
 using Discord.Commands;
+using Discord.Net;
+using DiscordTelegramFrontier;
 using sblngavnav6.Common;
+using sblngavnav6.Images;
 using sblngavnav6.Services;
 using System.Text;
 using System.Text.RegularExpressions;
+using static sblngavnav6.Common.CommonUtils.Text;
 
 namespace sblngavnav6.GVR
 {
     public sealed class GVRMessagesHandler
     {
+        private const int DemotivatorChance = 50;
+
         private readonly GVRConfig _config;
         private readonly GVRDb _db;
+        private readonly IHttpClientFactory _httpClientFactory;
 
         private static readonly Regex SplitRegex = new(@"\s+", RegexOptions.Compiled);
         private static readonly Regex PunctRegex = new(@"^[!?.,;]+$", RegexOptions.Compiled);
@@ -27,10 +34,11 @@ namespace sblngavnav6.GVR
         private long _modelMaxId;
         private long _modelRevision;
 
-        public GVRMessagesHandler(GVRConfig config, GVRDb db)
+        public GVRMessagesHandler(GVRConfig config, GVRDb db, IHttpClientFactory httpClientFactory)
         {
             _config = config;
             _db = db;
+            _httpClientFactory = httpClientFactory;
         }
 
         public async Task TrySendGeneratedMessageAsync(SocketCommandContext context)
@@ -44,8 +52,86 @@ namespace sblngavnav6.GVR
 
             using (context.Channel.EnterTypingState())
             {
+                if (CommonUtils.RandomNumber(1, 100) <= DemotivatorChance
+                    && context.Channel is not FrontierProxyChannel
+                    && await SendDemotivatorAsync(context, (int)_config.Step))
+                    return;
+
                 await SendGeneratedMessageAsync(context, (int)_config.Step, words);
             }
+        }
+
+        private async Task<bool> SendDemotivatorAsync(SocketCommandContext context, int step)
+        {
+            if (step <= 0)
+                return false;
+
+            var model = await GetModelAsync(step).ConfigureAwait(false);
+            if (model is null)
+                return false;
+
+            using var http = _httpClientFactory.CreateClient();
+            http.Timeout = TimeSpan.FromSeconds(15);
+
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                var image = await _db.RandomImageAsync().ConfigureAwait(false);
+                if (image is null)
+                    return false;
+
+                IAttachment attachment;
+
+                try
+                {
+                    var message = context.Client.GetChannel(image.ChannelId) is IMessageChannel channel
+                        ? await channel.GetMessageAsync(image.MessageId).ConfigureAwait(false)
+                        : null;
+
+                    attachment = message?.Attachments.FirstOrDefault(item => item.Id == image.AttachmentId);
+                }
+                catch (HttpException)
+                {
+                    continue;
+                }
+
+                var bytes = attachment is null ? null : await CommonUtils.Web.DownloadAsync(http, attachment.Url, ImageTools.MaxSourceBytes).ConfigureAwait(false);
+
+                if (attachment is not null && bytes is null)
+                    continue;
+
+                using var source = ImageTools.Decode(bytes);
+
+                if (source is null)
+                {
+                    await _db.RemoveImageAsync(image.Id).ConfigureAwait(false);
+                    continue;
+                }
+
+                var title = GVRText.Plain(GenerateSentence(model, step, CommonUtils.RandomNumber(3, 6)));
+                if (title.Length == 0)
+                    return false;
+
+                var caption = CommonUtils.RandomNumber(0, 1) == 0
+                    ? null
+                    : GVRText.Plain(GenerateSentence(model, step, CommonUtils.RandomNumber(4, 10)));
+
+                byte[] rendered;
+                await ImageTools.RenderGate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    rendered = ImageEffects.Demotivator(source, Truncate(title, 120), Truncate(caption, 240));
+                }
+                finally
+                {
+                    ImageTools.RenderGate.Release();
+                }
+
+                using var stream = new MemoryStream(rendered);
+                await context.Channel.SendFileAsync(stream, "demotivator.jpg", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+                return true;
+            }
+
+            return false;
         }
 
         public async Task SendGeneratedMessageAsync(SocketCommandContext context, int step, int wordCount)

@@ -1,4 +1,6 @@
-﻿using sblngavnav6.Data;
+﻿using Discord;
+using sblngavnav6.Data;
+using sblngavnav6.Images;
 using System.Text.RegularExpressions;
 
 namespace sblngavnav6.GVR
@@ -44,6 +46,16 @@ namespace sblngavnav6.GVR
 
             return text;
         }
+
+        public static IEnumerable<GVRImage> Images(IMessage message) =>
+            message.Author.IsBot || message.Channel is ITextChannel { IsNsfw: true }
+                ? []
+                : message.Attachments
+                    .Where(attachment => ImageTools.IsImage(attachment) && !attachment.IsSpoiler())
+                    .Select(attachment => new GVRImage(0, message.Channel.Id, message.Id, attachment.Id));
+
+        public static string Plain(string text) =>
+            SpaceRegex().Replace(DiscordTokenRegex().Replace(text ?? string.Empty, " "), " ").Trim();
 
         public static bool LooksLikeCommand(string raw)
         {

@@ -238,6 +238,7 @@ namespace sblngavnav6.GVR
 
             var target = (int)amount;
             var stored = 0;
+            var images = 0;
             var scanned = 0;
             var buffer = new List<string>(FlushSize);
             ulong? before = null;
@@ -260,6 +261,7 @@ namespace sblngavnav6.GVR
 
                     scanned += page.Count;
                     before = page.Min(message => message.Id);
+                    images += await _db.AddImagesAsync(page.SelectMany(GVRText.Images).ToArray());
 
                     foreach (var message in page)
                     {
@@ -287,7 +289,7 @@ namespace sblngavnav6.GVR
 
             await DoneAsync(
                 "добавлено",
-                $"**{stored}** новых, просмотрено **{scanned}**, в базе **{total}**{tail}");
+                $"**{stored}** новых, картинок **{images}**, просмотрено **{scanned}**, в базе **{total}**{tail}");
         }
 
         private async Task<int> FlushAsync(List<string> buffer)
