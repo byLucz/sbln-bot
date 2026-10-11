@@ -109,7 +109,7 @@ namespace sblngavnav6.Images
                 using var feather = new SKPaint { BlendMode = SKBlendMode.DstIn };
 
                 canvas.Save();
-                canvas.Concat(Fit(anchors, face.Points));
+                canvas.Concat(Fit(anchors, face.Points, face.Box, new SKSize(overlay.Width, overlay.Height * 1.14f)));
                 canvas.SaveLayer();
                 canvas.DrawImage(padded, 0, 0, Smooth, tone);
                 canvas.DrawImage(mask, 0, 0, feather);
@@ -159,38 +159,33 @@ namespace sblngavnav6.Images
             return surface.Snapshot();
         }
 
-        private static SKMatrix Fit(SKPoint[] from, SKPoint[] to)
+        private static SKMatrix Fit(SKPoint[] from, SKPoint[] to, SKRect box, SKSize face)
         {
-            double suu = 0, suv = 0, svv = 0, su = 0, sv = 0;
-            double sxu = 0, sxv = 0, sx = 0, syu = 0, syv = 0, sy = 0;
-            var n = from.Length;
+            double fromX = from.Average(point => point.X), fromY = from.Average(point => point.Y);
+            double toX = to.Average(point => point.X), toY = to.Average(point => point.Y);
+            double dot = 0, cross = 0, norm = 0;
 
-            for (var i = 0; i < n; i++)
+            for (var i = 0; i < from.Length; i++)
             {
-                double u = from[i].X, v = from[i].Y, x = to[i].X, y = to[i].Y;
-                suu += u * u; suv += u * v; svv += v * v; su += u; sv += v;
-                sxu += x * u; sxv += x * v; sx += x;
-                syu += y * u; syv += y * v; sy += y;
+                double px = from[i].X - fromX, py = from[i].Y - fromY;
+                double qx = to[i].X - toX, qy = to[i].Y - toY;
+                dot += px * qx + py * qy;
+                cross += px * qy - py * qx;
+                norm += px * px + py * py;
             }
 
-            var (a, b, c) = Solve(suu, suv, su, suv, svv, sv, su, sv, n, sxu, sxv, sx);
-            var (d, e, f) = Solve(suu, suv, su, suv, svv, sv, su, sv, n, syu, syv, sy);
+            var a = dot / norm;
+            var b = cross / norm;
+            var scale = Math.Sqrt(a * a + b * b);
+            var cover = Math.Clamp(Math.Max(box.Width / (scale * face.Width), box.Height / (scale * face.Height)), 1, 1.6);
 
-            return new SKMatrix((float)a, (float)b, (float)c, (float)d, (float)e, (float)f, 0, 0, 1);
-        }
+            a *= cover;
+            b *= cover;
 
-        private static (double, double, double) Solve(
-            double m00, double m01, double m02,
-            double m10, double m11, double m12,
-            double m20, double m21, double m22,
-            double r0, double r1, double r2)
-        {
-            var det = m00 * (m11 * m22 - m12 * m21) - m01 * (m10 * m22 - m12 * m20) + m02 * (m10 * m21 - m11 * m20);
-
-            return (
-                (r0 * (m11 * m22 - m12 * m21) - m01 * (r1 * m22 - m12 * r2) + m02 * (r1 * m21 - m11 * r2)) / det,
-                (m00 * (r1 * m22 - m12 * r2) - r0 * (m10 * m22 - m12 * m20) + m02 * (m10 * r2 - r1 * m20)) / det,
-                (m00 * (m11 * r2 - r1 * m21) - m01 * (m10 * r2 - r1 * m20) + r0 * (m10 * m21 - m11 * m20)) / det);
+            return new SKMatrix(
+                (float)a, (float)-b, (float)(toX - a * fromX + b * fromY),
+                (float)b, (float)a, (float)(toY - b * fromX - a * fromY),
+                0, 0, 1);
         }
 
         private static SKColor Average(SKImage image, SKRect area)
