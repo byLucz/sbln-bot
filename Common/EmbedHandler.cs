@@ -21,7 +21,6 @@ namespace sblngavnav6.Common
         public string ThumbnailUrl { get; init; }
         public string ImageUrl { get; init; }
 
-        public bool Timestamp { get; init; }
         public IReadOnlyList<EmbedFieldSpec> Fields { get; init; }
     }
 
@@ -88,9 +87,6 @@ namespace sblngavnav6.Common
 
             if (Link(spec.ImageUrl) is { } image)
                 builder.WithImageUrl(image);
-
-            if (spec.Timestamp)
-                builder.WithCurrentTimestamp();
 
             if (spec.Fields is { Count: > 0 })
             {
@@ -227,8 +223,7 @@ namespace sblngavnav6.Common
                 Color = Discord.Color.DarkRed,
                 ThumbnailUrl = thumbnailUrl,
                 Footer = $"приговор вынес {byUser}",
-                FooterIconUrl = byIconUrl,
-                Timestamp = true
+                FooterIconUrl = byIconUrl
             });
 
         public static EmbedBuilder FieldsEmbed(string authorName, Color color, string footer, string thumbnailUrl = null, string authorIconUrl = null)

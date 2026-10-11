@@ -263,8 +263,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             Title = "анонс сына гавна",
             Description = message,
             ThumbnailUrl = Avatar(Context.User),
-            Footer = $"@{Context.User.Username}",
-            Timestamp = true
+            Footer = $"@{Context.User.Username}"
         }));
     }
 

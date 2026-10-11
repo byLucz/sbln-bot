@@ -68,8 +68,7 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
             Title = "sbln кисики😼",
             ImageUrl = cat.Url.OriginalString,
             Color = Color.Teal,
-            Footer = "powered by thecatapi.com",
-            Timestamp = true
+            Footer = "powered by thecatapi.com"
         }));
     }
 
@@ -320,12 +319,10 @@ public class ApiCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            Title = "sbln апекс карты🗺️",
+            Title = "sbln апекс🔫",
             Fields = fields,
-            ImageUrl = rotation?["battle_royale"]?["current"]?["asset"] is JsonValue asset && asset.TryGetValue<string>(out var assetUrl) ? EmbedHandler.Link(assetUrl) : null,
             Color = Color.Red,
-            Footer = "powered by apexlegendsstatus.com",
-            Timestamp = true
+            Footer = "powered by apexlegendsstatus.com"
         }));
     }
 
