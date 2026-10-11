@@ -270,7 +270,7 @@ namespace sblngavnav6.Data
             public string Folder { get; set; }
         }
 
-        public sealed record PastaEntry(string Author, string AvatarUrl, string Content);
+        public sealed record PastaEntry(string Author, string AvatarUrl, string Content, DateTimeOffset Written);
 
         public sealed record ClubMemberStats(
             string Name,

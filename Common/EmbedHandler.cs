@@ -21,6 +21,7 @@ namespace sblngavnav6.Common
         public string ThumbnailUrl { get; init; }
         public string ImageUrl { get; init; }
 
+        public DateTimeOffset? Timestamp { get; init; }
         public IReadOnlyList<EmbedFieldSpec> Fields { get; init; }
     }
 
@@ -87,6 +88,9 @@ namespace sblngavnav6.Common
 
             if (Link(spec.ImageUrl) is { } image)
                 builder.WithImageUrl(image);
+
+            if (spec.Timestamp is { } timestamp)
+                builder.WithTimestamp(timestamp);
 
             if (spec.Fields is { Count: > 0 })
             {

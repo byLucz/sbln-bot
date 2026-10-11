@@ -110,7 +110,8 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
             AuthorIconUrl = entry.AvatarUrl,
             Description = entry.Content,
             Color = Color.Red,
-            Footer = "sbln паста-карбонара🍝"
+            Footer = "sbln паста-карбонара🍝",
+            Timestamp = entry.Written
         }));
     }
 
@@ -190,7 +191,7 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
 
     private static IEnumerable<PastaEntry> Keep(IEnumerable<IMessage> batch) => batch
         .Where(message => !message.Author.IsBot && !string.IsNullOrWhiteSpace(message.Content))
-        .Select(message => new PastaEntry(message.Author.Username, Avatar(message.Author), message.Content));
+        .Select(message => new PastaEntry(message.Author.Username, Avatar(message.Author), message.Content, message.Timestamp));
 
     [Frontier]
     [Command("волк")]
