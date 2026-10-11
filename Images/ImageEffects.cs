@@ -92,8 +92,11 @@ namespace sblngavnav6.Images
             foreach (var face in faces)
             {
                 var skinTone = Average(sourceImage, SKRect.Intersect(face.Box, SKRect.Create(source.Width, source.Height)));
-                var fit = Fit(anchors, face.Points);
                 var box = face.Box;
+                var eyes = face.Points[1] - face.Points[0];
+                var angle = MathF.Atan2(eyes.Y, eyes.X);
+                var top = box.Top - box.Height * 0.04f;
+                var bottom = box.Bottom + box.Height * 0.02f;
 
                 using var tone = SKColorFilter.CreateColorMatrix(
                 [
@@ -106,9 +109,9 @@ namespace sblngavnav6.Images
                 canvas.SaveLayer();
 
                 canvas.Save();
-                canvas.RotateDegrees(MathF.Atan2(fit.SkewY, fit.ScaleX) * 180 / MathF.PI, box.MidX, box.MidY);
+                canvas.RotateDegrees(angle * 180 / MathF.PI, box.MidX, (top + bottom) / 2);
 
-                using (var shape = FaceShape(box.MidX, box.Top - box.Height * 0.04f, box.Bottom + box.Height * 0.02f, box.Width * 0.54f))
+                using (var shape = FaceShape(box.MidX, top, bottom, box.Width * 0.54f))
                 using (var mask = new SKPaint { Color = SKColors.Black, IsAntialias = true, MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, box.Width * 0.05f) })
                     canvas.DrawPath(shape, mask);
 
@@ -117,13 +120,12 @@ namespace sblngavnav6.Images
                 using (var skin = new SKPaint { Color = fill, BlendMode = SKBlendMode.SrcIn, ColorFilter = tone })
                     canvas.DrawPaint(skin);
 
-                canvas.Save();
-                canvas.Concat(fit);
+                using (var mesh = Warp(padded, SKRect.Create(padX, padY, overlay.Width, overlay.Height), anchors, face.Points,
+                    new SKPoint(box.MidX, (top + bottom) / 2), box.Width * 0.54f, (bottom - top) / 2, angle))
+                using (var shader = padded.ToShader(SKShaderTileMode.Clamp, SKShaderTileMode.Clamp, Smooth))
+                using (var paint = new SKPaint { Shader = shader, BlendMode = SKBlendMode.SrcATop, ColorFilter = tone, IsAntialias = true })
+                    canvas.DrawVertices(mesh, SKBlendMode.Modulate, paint);
 
-                using (var paint = new SKPaint { BlendMode = SKBlendMode.SrcATop, ColorFilter = tone })
-                    canvas.DrawImage(padded, 0, 0, Smooth, paint);
-
-                canvas.Restore();
                 canvas.Restore();
             }
 
@@ -168,28 +170,82 @@ namespace sblngavnav6.Images
             return surface.Snapshot();
         }
 
-        private static SKMatrix Fit(SKPoint[] from, SKPoint[] to)
+        private static SKVertices Warp(SKImage image, SKRect face, SKPoint[] from, SKPoint[] to, SKPoint center, float radiusX, float radiusY, float angle)
         {
-            double fromX = from.Average(point => point.X), fromY = from.Average(point => point.Y);
-            double toX = to.Average(point => point.X), toY = to.Average(point => point.Y);
-            double dot = 0, cross = 0, norm = 0;
+            const int cells = 24;
 
-            for (var i = 0; i < from.Length; i++)
+            var cos = MathF.Cos(angle);
+            var sin = MathF.Sin(angle);
+
+            SKPoint Source(SKPoint point) => new((point.X - face.MidX) / (face.Width / 2), (point.Y - face.MidY) / (face.Height / 2));
+
+            SKPoint Target(SKPoint point)
             {
-                double px = from[i].X - fromX, py = from[i].Y - fromY;
-                double qx = to[i].X - toX, qy = to[i].Y - toY;
-                dot += px * qx + py * qy;
-                cross += px * qy - py * qx;
-                norm += px * px + py * py;
+                var dx = point.X - center.X;
+                var dy = point.Y - center.Y;
+                return new((dx * cos + dy * sin) / radiusX, (-dx * sin + dy * cos) / radiusY);
             }
 
-            var a = dot / norm;
-            var b = cross / norm;
+            float[] Knots(params float[] inner)
+            {
+                var knots = new float[inner.Length + 2];
+                knots[0] = -1;
+                knots[^1] = 1;
 
-            return new SKMatrix(
-                (float)a, (float)-b, (float)(toX - a * fromX + b * fromY),
-                (float)b, (float)a, (float)(toY - b * fromX - a * fromY),
-                0, 0, 1);
+                for (var i = 0; i < inner.Length; i++)
+                    knots[i + 1] = Math.Clamp(Math.Max(inner[i], knots[i] + 0.08f), -0.92f, 0.92f);
+
+                return knots;
+            }
+
+            float Map(float[] source, float[] target, float value)
+            {
+                var segment = 0;
+                while (segment < source.Length - 2 && value > source[segment + 1])
+                    segment++;
+
+                var t = (value - source[segment]) / (source[segment + 1] - source[segment]);
+                return target[segment] + (target[segment + 1] - target[segment]) * t;
+            }
+
+            var s = from.Select(Source).ToArray();
+            var d = to.Select(Target).ToArray();
+
+            var sourceU = Knots(s[0].X, s[2].X, s[1].X);
+            var targetU = Knots(d[0].X, d[2].X, d[1].X);
+            var sourceV = Knots((s[0].Y + s[1].Y) / 2, s[2].Y, (s[3].Y + s[4].Y) / 2);
+            var targetV = Knots((d[0].Y + d[1].Y) / 2, d[2].Y, (d[3].Y + d[4].Y) / 2);
+
+            var positions = new SKPoint[(cells + 1) * (cells + 1)];
+            var textures = new SKPoint[positions.Length];
+
+            for (var y = 0; y <= cells; y++)
+            {
+                for (var x = 0; x <= cells; x++)
+                {
+                    var texture = new SKPoint(image.Width * x / (float)cells, image.Height * y / (float)cells);
+                    var local = Source(texture);
+                    var u = Map(sourceU, targetU, local.X) * radiusX;
+                    var v = Map(sourceV, targetV, local.Y) * radiusY;
+
+                    positions[y * (cells + 1) + x] = new SKPoint(center.X + u * cos - v * sin, center.Y + u * sin + v * cos);
+                    textures[y * (cells + 1) + x] = texture;
+                }
+            }
+
+            var indices = new List<ushort>(cells * cells * 6);
+
+            for (var y = 0; y < cells; y++)
+            {
+                for (var x = 0; x < cells; x++)
+                {
+                    var corner = (ushort)(y * (cells + 1) + x);
+                    var below = (ushort)(corner + cells + 1);
+                    indices.AddRange([corner, (ushort)(corner + 1), below, (ushort)(corner + 1), (ushort)(below + 1), below]);
+                }
+            }
+
+            return SKVertices.CreateCopy(SKVertexMode.Triangles, positions, textures, null, indices.ToArray());
         }
 
         private static SKColor Average(SKImage image, SKRect area)
