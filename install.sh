@@ -55,18 +55,7 @@ if [[ ! -f "$CONFIG" ]]; then
 fi
 chown "$config_uid:$config_gid" "$CONFIG"
 chmod 0666 "$CONFIG"
-if command -v jq >/dev/null 2>&1; then
-  tmp=$(mktemp)
-  if jq -s '.[0] * .[1]' "$ROOT/config/$example" "$CONFIG" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]]; then
-    if ! cmp -s "$tmp" "$CONFIG"; then
-      cat "$tmp" > "$CONFIG"
-      echo "Конфиг дополнен недостающими ключами из примера (значения сохранены)."
-    fi
-  fi
-  rm -f "$tmp"
-else
-  echo "jq не найден — авто-домёрж новых ключей конфига пропущен (поставь: apt install jq)."
-fi
+bash /usr/local/bin/sbln config-sync "$ROOT/config/$example" "$CONFIG"
 if [[ "$channel" = proto ]]; then
   exec bash /usr/local/bin/sblnproto hotswap "$ROOT"
 fi

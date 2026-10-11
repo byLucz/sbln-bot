@@ -21,7 +21,7 @@ menu() {
   trap 'printf "\n"' INT
   while true; do
     bash "$HELPER" panel proto || true
-    printf '\n1 Статус proto\n2 Логи proto (Ctrl+C — назад)\n3 Обновить из proto и пересобрать\n4 Удалить контейнер proto\n5 Перезапустить proto\n6 Запустить proto\n7 Остановить proto\n8 Логи Lavalink\n9 Перезапустить Lavalink\n10 Очистить docker\n0 Выход\n'
+    printf '\n1 Статус proto\n2 Логи proto (Ctrl+C - назад)\n3 Обновить из proto и пересобрать\n4 Удалить proto (контейнер и образ)\n5 Перезапустить proto\n6 Запустить proto\n7 Остановить proto\n8 Логи Lavalink\n9 Перезапустить Lavalink\n10 Очистить docker\n0 Выход\n'
     read -r -p 'Выбери пункт: ' choice || break
     case "$choice" in
       1) action=(status) ;; 2) action=(logs) ;; 3) action=(update) ;; 4) action=(down) ;;
@@ -52,33 +52,23 @@ case "$cmd" in
       exec bash "$PROTO/sblnproto.sh" hotswap "$PROTO"
     fi
     [[ -d "$PROTO/.git" ]] && git -C "$PROTO" submodule update --init --recursive
-    if command -v jq >/dev/null 2>&1 && [[ -f "$PCONFIG" ]]; then
-      tmp=$(mktemp)
-      if jq -s '.[0] * .[1]' "$PROTO/config/config-proto.example.json" "$PCONFIG" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]] && ! cmp -s "$tmp" "$PCONFIG"; then
-        cat "$tmp" > "$PCONFIG"; echo '>> proto-конфиг дополнен новыми ключами из примера'
-      fi
-      rm -f "$tmp"
-    fi
     install -m 0755 "$PROTO/sbln.sh" /usr/local/bin/sbln
     install -m 0755 "$PROTO/sblnproto.sh" /usr/local/bin/sblnproto
     HELPER=/usr/local/bin/sbln
+    bash "$HELPER" config-sync "$PROTO/config/config-proto.example.json" "$PCONFIG"
     network=$(bash "$HELPER" network "$PCONFIG")
     echo "Сеть proto: $network (конфиг: $PCONFIG)"
     bash "$HELPER" build "$PROTO" proto
     docker rm -f "$PBOT" >/dev/null 2>&1 || true
-    net_args=(--network "$network" --add-host host.docker.internal:host-gateway)
-    docker run -d --name "$PBOT" --restart no --init --stop-timeout 30 \
-      -e SBLN_CONFIG=/opt/sbln/config.json -e SBLN_READY_FILE=/tmp/sbln-ready \
-      -e SBLN_AUDIO_DIR=/opt/sbln/audio/proto -e SBLN_LOG_DIR=/opt/sbln/logs \
-      -v "$PCONFIG":/opt/sbln/config.json:ro \
-      -v "$BASE/data/proto":/opt/sbln/data -v "$BASE/logs/proto":/opt/sbln/logs \
-      -v "$BASE/audio":/opt/sbln/audio -v /var/run/docker.sock:/var/run/docker.sock \
-      --log-opt max-size=10m --log-opt max-file=3 \
-      "${net_args[@]}" sbln-bot:proto >/dev/null
+    (cd "$PROTO" && docker compose --project-name sbln-proto up -d --no-build --force-recreate)
     bash "$HELPER" wait "$PBOT"
     echo 'Proto запущен. Production-контейнер не перезапускался.'
     ;;
-  down) docker rm -f "$PBOT" >/dev/null; echo 'Proto остановлен и удалён.' ;;
+  down)
+    docker rm -f "$PBOT" >/dev/null 2>&1 || true
+    docker image rm sbln-bot:proto >/dev/null 2>&1 || true
+    echo 'Proto остановлен, контейнер и образ удалены.'
+    ;;
   start) docker start "$PBOT"; bash "$HELPER" wait "$PBOT" ;;
   stop) docker stop "$PBOT" ;;
   restart) docker restart "$PBOT"; bash "$HELPER" wait "$PBOT" ;;
@@ -87,6 +77,6 @@ case "$cmd" in
   panel) bash "$HELPER" panel proto ;;
   lava) bash "$HELPER" lava "${1:-status}" "${2:-100}" ;;
   prune) bash "$HELPER" prune "${1:-72h}" ;;
-  help) echo 'Без аргументов — меню proto. Команды: panel | status | logs [N] | start | stop | restart | update [checkout] | hotswap [checkout] | down | lava status|restart|logs | prune [until]' ;;
+  help) echo 'Без аргументов меню proto. Команды: panel | status | logs [N] | start | stop | restart | update [checkout] | hotswap [checkout] | down | lava status|restart|logs | prune [until|all]' ;;
   *) echo "Неизвестная команда proto: $cmd. Используй help." >&2; exit 1 ;;
 esac

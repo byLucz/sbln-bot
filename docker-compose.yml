@@ -9,7 +9,7 @@ services:
         SBLN_COMMIT: ${SBLN_COMMIT:?Commit is required}
     container_name: ${SBLN_CONTAINER:-sbln-bot}
     network_mode: ${SBLN_NETWORK_MODE:-bridge}
-    restart: unless-stopped
+    restart: ${SBLN_RESTART:-unless-stopped}
     init: true
     stop_grace_period: 30s
     environment:

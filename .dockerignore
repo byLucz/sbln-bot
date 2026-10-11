@@ -16,3 +16,8 @@ data/
 config/
 sbln.sh
 README*
+install.sh
+sblnproto.sh
+**/.git
+external/DTF/artifacts/
+output/

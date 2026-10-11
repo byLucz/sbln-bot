@@ -1,6 +1,7 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
 WORKDIR /src
 
+ARG TARGETARCH
 ARG SBLN_CHANNEL=
 ARG SBLN_VERSION=
 ARG SBLN_COMMIT=
@@ -9,11 +10,16 @@ COPY sblngavnav6.csproj Directory.Build.props ./
 COPY external/DTF/Directory.Build.props external/DTF/
 COPY external/DTF/DTF.csproj external/DTF/
 COPY TelegramExtensions/TelegramExtensions.csproj TelegramExtensions/
-RUN dotnet restore sblngavnav6.csproj
+RUN --mount=type=cache,id=sbln-nuget,target=/root/.nuget/packages \
+    rid=linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64); \
+    dotnet restore sblngavnav6.csproj -r "$rid"
 
 COPY . .
-RUN if [ -n "$SBLN_VERSION" ]; then set -- "-p:SblnVersion=$SBLN_VERSION"; else set --; fi; \
-    dotnet publish sblngavnav6.csproj -c Release -o /app --no-restore \
+RUN --mount=type=cache,id=sbln-nuget,target=/root/.nuget/packages \
+    rid=linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64); \
+    if [ -n "$SBLN_VERSION" ]; then set -- "-p:SblnVersion=$SBLN_VERSION"; else set --; fi; \
+    dotnet publish sblngavnav6.csproj -c Release -o /app --no-restore -r "$rid" --self-contained false \
+      -p:DebugType=none -p:DebugSymbols=false \
       "-p:SblnChannel=$SBLN_CHANNEL" "-p:SourceRevisionId=$SBLN_COMMIT" "$@"
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS runtime

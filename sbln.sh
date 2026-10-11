@@ -11,6 +11,31 @@ fi
 cmd=${1:-menu}
 if [[ $# -gt 0 ]]; then shift; fi
 
+SYNC_DEF='def sync($e; $u): if ($e | type) == "object" and ($u | type) == "object" and ($e | length) > 0 then reduce ($e | keys_unsorted[]) as $k ({}; .[$k] = (if ($u | has($k)) then sync($e[$k]; $u[$k]) else $e[$k] end)) else $u end;'
+
+config_sync() {
+  local example=$1 config=$2 tmp removed
+  command -v jq >/dev/null 2>&1 || { echo '>> jq не найден, синхронизация конфига пропущена (apt install jq)' >&2; return 0; }
+  [[ -f "$example" && -f "$config" ]] || return 0
+  tmp=$(mktemp)
+  if ! jq -s "$SYNC_DEF sync(.[0]; .[1])" "$example" "$config" > "$tmp" 2>/dev/null || [[ ! -s "$tmp" ]]; then
+    rm -f "$tmp"
+    echo ">> не смог разобрать $config или $example, синхронизация пропущена" >&2
+    return 0
+  fi
+  if cmp -s "$tmp" "$config"; then
+    rm -f "$tmp"
+    return 0
+  fi
+  removed=$(jq -rs "$SYNC_DEF"' sync(.[0]; .[1]) as $r | .[1] as $u | [($u | [paths]) - ($r | [paths]) | .[]] as $gone | [$gone[] | select(. as $p | any($gone[]; . == $p[:-1]) | not) | map(tostring) | join(".")] | join(", ")' "$example" "$config" 2>/dev/null) || removed=''
+  cp -p "$config" "$config.bak"
+  cat "$tmp" > "$config"
+  rm -f "$tmp"
+  echo ">> конфиг $config синхронизирован с примером, прошлая версия: $config.bak"
+  [[ -z "$removed" ]] || echo ">> убраны устаревшие ключи: $removed"
+  return 0
+}
+
 wait_ready() {
   local name=${1:-$BOT} state
   for ((attempt=0; attempt<60; attempt++)); do
@@ -38,8 +63,7 @@ docker_root() {
   local dir
   dir=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null | head -1) || dir=''
   [[ -n "$dir" && -d "$dir" ]] || dir=/var/lib/docker
-  printf '%s
-' "$dir"
+  printf '%s\n' "$dir"
 }
 
 free_kb() {
@@ -53,7 +77,11 @@ prune() {
   local keep=${1:-72h} before after freed
   before=$(free_kb)
   docker image prune -f >/dev/null 2>&1 || true
-  docker builder prune -f --filter "until=$keep" >/dev/null 2>&1 || true
+  if [[ "$keep" = all ]]; then
+    docker builder prune -af >/dev/null 2>&1 || true
+  else
+    docker builder prune -f --filter "until=$keep" >/dev/null 2>&1 || true
+  fi
   after=$(free_kb)
 
   if [[ -z "$after" ]]; then
@@ -76,6 +104,11 @@ check_space() {
   if (( free / 1024 < need_mb )); then
     echo ">> мало места под docker: $(( free / 1024 )) МБ, чищу перед сборкой" >&2
     prune 24h
+    free=$(free_kb)
+    if [[ -n "$free" ]] && (( free / 1024 < need_mb )); then
+      echo '>> всё ещё мало места, сбрасываю весь кеш сборки' >&2
+      prune all
+    fi
   fi
 }
 
@@ -118,12 +151,19 @@ lava_name() {
     | awk 'tolower($0) ~ /lavalink|lava/ {print $1; exit}'
 }
 
-lava_pid() {
-  local config=$1 port=2333
-  command -v ss >/dev/null 2>&1 || return 1
-  if [[ -f "$config" ]] && command -v jq >/dev/null 2>&1; then
-    port=$(jq -r '.Lava.LavaPort // "2333"' "$config" 2>/dev/null) || port=2333
+lava_port() {
+  local port=''
+  if [[ -f "$1" ]] && command -v jq >/dev/null 2>&1; then
+    port=$(jq -r '.Lava.LavaPort // empty' "$1" 2>/dev/null) || port=''
   fi
+  [[ "$port" =~ ^[0-9]+$ ]] || port=2333
+  printf '%s\n' "$port"
+}
+
+lava_pid() {
+  local port
+  command -v ss >/dev/null 2>&1 || return 1
+  port=$(lava_port "$1")
   ss -Hltnp "sport = :$port" 2>/dev/null | head -1 | sed -nE 's/.*pid=([0-9]+).*/\1/p'
 }
 
@@ -144,11 +184,9 @@ lava_logfile() {
 }
 
 lava_listener() {
-  local config=$1 port=2333 line
+  local port line
   command -v ss >/dev/null 2>&1 || return 1
-  if [[ -f "$config" ]] && command -v jq >/dev/null 2>&1; then
-    port=$(jq -r '.Lava.LavaPort // "2333"' "$config" 2>/dev/null) || port=2333
-  fi
+  port=$(lava_port "$1")
   line=$(ss -Hltnp "sport = :$port" 2>/dev/null | head -1)
   [[ -n "$line" ]] || return 1
   printf '%s\n' "$line" | sed -nE 's/.*users:\(\("([^"]+)",pid=([0-9]+).*/\1 (pid \2)/p'
@@ -167,11 +205,9 @@ lava_stats() {
 }
 
 lava_links() {
-  local config=$1 port=2333
+  local port
   command -v ss >/dev/null 2>&1 || return 1
-  if [[ -f "$config" ]] && command -v jq >/dev/null 2>&1; then
-    port=$(jq -r '.Lava.LavaPort // "2333"' "$config" 2>/dev/null) || port=2333
-  fi
+  port=$(lava_port "$1")
   ss -Htn state established "( sport = :$port )" 2>/dev/null | wc -l
 }
 
@@ -180,7 +216,7 @@ panel() {
   local state span image restarts lava info rc links free listener up players playing load used alloc
   if [[ "$channel" = proto ]]; then name=sbln-bot-proto; config="$BASE/config-proto.json"; fi
 
-  printf '\n── состояние · %s ──\n' "$channel"
+  printf '\n── состояние / %s ──\n' "$channel"
 
   state=$(container_state "$name")
   if [[ -z "$state" ]]; then
@@ -228,10 +264,10 @@ panel() {
 }
 
 build() {
-  local source=${1:-$APP} channel=${2:-stable} version sha network config="$BASE/config.json" name="$BOT" channel_arg=''
+  local source=${1:-$APP} channel=${2:-stable} version sha network config="$BASE/config.json" name="$BOT" channel_arg='' restart=unless-stopped
   [[ "$channel" = stable || "$channel" = proto ]] || exit 1
   source=$(cd -- "$source" && pwd)
-  if [[ "$channel" = proto ]]; then config="$BASE/config-proto.json"; name=sbln-bot-proto; channel_arg=proto; fi
+  if [[ "$channel" = proto ]]; then config="$BASE/config-proto.json"; name=sbln-bot-proto; channel_arg=proto; restart=no; fi
   [[ -f "$config" ]] || { echo "Нет $config" >&2; exit 1; }
   network=$(network_mode "$config")
   sha=$(git -C "$source" rev-parse HEAD)
@@ -250,6 +286,7 @@ SBLN_VERSION=$version
 SBLN_CHANNEL=$channel_arg
 SBLN_COMMIT=$sha
 SBLN_CONTAINER=$name
+SBLN_RESTART=$restart
 SBLN_INSTANCE=$channel
 SBLN_NETWORK_MODE=$network
 SBLN_CONFIG_FILE=$config
@@ -268,7 +305,7 @@ menu() {
   trap 'printf "\n"' INT
   while true; do
     panel stable || true
-    printf '\n1 Статус\n2 Логи (Ctrl+C — назад)\n3 Запустить\n4 Остановить\n5 Перезапустить\n6 Обновить из master\n7 Логи Lavalink\n8 Перезапустить Lavalink\n9 Очистить docker\n0 Выход\n'
+    printf '\n1 Статус\n2 Логи (Ctrl+C - назад)\n3 Запустить\n4 Остановить\n5 Перезапустить\n6 Обновить из master\n7 Логи Lavalink\n8 Перезапустить Lavalink\n9 Очистить docker\n0 Выход\n'
     read -r -p 'Выбери пункт: ' choice || break
     case "$choice" in
       1) action=(status) ;; 2) action=(logs) ;; 3) action=(start) ;; 4) action=(stop) ;;
@@ -294,18 +331,13 @@ case "$cmd" in
   build) build "${1:-$APP}" "${2:-stable}" ;;
   prune) prune "${1:-72h}" ;;
   network) network_mode "${1:-$BASE/config.json}" ;;
+  config-sync) config_sync "${1:?пример}" "${2:?конфиг}" ;;
   update)
     git -C "$APP" fetch -q origin --tags
     git -C "$APP" checkout -q master
     git -C "$APP" reset -q --hard origin/master
     git -C "$APP" submodule update --init --recursive
-    if command -v jq >/dev/null 2>&1 && [[ -f "$BASE/config.json" ]]; then
-      tmp=$(mktemp)
-      if jq -s '.[0] * .[1]' "$APP/config/config.example.json" "$BASE/config.json" > "$tmp" 2>/dev/null && [[ -s "$tmp" ]] && ! cmp -s "$tmp" "$BASE/config.json"; then
-        cat "$tmp" > "$BASE/config.json"; echo '>> конфиг дополнен новыми ключами из примера'
-      fi
-      rm -f "$tmp"
-    fi
+    bash "$APP/sbln.sh" config-sync "$APP/config/config.example.json" "$BASE/config.json"
     bash "$APP/sbln.sh" build "$APP"
     install -m 0755 "$APP/sbln.sh" /usr/local/bin/sbln
     [[ -e /usr/local/bin/sblnproto && -f "$APP/sblnproto.sh" ]] && install -m 0755 "$APP/sblnproto.sh" /usr/local/bin/sblnproto
@@ -349,6 +381,6 @@ case "$cmd" in
       *) echo 'lava status|restart|logs [N]' >&2; exit 1 ;;
     esac
     ;;
-  help) echo 'sbln: меню | panel [stable|proto] | status | logs [N] | start | stop | restart | update | prune [until] | lava status|restart|logs' ;;
+  help) echo 'sbln: меню | panel [stable|proto] | status | logs [N] | start | stop | restart | update | prune [until|all] | lava status|restart|logs' ;;
   *) echo "Неизвестная команда: $cmd" >&2; exit 1 ;;
 esac
