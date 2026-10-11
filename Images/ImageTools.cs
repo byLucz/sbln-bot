@@ -20,10 +20,20 @@ namespace sblngavnav6.Images
 
         public static readonly SemaphoreSlim RenderGate = new(2, 2);
 
+        private static readonly Dictionary<char, char> ToLatin = new()
+        {
+            ['А'] = 'A', ['В'] = 'B', ['Е'] = 'E', ['К'] = 'K', ['М'] = 'M', ['Н'] = 'H', ['О'] = 'O', ['Р'] = 'P', ['С'] = 'C', ['Т'] = 'T', ['Х'] = 'X',
+            ['а'] = 'a', ['е'] = 'e', ['о'] = 'o', ['р'] = 'p', ['с'] = 'c', ['у'] = 'y', ['х'] = 'x'
+        };
+
+        private static readonly Dictionary<char, char> ToCyrillic = ToLatin.ToDictionary(pair => pair.Value, pair => pair.Key);
+
         public static SKTypeface Serif => SerifTypeface.Value;
 
         public static bool IsImage(IAttachment attachment) =>
             attachment.ContentType is { } type ? type.StartsWith("image/", StringComparison.OrdinalIgnoreCase) : attachment.Width is not null;
+
+        public static string EmbedImage(IEmbed embed) => embed.Image?.Url ?? embed.Thumbnail?.Url;
 
         public static string AssetPath(string name) => Path.Combine(AppContext.BaseDirectory, "images", name);
 
@@ -80,12 +90,6 @@ namespace sblngavnav6.Images
             }
         }
 
-        public static byte[] Png(SKBitmap bitmap)
-        {
-            using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);
-            return data.ToArray();
-        }
-
         public static byte[] Jpeg(SKSurface surface, int quality = 90)
         {
             using var image = surface.Snapshot();
@@ -118,8 +122,50 @@ namespace sblngavnav6.Images
             return lines;
         }
 
-        public static async Task<string> RecognizeTextAsync(byte[] image, string languages, CancellationToken cancellationToken = default)
+        public static async Task<string> RecognizeTextAsync(SKBitmap source, string languages, CancellationToken cancellationToken = default)
         {
+            const int pad = 24;
+            var scale = Math.Clamp(2000f / Math.Max(source.Width, source.Height), 1f, 3f);
+            var width = (int)(source.Width * scale);
+            var height = (int)(source.Height * scale);
+
+            byte[] image;
+
+            using (var prepared = new SKBitmap(width + pad * 2, height + pad * 2, SKColorType.Rgba8888, SKAlphaType.Premul))
+            {
+                using (var canvas = new SKCanvas(prepared))
+                {
+                    canvas.Clear(SKColors.White);
+
+                    using (var picture = SKImage.FromBitmap(source))
+                    using (var gray = new SKPaint
+                    {
+                        ColorFilter = SKColorFilter.CreateColorMatrix(
+                        [
+                            0.299f, 0.587f, 0.114f, 0, 0,
+                            0.299f, 0.587f, 0.114f, 0, 0,
+                            0.299f, 0.587f, 0.114f, 0, 0,
+                            0, 0, 0, 1, 0
+                        ])
+                    })
+                        canvas.DrawImage(picture, SKRect.Create(pad, pad, width, height), new SKSamplingOptions(SKCubicResampler.Mitchell), gray);
+
+                    using var probe = prepared.Resize(new SKImageInfo(32, 32, SKColorType.Gray8, SKAlphaType.Opaque), Smooth);
+                    var brightness = 0;
+                    foreach (var pixel in probe.GetPixelSpan())
+                        brightness += pixel;
+
+                    if (brightness < 32 * 32 * 110)
+                    {
+                        using var invert = new SKPaint { Color = SKColors.White, BlendMode = SKBlendMode.Difference };
+                        canvas.DrawRect(0, 0, prepared.Width, prepared.Height, invert);
+                    }
+                }
+
+                using var data = prepared.Encode(SKEncodedImageFormat.Png, 100);
+                image = data.ToArray();
+            }
+
             var psi = new ProcessStartInfo
             {
                 FileName = "tesseract",
@@ -130,7 +176,7 @@ namespace sblngavnav6.Images
                 CreateNoWindow = true
             };
 
-            foreach (var argument in new[] { "stdin", "stdout", "-l", languages })
+            foreach (var argument in new[] { "stdin", "stdout", "-l", languages, "--oem", "1", "--psm", "3", "--dpi", "300" })
                 psi.ArgumentList.Add(argument);
 
             using var process = Process.Start(psi) ?? throw new InvalidOperationException("tesseract не запустился");
@@ -148,7 +194,32 @@ namespace sblngavnav6.Images
             if (process.ExitCode != 0)
                 throw new InvalidOperationException($"tesseract завершился с кодом {process.ExitCode}: {error.Trim()}");
 
-            return text;
+            var lines = new List<string>();
+
+            foreach (var raw in text.Replace("\r", "").Split('\n'))
+            {
+                var words = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                var cyrillic = words.Sum(word => word.Count(symbol => symbol is >= 'А' and <= 'я' or 'ё' or 'Ё' && !ToLatin.ContainsKey(symbol)));
+                var latin = words.Sum(word => word.Count(symbol => char.IsAsciiLetter(symbol) && !ToCyrillic.ContainsKey(symbol)));
+
+                var line = string.Join(" ", words.Select(word =>
+                {
+                    var wordCyrillic = word.Count(symbol => symbol is >= 'А' and <= 'я' or 'ё' or 'Ё' && !ToLatin.ContainsKey(symbol));
+                    var wordLatin = word.Count(symbol => char.IsAsciiLetter(symbol) && !ToCyrillic.ContainsKey(symbol));
+                    var map = wordCyrillic > wordLatin ? ToCyrillic
+                        : wordLatin > wordCyrillic ? ToLatin
+                        : cyrillic >= latin ? ToCyrillic : ToLatin;
+
+                    return string.Concat(word.Select(symbol => map.GetValueOrDefault(symbol, symbol)));
+                }));
+
+                if (line.Any(char.IsLetterOrDigit))
+                    lines.Add(line);
+                else if (lines.Count > 0 && lines[^1].Length > 0)
+                    lines.Add("");
+            }
+
+            return string.Join("\n", lines).Trim();
         }
 
         public static SKImage Circle(byte[] bytes, int diameter)

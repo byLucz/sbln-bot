@@ -4,7 +4,7 @@ using sblngavnav6.Services;
 
 namespace sblngavnav6.GVR
 {
-    public sealed record GVRImage(long Id, ulong ChannelId, ulong MessageId, ulong AttachmentId);
+    public sealed record GVRImage(long Id, ulong ChannelId, ulong MessageId, ulong ItemId, bool IsEmbed);
 
     public sealed class GVRDb
     {
@@ -164,13 +164,14 @@ namespace sblngavnav6.GVR
 
                     for (var index = 0; index < batch.Length; index++)
                     {
-                        values.Add($"(@c{index}, @m{index}, @a{index})");
+                        values.Add($"(@c{index}, @m{index}, @i{index}, @e{index})");
                         cmd.Parameters.AddWithValue($"@c{index}", batch[index].ChannelId);
                         cmd.Parameters.AddWithValue($"@m{index}", batch[index].MessageId);
-                        cmd.Parameters.AddWithValue($"@a{index}", batch[index].AttachmentId);
+                        cmd.Parameters.AddWithValue($"@i{index}", batch[index].ItemId);
+                        cmd.Parameters.AddWithValue($"@e{index}", batch[index].IsEmbed ? 1 : 0);
                     }
 
-                    cmd.CommandText = $"INSERT IGNORE INTO images (channel_id, message_id, attachment_id) VALUES {string.Join(", ", values)}";
+                    cmd.CommandText = $"INSERT IGNORE INTO images (channel_id, message_id, item_id, is_embed) VALUES {string.Join(", ", values)}";
 
                     added += await cmd.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                 }
@@ -191,13 +192,13 @@ namespace sblngavnav6.GVR
             try
             {
                 await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
-                await using var cmd = Command(conn, "SELECT id, channel_id, message_id, attachment_id FROM images ORDER BY RAND() LIMIT 1");
+                await using var cmd = Command(conn, "SELECT id, channel_id, message_id, item_id, is_embed FROM images ORDER BY RAND() LIMIT 1");
                 await using var reader = await cmd.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
                 if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                     return null;
 
-                return new GVRImage(reader.GetInt64(0), reader.GetUInt64(1), reader.GetUInt64(2), reader.GetUInt64(3));
+                return new GVRImage(reader.GetInt64(0), reader.GetUInt64(1), reader.GetUInt64(2), reader.GetUInt64(3), reader.GetBoolean(4));
             }
             catch (MySqlException ex)
             {

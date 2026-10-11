@@ -52,7 +52,13 @@ namespace sblngavnav6.GVR
                 ? []
                 : message.Attachments
                     .Where(attachment => ImageTools.IsImage(attachment) && !attachment.IsSpoiler())
-                    .Select(attachment => new GVRImage(0, message.Channel.Id, message.Id, attachment.Id));
+                    .Select(attachment => new GVRImage(0, message.Channel.Id, message.Id, attachment.Id, false))
+                    .Concat(message.Content?.Contains("||", StringComparison.Ordinal) == true
+                        ? []
+                        : message.Embeds
+                            .Select((embed, index) => (embed, index))
+                            .Where(item => item.embed.Type is EmbedType.Gifv or EmbedType.Image && ImageTools.EmbedImage(item.embed) is not null)
+                            .Select(item => new GVRImage(0, message.Channel.Id, message.Id, (ulong)item.index, true)));
 
         public static string Plain(string text) =>
             SpaceRegex().Replace(DiscordTokenRegex().Replace(text ?? string.Empty, " "), " ").Trim();

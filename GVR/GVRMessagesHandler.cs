@@ -79,7 +79,7 @@ namespace sblngavnav6.GVR
                 if (image is null)
                     return false;
 
-                IAttachment attachment;
+                string url;
 
                 try
                 {
@@ -87,16 +87,18 @@ namespace sblngavnav6.GVR
                         ? await channel.GetMessageAsync(image.MessageId).ConfigureAwait(false)
                         : null;
 
-                    attachment = message?.Attachments.FirstOrDefault(item => item.Id == image.AttachmentId);
+                    url = message is null ? null
+                        : image.IsEmbed ? message.Embeds.ElementAtOrDefault((int)image.ItemId) is { } embed ? ImageTools.EmbedImage(embed) : null
+                        : message.Attachments.FirstOrDefault(item => item.Id == image.ItemId)?.Url;
                 }
                 catch (HttpException)
                 {
                     continue;
                 }
 
-                var bytes = attachment is null ? null : await CommonUtils.Web.DownloadAsync(http, attachment.Url, ImageTools.MaxSourceBytes).ConfigureAwait(false);
+                var bytes = url is null ? null : await CommonUtils.Web.DownloadAsync(http, url, ImageTools.MaxSourceBytes).ConfigureAwait(false);
 
-                if (attachment is not null && bytes is null)
+                if (url is not null && bytes is null)
                     continue;
 
                 using var source = ImageTools.Decode(bytes);

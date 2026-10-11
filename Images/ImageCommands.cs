@@ -17,11 +17,15 @@ namespace sblngavnav6.Images
 
         private readonly HttpClient _http;
 
+        private string _command = "картинки";
+
         public ImageCommands(IHttpClientFactory httpClientFactory)
         {
             _http = httpClientFactory.CreateClient();
             _http.Timeout = TimeSpan.FromSeconds(15);
         }
+
+        protected override void BeforeExecute(CommandInfo command) => _command = command.Name;
 
         [Command("обоссать")]
         [Cooldown(15)]
@@ -38,7 +42,7 @@ namespace sblngavnav6.Images
             var attackerBytes = await AvatarBytesAsync(Context.User);
             var victimBytes = await AvatarBytesAsync(target);
 
-            await RenderAsync("piss.gif", $"{Context.User.Mention} обоссал {target.Mention} 💦", async () =>
+            await RenderAsync("💦 Обоссать", "piss.gif", $"{Context.User.Mention} обоссал {target.Mention}", async () =>
             {
                 using var attacker = ImageTools.Circle(attackerBytes, 160);
                 using var victim = ImageTools.Circle(victimBytes, 160);
@@ -68,7 +72,7 @@ namespace sblngavnav6.Images
             var headsBytes = await AvatarBytesAsync(heads);
             var tailsBytes = await AvatarBytesAsync(tails);
 
-            await RenderAsync("coin.gif", $"🪙 {heads.Mention} против {tails.Mention}\nвыпал: ||{(headsWins ? heads : tails).Mention}||", async () =>
+            await RenderAsync("🪙 Монетка", "coin.gif", $"{heads.Mention} против {tails.Mention}\nвыпал: ||{(headsWins ? heads : tails).Mention}||", async () =>
             {
                 using var headsImage = ImageTools.Circle(headsBytes, 160);
                 using var tailsImage = ImageTools.Circle(tailsBytes, 160);
@@ -101,7 +105,7 @@ namespace sblngavnav6.Images
                 return;
             }
 
-            await RenderAsync("demotivator.jpg", null, () =>
+            await RenderAsync("🖼️ Демотиватор", "demotivator.jpg", null, () =>
                 Task.FromResult(ImageEffects.Demotivator(source, Truncate(text[0], 120), text.Length > 1 ? Truncate(text[1], 240) : null)));
         }
 
@@ -129,7 +133,7 @@ namespace sblngavnav6.Images
             var mentioned = Mentioned(args);
             var avatarBytes = mentioned is null ? null : await AvatarBytesAsync(mentioned);
 
-            await RenderAsync("sheffogram.jpg", $"⬇️ {faces.Count} челик(а) превращено в {(mentioned is null ? "шефа" : mentioned.Mention)} ⬇️", () =>
+            await RenderAsync("🧑‍🍳 Шефограм", "sheffogram.jpg", $"⬇️ {(faces.Count > 1 ? "еще челы превращены" : "еще один челик превращен")} в {(mentioned is null ? "шефа" : mentioned.Mention)}... ⬇️", () =>
             {
                 using var avatar = mentioned is null ? null : ImageTools.Circle(avatarBytes, 256);
 
@@ -161,7 +165,7 @@ namespace sblngavnav6.Images
             await ImageTools.RenderGate.WaitAsync();
             try
             {
-                text = (await ImageTools.RecognizeTextAsync(ImageTools.Png(source), languages)).Trim();
+                text = (await ImageTools.RecognizeTextAsync(source, languages)).Trim();
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
             {
@@ -189,7 +193,7 @@ namespace sblngavnav6.Images
             }));
         }
 
-        private async Task RenderAsync(string fileName, string description, Func<Task<byte[]>> render)
+        private async Task RenderAsync(string title, string fileName, string description, Func<Task<byte[]>> render)
         {
             using var typing = Context.Channel.EnterTypingState();
 
@@ -214,6 +218,7 @@ namespace sblngavnav6.Images
 
             await Context.Channel.SendFileAsync(stream, fileName, embed: EmbedHandler.Build(new EmbedSpec
             {
+                Title = title,
                 Description = description,
                 ImageUrl = $"attachment://{fileName}",
                 Color = Color.Gold,
@@ -227,7 +232,7 @@ namespace sblngavnav6.Images
 
             var candidates = Context.Message.Attachments.Where(ImageTools.IsImage).Select(attachment => attachment.Url)
                 .Concat(referenced?.Attachments.Where(ImageTools.IsImage).Select(attachment => attachment.Url) ?? [])
-                .Concat(referenced?.Embeds.Select(embed => embed.Image?.Url ?? embed.Thumbnail?.Url) ?? [])
+                .Concat(referenced?.Embeds.Select(ImageTools.EmbedImage) ?? [])
                 .Concat(Words(args).Where(word => EmbedHandler.Link(word) is not null));
 
             foreach (var url in candidates.Where(url => !string.IsNullOrWhiteSpace(url)).Distinct())
@@ -252,6 +257,6 @@ namespace sblngavnav6.Images
             CommonUtils.Web.DownloadAsync(_http, user is IGuildUser member ? GuildAvatar(member) : Avatar(user, 256), ImageTools.MaxSourceBytes);
 
         private async Task FailAsync(string reason) =>
-            await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("картинки", reason));
+            await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(_command, reason));
     }
 }
