@@ -8,8 +8,7 @@ using sblngavnav6.Services;
 
 namespace sblngavnav6.Remna;
 
-[RequireDevGuild]
-[RequireSuperuser]
+[RequireDevAccess]
 public class RemnaCommands : ModuleBase<SocketCommandContext>
 {
     private readonly RemnaService _remna;
@@ -55,8 +54,7 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
         _pager = pager;
     }
 
-    [RequireDevGuildInteraction]
-    [RequireSuperuserInteraction]
+    [RequireDevAccessInteraction]
     [ComponentInteraction("remna_refresh")]
     public async Task Refresh()
     {
@@ -70,8 +68,7 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
         await _pager.ReplaceAsync(component.Message, pages, decorate: RemnaPanelBuilder.BuildControls(nodes));
     }
 
-    [RequireDevGuildInteraction]
-    [RequireSuperuserInteraction]
+    [RequireDevAccessInteraction]
     [ComponentInteraction("remna_diag")]
     public async Task Diagnostics()
     {
@@ -79,8 +76,7 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
         await FollowupAsync(embed: await RemnaPanelBuilder.BuildDiagnosticsAsync(_remna), ephemeral: true);
     }
 
-    [RequireDevGuildInteraction]
-    [RequireSuperuserInteraction]
+    [RequireDevAccessInteraction]
     [ComponentInteraction("remna_node")]
     public async Task SelectNode(string[] values)
     {
@@ -97,8 +93,7 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
         await FollowupAsync(embed: embed, components: components, ephemeral: true);
     }
 
-    [RequireDevGuildInteraction]
-    [RequireSuperuserInteraction]
+    [RequireDevAccessInteraction]
     [ComponentInteraction("remna_act:*:*")]
     public async Task NodeAction(string action, string uuid)
     {
@@ -138,8 +133,7 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
         });
     }
 
-    [RequireDevGuildInteraction]
-    [RequireSuperuserInteraction]
+    [RequireDevAccessInteraction]
     [ComponentInteraction("remna_restart_all")]
     public async Task RestartAll()
     {

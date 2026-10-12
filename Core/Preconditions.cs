@@ -62,6 +62,38 @@ namespace sblngavnav6.Core
                 : Discord.Interactions.PreconditionResult.FromSuccess());
     }
 
+    public class RequireDevAccessAttribute : Discord.Commands.PreconditionAttribute
+    {
+        public override async Task<Discord.Commands.PreconditionResult> CheckPermissionsAsync(
+            ICommandContext context, CommandInfo command, IServiceProvider services)
+            => await DevAccessGate.ErrorAsync(context.Client, context.Guild, context.User) is { } error
+                ? Discord.Commands.PreconditionResult.FromError(error)
+                : Discord.Commands.PreconditionResult.FromSuccess();
+    }
+
+    public class RequireDevAccessInteractionAttribute : Discord.Interactions.PreconditionAttribute
+    {
+        public override async Task<Discord.Interactions.PreconditionResult> CheckRequirementsAsync(
+            IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
+            => await DevAccessGate.ErrorAsync(context.Client, context.Guild, context.User) is { } error
+                ? Discord.Interactions.PreconditionResult.FromError(error)
+                : Discord.Interactions.PreconditionResult.FromSuccess();
+    }
+
+    public static class DevAccessGate
+    {
+        public static async Task<string> ErrorAsync(IDiscordClient client, IGuild guild, IUser user)
+        {
+            if (guild is null)
+                return user is not null && await SuperuserGate.IsBotOwnerAsync(client, user) ? null : "только на сервере";
+
+            if (DevGuildGate.Error(guild) is { } error)
+                return error;
+
+            return user is IGuildUser member && await SuperuserGate.IsAllowedAsync(client, guild, member) ? null : "нужна роль суперюзера";
+        }
+    }
+
     public static class DevGuildGate
     {
         public static bool IsDevGuild(IGuild guild) =>
