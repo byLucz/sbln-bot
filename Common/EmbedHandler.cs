@@ -31,6 +31,7 @@ namespace sblngavnav6.Common
         public const string MusicTag = "muzik🎸🎧";
         public const string VoteTag = "ultra-выбератор🤔⚡";
         public const string PpmTag = "PPM🏃📦";
+        public const string LoisTag = "x lois.media";
         public const string AudioEngine = "Audio8";
 
         public const int MaxTitle = 256;
@@ -47,6 +48,7 @@ namespace sblngavnav6.Common
         public static string MusicFooter => $"{Name} {MusicTag}";
         public static string VoteFooter => $"{Name} {VoteTag}";
         public static string PpmFooter => $"{Name} {PpmTag}";
+        public static string LoisFooter => $"{Name} {LoisTag}";
 
         public static EmbedBuilder Builder(EmbedSpec spec)
         {

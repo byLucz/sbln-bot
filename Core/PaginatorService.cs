@@ -129,7 +129,7 @@ namespace sblngavnav6.Core
             return FlipOutcome.Ready;
         }
 
-        public async Task HandleFlipAsync(SocketMessageComponent component, ulong userId, int target)
+        public async Task HandleFlipAsync(IComponentInteraction component, ulong userId, int target)
         {
             ArgumentNullException.ThrowIfNull(component);
 
@@ -253,7 +253,7 @@ namespace sblngavnav6.Core
         Expired
     }
 
-    public class PaginatorInteractions : InteractionModuleBase<SocketInteractionContext>
+    public class PaginatorInteractions : InteractionModuleBase<IInteractionContext>
     {
         private readonly PaginatorService _pager;
 
@@ -265,7 +265,7 @@ namespace sblngavnav6.Core
         [ComponentInteraction("pgr_page:*")]
         public async Task Flip(string pageRaw)
         {
-            if (Context.Interaction is not SocketMessageComponent c)
+            if (Context.Interaction is not IComponentInteraction c)
                 return;
 
             if (!int.TryParse(pageRaw, out var page))

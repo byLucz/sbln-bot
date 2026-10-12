@@ -14,8 +14,6 @@ public static class PgApiPanelBuilder
     public const string Source = "pgAPI";
 
     private const int PageSize = 5;
-    private const string Footer = "sbln x lois.media";
-
     public static readonly (string Label, string Key)[] Actions =
     [
         ("Проекты",      "projects"),
@@ -80,7 +78,7 @@ public static class PgApiPanelBuilder
         Fields = string.IsNullOrWhiteSpace(health)
             ? null
             : [new EmbedFieldSpec("🩺 Health-check", health, true)],
-        Footer = Footer
+        Footer = EmbedHandler.LoisFooter
     });
 }
 
@@ -173,7 +171,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         }
 
         await FollowupAsync(embed: result.Ok
-            ? EmbedHandler.Simple($"{PgApiPanelBuilder.Source}/{action}", result.ToDisplay(), Color.DarkBlue, "sbln x lois.media")
+            ? EmbedHandler.Simple($"{PgApiPanelBuilder.Source}/{action}", result.ToDisplay(), Color.DarkBlue, EmbedHandler.LoisFooter)
             : await EmbedHandler.CreateErrorEmbed($"{PgApiPanelBuilder.Source}/{action}", result.ToDisplay()),
             ephemeral: true);
     }

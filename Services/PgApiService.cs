@@ -77,56 +77,25 @@ public sealed class PgApiService
         bool authRequired = true,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.pgApiBaseUrl))
-            return PgApiResult.Fail("PG API URL не задан");
+        if (authRequired && string.IsNullOrWhiteSpace(Global.Vars.Cfg.pgApiToken))
+            return PgApiResult.Fail("Токен не задан или протух");
 
-        if (!Uri.TryCreate(Global.Vars.Cfg.pgApiBaseUrl, UriKind.Absolute, out var baseUri))
-            return PgApiResult.Fail($"PG API URL невалидный: {Global.Vars.Cfg.pgApiBaseUrl}");
+        var response = await CommonUtils.Web.SendAsync(
+            _httpClientFactory, "PG API", Global.Vars.Cfg.pgApiBaseUrl, method, route, Timeout,
+            request =>
+            {
+                if (authRequired)
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Global.Vars.Cfg.pgApiToken);
+            },
+            cancellationToken);
 
-        var client = _httpClientFactory.CreateClient(nameof(PgApiService));
-        client.BaseAddress = baseUri;
+        if (response.Status is null)
+            return PgApiResult.Fail(response.Error);
 
-        using var request = new HttpRequestMessage(method, route);
-
-        if (authRequired)
-        {
-            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.pgApiToken))
-                return PgApiResult.Fail("Токен не задан или протух");
-
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Global.Vars.Cfg.pgApiToken);
-        }
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(Timeout);
-
-        HttpResponseMessage response;
-        try
-        {
-            response = await client.SendAsync(request, cts.Token);
-        }
-        catch (HttpRequestException ex)
-        {
-            return PgApiResult.Fail($"Запрос не дошёл: {ex.Message}");
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return PgApiResult.Fail($"Таймаут запроса, {Timeout.TotalSeconds:0}с без ответа");
-        }
-
-        using (response)
-        {
-            var body = await response.Content.ReadAsStringAsync(cts.Token);
-
-            if (string.IsNullOrWhiteSpace(body))
-                body = "(пустой ответ)";
-            else
-                body = CommonUtils.Text.Truncate(body, MaxBodyLength);
-
-            return new PgApiResult(
-                response.IsSuccessStatusCode,
-                response.StatusCode,
-                body,
-                response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode}");
-        }
+        return new PgApiResult(
+            response.Ok,
+            response.Status,
+            string.IsNullOrWhiteSpace(response.Body) ? "(пустой ответ)" : CommonUtils.Text.Truncate(response.Body, MaxBodyLength),
+            response.Error);
     }
 }

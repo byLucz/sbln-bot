@@ -140,6 +140,18 @@ namespace sblngavnav6.Common
             public static string Percent(double value, int digits) =>
                 (value * 100).ToString($"0.{new string('0', digits)}", System.Globalization.CultureInfo.InvariantCulture) + "%";
 
+            public static string Bytes(double bytes)
+            {
+                string[] units = ["B", "KB", "MB", "GB", "TB", "PB"];
+                var unit = 0;
+                while (bytes >= 1024 && unit < units.Length - 1)
+                {
+                    bytes /= 1024;
+                    unit++;
+                }
+                return bytes.ToString(unit == 0 ? "0" : "0.##", System.Globalization.CultureInfo.InvariantCulture) + " " + units[unit];
+            }
+
             public static string FirstLine(string? s, int max = 300)
                 => string.IsNullOrWhiteSpace(s) ? "" : Truncate(s.Split('\n', 2)[0].Trim(), max);
 
@@ -211,6 +223,57 @@ namespace sblngavnav6.Common
 
         public static class Web
         {
+            public sealed record ApiResponse(bool Ok, System.Net.HttpStatusCode? Status, string Body, string Error)
+            {
+                public static ApiResponse Fail(string error) => new(false, null, null, error);
+            }
+
+            public static async Task<ApiResponse> SendAsync(
+                IHttpClientFactory factory,
+                string label,
+                string baseUrl,
+                HttpMethod method,
+                string route,
+                TimeSpan timeout,
+                Action<HttpRequestMessage> configure = null,
+                CancellationToken cancellationToken = default)
+            {
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                    return ApiResponse.Fail($"{label} URL не задан");
+
+                if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+                    return ApiResponse.Fail($"{label} URL невалидный: {baseUrl}");
+
+                var client = factory.CreateClient(label);
+                client.BaseAddress = baseUri;
+
+                using var request = new HttpRequestMessage(method, route);
+                configure?.Invoke(request);
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(timeout);
+
+                try
+                {
+                    using var response = await client.SendAsync(request, cts.Token).ConfigureAwait(false);
+                    var body = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+
+                    return new ApiResponse(
+                        response.IsSuccessStatusCode,
+                        response.StatusCode,
+                        body,
+                        response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode}");
+                }
+                catch (HttpRequestException ex)
+                {
+                    return ApiResponse.Fail($"Запрос не дошёл: {ex.Message}");
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return ApiResponse.Fail($"Таймаут запроса, {timeout.TotalSeconds:0}с без ответа");
+                }
+            }
+
             public static async Task<byte[]> DownloadAsync(HttpClient http, string url, int maxBytes, CancellationToken cancellationToken = default)
             {
                 if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
