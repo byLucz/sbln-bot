@@ -8,6 +8,7 @@ using sblngavnav6.Commands;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.PPM;
+using sblngavnav6.Remna;
 using sblngavnav6.Services;
 using sblngavnav6.Services.Twitch;
 using sblngavnav6.TelegramExtensions;
@@ -64,6 +65,8 @@ namespace sblngavnav6.Core
                 .AddSingleton<WelcomeService>()
                 .AddSingleton<PaginatorService>()
                 .AddSingleton<PgApiService>()
+                .AddSingleton<RemnaService>()
+                .AddSingleton<RemnaWatchService>()
                 .AddSingleton<PpmServerService>()
                 .AddSingleton<PpmPanels>()
                 .AddSingleton<PpmService>()

@@ -166,6 +166,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         var database = alive ? $"жива, {watch.ElapsedMilliseconds}ms" : "недоступна";
         var twitch = Global.Vars.Cfg.streamsEnabled ? "вкл" : "выкл";
         var ppm = Global.Vars.Cfg.ppmEnabled ? "вкл" : "выкл";
+        var remna = Global.Vars.Cfg.remnaEnabled ? "вкл" : "выкл";
         var telegram = string.IsNullOrWhiteSpace(Global.Vars.Cfg.telegramToken) ? "выкл" : "вкл";
         var members = _client.Guilds.Sum(guild => guild.MemberCount);
         var players = _audio.GetActiveGuildIds().Count();
@@ -207,6 +208,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                 new EmbedFieldSpec("🧩 Модули",
                     $"Twitch: **{twitch}**\n" +
                     $"PPM: **{ppm}**\n" +
+                    $"Remnawave: **{remna}**\n" +
                     $"Telegram: **{telegram}**", true)
             ]
         }));

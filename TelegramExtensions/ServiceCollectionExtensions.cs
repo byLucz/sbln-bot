@@ -15,6 +15,7 @@ public static class ServiceCollectionExtensions
         var commands = new CommandCatalog(modules);
         foreach (var module in modules) services.AddTransient(module);
         services.AddSingleton(commands);
+        services.AddSingleton<TelegramNotifier>();
         return services.AddFrontierModule<CommandHandler>(UpdateType.Message, UpdateType.ChannelPost);
     }
 }

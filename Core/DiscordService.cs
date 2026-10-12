@@ -6,6 +6,7 @@ using sblngavnav6.Audio8;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.PPM;
+using sblngavnav6.Remna;
 using sblngavnav6.Services;
 using sblngavnav6.TwitchService;
 using System.Runtime.InteropServices;
@@ -28,6 +29,7 @@ namespace sblngavnav6.Core
         private FrontierService _frontier;
         private WelcomeService _welcome;
         private PaginatorService _pager;
+        private RemnaWatchService _remnaWatch;
         private Task _frontierTask = Task.CompletedTask;
         private CancellationTokenSource _readyGraceCts;
         private bool _started;
@@ -88,6 +90,7 @@ namespace sblngavnav6.Core
                 _welcome = _services.GetRequiredService<WelcomeService>();
                 _ppm = _services.GetRequiredService<PpmService>();
                 _pager = _services.GetRequiredService<PaginatorService>();
+                _remnaWatch = _services.GetRequiredService<RemnaWatchService>();
                 _frontier = _services.GetRequiredService<FrontierService>();
 
                 await _commandHandler.InitializeAsync();
@@ -127,6 +130,7 @@ namespace sblngavnav6.Core
 
                 await _audio.StartAsync(stopping.Token);
                 _pager.StartCleanup(stopping.Token);
+                _remnaWatch.Start(stopping.Token);
                 await _ppm.StartSweeperAsync(stopping.Token);
                 _frontierTask = KeepFrontierAsync(stopping.Token);
 
@@ -253,6 +257,9 @@ namespace sblngavnav6.Core
 
             if (_ppm != null)
                 yield return ("PPM", _ppm.StopAsync);
+
+            if (_remnaWatch != null)
+                yield return ("Remnawave watch", _remnaWatch.StopAsync);
 
             if (_pager != null)
                 yield return ("Paginator cleanup", _pager.StopCleanupAsync);

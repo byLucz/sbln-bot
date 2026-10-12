@@ -11,6 +11,7 @@
     "DevGuild": "500673210463813632",
     "StreamsEnabled": "true",
     "PpmEnabled": "false",
+    "RemnaEnabled": "false",
     "MessageSourceChannelId": "0",
     "LogLevel": "Info"
   },
@@ -23,6 +24,13 @@
     "PgApiBaseUrl": "",
     "PgApiToken": "",
     "ApexKey": ""
+  },
+  "Remna": {
+    "BaseUrl": "",
+    "Token": "",
+    "AlertTelegramChat": "",
+    "AlertTelegramTopic": "0",
+    "WatchSeconds": "60"
   },
   "Docker": {
     "NetworkMode": "bridge"

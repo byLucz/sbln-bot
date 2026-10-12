@@ -58,6 +58,7 @@ namespace sblngavnav6.Data
                 public static readonly ulong devGuild = UL("System:DevGuild", 0);
                 public static readonly bool streamsEnabled = Bool("System:StreamsEnabled", true);
                 public static readonly bool ppmEnabled = Bool("System:PpmEnabled", true);
+                public static readonly bool remnaEnabled = Bool("System:RemnaEnabled", false);
                 public static readonly ulong messageSourceChannelId = UL("System:MessageSourceChannelId", 0);
                 public static readonly string logLevel = Str("System:LogLevel", "Info");
 
@@ -69,6 +70,12 @@ namespace sblngavnav6.Data
                 public static readonly string pgApiBaseUrl = Str("Api:PgApiBaseUrl");
                 public static readonly string pgApiToken = Str("Api:PgApiToken");
                 public static readonly string apexKey = Str("Api:ApexKey");
+
+                public static readonly string remnaBaseUrl = Str("Remna:BaseUrl");
+                public static readonly string remnaToken = Str("Remna:Token");
+                public static readonly string remnaAlertTelegramChat = Str("Remna:AlertTelegramChat");
+                public static readonly int remnaAlertTelegramTopic = Int("Remna:AlertTelegramTopic", 0);
+                public static readonly int remnaWatchSeconds = Int("Remna:WatchSeconds", 60);
 
                 public static readonly string lavaHost = Str("Lava:LavaHost", "127.0.0.1");
                 public static readonly string lavaPass = Str("Lava:LavaPass", "youshallnotpass");
