@@ -15,6 +15,7 @@ logs/
 data/
 config/
 sbln.sh
+agent/
 README*
 install.sh
 sblnproto.sh

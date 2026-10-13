@@ -13,6 +13,7 @@ services:
     init: true
     stop_grace_period: 30s
     environment:
+      TZ: ${SBLN_TZ:-Europe/Moscow}
       SBLN_CONFIG: /opt/sbln/config.json
       SBLN_READY_FILE: /tmp/sbln-ready
       SBLN_AUDIO_DIR: /opt/sbln/audio/${SBLN_INSTANCE:-stable}

@@ -155,7 +155,7 @@ namespace sblngavnav6.Common
             public static string FirstLine(string? s, int max = 300)
                 => string.IsNullOrWhiteSpace(s) ? "" : Truncate(s.Split('\n', 2)[0].Trim(), max);
 
-            public static string FirstMeaningfulLine(string? s, string fallback)
+            public static string FirstMeaningfulLine(string? s, string fallback, int max = int.MaxValue)
             {
                 if (string.IsNullOrWhiteSpace(s))
                     return fallback;
@@ -167,7 +167,7 @@ namespace sblngavnav6.Common
                     if (trimmed.Length == 0 || trimmed.StartsWith("at ", StringComparison.Ordinal))
                         continue;
 
-                    return trimmed;
+                    return max == int.MaxValue ? trimmed : Truncate(trimmed, max);
                 }
 
                 return fallback;
@@ -325,6 +325,9 @@ namespace sblngavnav6.Common
                     return $"{(int)time.TotalDays}d {time:hh\\:mm\\:ss}";
                 return time.ToString(@"hh\:mm\:ss");
             }
+
+            public static string Clock(DateTimeOffset at)
+                => $"{at.ToLocalTime():dd.MM HH:mm} " + (TimeZoneInfo.Local.Id == "Europe/Moscow" ? "МСК" : $"UTC{TimeZoneInfo.Local.BaseUtcOffset.TotalHours:+0;-0;+0}");
 
             public static string FormatAge(TimeSpan age) => age switch
             {
