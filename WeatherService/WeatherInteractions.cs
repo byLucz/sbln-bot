@@ -1,6 +1,5 @@
 ﻿using Discord;
 using Discord.Interactions;
-using Discord.WebSocket;
 using sblngavnav6.Core;
 
 namespace sblngavnav6.Commands
@@ -21,7 +20,7 @@ namespace sblngavnav6.Commands
         };
     }
 
-    public sealed class WeatherInteractions : InteractionModuleBase<SocketInteractionContext>
+    public sealed class WeatherInteractions : InteractionModuleBase<IInteractionContext>
     {
         private readonly PaginatorService _pager;
 
@@ -33,7 +32,7 @@ namespace sblngavnav6.Commands
         [ComponentInteraction($"{WeatherControls.ViewId}:*")]
         public async Task View(string viewRaw)
         {
-            if (Context.Interaction is not SocketMessageComponent component)
+            if (Context.Interaction is not IComponentInteraction component)
                 return;
 
             if (!int.TryParse(viewRaw, out var view))

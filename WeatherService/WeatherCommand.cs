@@ -16,7 +16,7 @@ namespace sblngavnav6.Commands
             _pager = pager;
         }
 
-        [FrontierAsImage]
+        [FrontierAsImage(Buttons = true)]
         [Command("погода")]
         public async Task WeatherInfo(params string[] cityParts)
         {
