@@ -87,21 +87,24 @@ public static class RemnaPanelBuilder
             pages.Add(EmbedHandler.Build(new EmbedSpec
             {
                 AuthorName = "Панель Remnawave",
-                Description = string.Join("\n", header),
+                Description = string.Join("\n", header) + "\n\u200b",
                 Color = Color.Teal,
                 Fields = list.Count == 0
                     ? [new EmbedFieldSpec("Пусто", "нод нет", false)]
-                    : list.Skip(page * PageSize).Take(PageSize)
-                        .Select(item =>
-                        {
-                            var entry = Find(maintenance, item);
-                            return new EmbedFieldSpec(Title(remna, item, entry), Describe(item.Node, entry) + "\n\u200b", false);
-                        })
-                        .ToList(),
+                    : Fields(list.Skip(page * PageSize).Take(PageSize).ToList()),
                 Footer = EmbedHandler.LoisFooter
             }));
 
         return (pages, list);
+
+        List<EmbedFieldSpec> Fields(List<RemnaNodeRef> slice) => slice
+            .Select((item, index) =>
+            {
+                var entry = Find(maintenance, item);
+                return new EmbedFieldSpec(Title(remna, item, entry),
+                    Describe(item.Node, entry) + (index < slice.Count - 1 ? "\n\u200b" : ""), false);
+            })
+            .ToList();
     }
 
     public static Action<ComponentBuilder, int> BuildControls(RemnaService remna, List<RemnaNodeRef> nodes) => (builder, page) =>
@@ -207,7 +210,7 @@ public static class RemnaPanelBuilder
                 .OrderByDescending(g => g.Downtime)
                 .Select(g => (IReadOnlyList<string>)
                 [
-                    CommonUtils.Text.Truncate(g.Node, 18), g.Count.ToString(), CommonUtils.Time.FormatAge(g.Downtime),
+                    CommonUtils.Text.Truncate(CommonUtils.Text.StripEmoji(g.Node), 18), g.Count.ToString(), CommonUtils.Time.FormatAge(g.Downtime),
                     g.Last.Start.ToLocalTime().ToString("HH:mm"), CommonUtils.Web.BriefError(g.Last.Message)
                 ])),
             "✅ падений не было"), false));

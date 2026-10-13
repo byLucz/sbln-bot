@@ -27,7 +27,7 @@ public class RemnaCommands : ModuleBase<SocketCommandContext>
 
     [Frontier(Buttons = true)]
     [Command("рв")]
-    [Alias("ремна", "впн")]
+    [Alias("ремна")]
     public async Task RemnaPanel()
     {
         var (pages, nodes) = await RemnaPanelBuilder.BuildAsync(_remna, _store);
@@ -41,7 +41,7 @@ public class RemnaCommands : ModuleBase<SocketCommandContext>
 
     [Frontier]
     [Command("рв диаг")]
-    [Alias("ремна диаг", "впн диаг")]
+    [Alias("ремна диаг")]
     public async Task RemnaDiagnostics()
     {
         await ReplyAsync(embed: await RemnaPanelBuilder.BuildDiagnosticsAsync(_remna, _store));
@@ -50,7 +50,7 @@ public class RemnaCommands : ModuleBase<SocketCommandContext>
     [Frontier]
     [Discord.Commands.RequireOwner(ErrorMessage = "недостаточно прав")]
     [Command("рв тех")]
-    [Alias("ремна тех", "впн тех")]
+    [Alias("ремна тех")]
     public async Task RemnaMaintenance(string node, [Remainder] string message = null)
     {
         var target = await FindNodeAsync(node, "тех");
@@ -73,8 +73,8 @@ public class RemnaCommands : ModuleBase<SocketCommandContext>
     }
 
     [Frontier(Buttons = true)]
-    [Command("рагент")]
-    [Alias("рв агент", "ремна агент", "впн агент")]
+    [Command("рв рагент")]
+    [Alias("ремна рагент")]
     public async Task RemnaAgents()
     {
         var (embed, nodes) = await RemnaPanelBuilder.BuildAgentsAsync(_remna);
@@ -219,12 +219,14 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
     [ComponentInteraction("remna_agents_refresh")]
     public async Task AgentsRefresh()
     {
-        if (Context.Interaction is not IComponentInteraction component)
-            return;
-
         await DeferAsync();
         var (embed, nodes) = await RemnaPanelBuilder.BuildAgentsAsync(_remna);
-        await _pager.ReplaceAsync(component.Message, [embed], decorate: RemnaPanelBuilder.BuildAgentControls(_remna, nodes));
+        var components = _pager.BuildControls(RemnaPanelBuilder.BuildAgentControls(_remna, nodes));
+        await ModifyOriginalResponseAsync(properties =>
+        {
+            properties.Embed = embed;
+            properties.Components = components;
+        });
     }
 
     [RequireDevAccessInteraction]

@@ -102,10 +102,10 @@ public static class HelpEmbedService
         ("Команды экосистемы Lois Media",
         [
             ("пг", "панель pgAPI", false),
-            ("рв|ремна|впн", "панель Remnawave, VPN-ноды", false),
-            ("рв диаг", "диагностика Remnawave: API, бэкенд, упавшие ноды, падения за 24ч", false),
-            ("рв тех <нода> [текст]", "закрыть ноду на тех. работы, снять кнопкой в карточке", false),
-            ("рагент", "R-WATCHER agent на нодах: диск, скан SNI, очистка диска", false),
+            ("рв|ремна", "панель Remnawave, ноды", true),
+            ("рв диаг", "диагностика Remnawave: API, бэкенд, упавшие ноды, падения за 24ч", true),
+            ("рв тех <нода> [текст]", "закрыть ноду на тех. работы, снять кнопкой в карточке", true),
+            ("рв рагент", "R-WATCHER agent на нодах: диск, скан SNI, очистка диска", true),
             ("печкин|ппм|емейл", "панель почтовых ящиков PPM", false),
             ("говор|говорилка|гвр", "говорилка: справка, настройки и подкоманды", false),
             ("клуб", "книжный клуб: правила, оценки и свои команды", false),
@@ -116,7 +116,8 @@ public static class HelpEmbedService
     public static List<Embed> GetHelpPages(bool devGuild = false) =>
         (devGuild ? Sections.Append(DevSection) : Sections).Select(Page).ToList();
 
-    public static IReadOnlyList<(string Title, IReadOnlyList<(string Command, string About)> Commands)> TelegramSections() => Sections
+    public static IReadOnlyList<(string Title, IReadOnlyList<(string Command, string About)> Commands)> TelegramSections(bool dev = false)
+        => (dev ? Sections.Append(DevSection) : Sections)
         .Select(section => (section.Title, (IReadOnlyList<(string, string)>)section.Commands
             .Where(command => command.Telegram)
             .Select(command => (command.Command, command.About))

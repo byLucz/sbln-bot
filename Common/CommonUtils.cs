@@ -122,6 +122,20 @@ namespace sblngavnav6.Common
                 return s.Length <= max ? s : s.Substring(0, Math.Max(0, max - 1)) + "…";
             }
 
+            public static string StripEmoji(string? s)
+            {
+                if (string.IsNullOrEmpty(s)) return s ?? "";
+                var sb = new System.Text.StringBuilder(s.Length);
+                foreach (var ch in s)
+                {
+                    if (char.IsSurrogate(ch) || ch is '\uFE0F' or '\u200D' or '\u20E3'
+                        || char.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.OtherSymbol)
+                        continue;
+                    sb.Append(ch);
+                }
+                return CollapseSpaces(sb.ToString());
+            }
+
             public static string CollapseSpaces(string s)
             {
                 if (string.IsNullOrEmpty(s)) return s ?? "";
@@ -239,6 +253,7 @@ namespace sblngavnav6.Common
                 ("сертификат не для домена", ["altnames", "does not match", "сертификат не для"]),
                 ("недоверенный сертификат", ["self signed", "self-signed", "unable to verify", "недоверенная"]),
                 ("старая версия ноды", ["required info is missing", "outdated version"]),
+                ("ошибка TLS", ["ssl routines", "tlsv1 alert", "handshake failure", "ssl handshake"]),
                 ("ошибка QUIC", ["quic"])
             ];
 
