@@ -92,10 +92,60 @@ public sealed class RemnaNodeProfile
 
 public sealed class RemnaInbound
 {
+    private static readonly string[] UdpMarkers = ["hysteria", "tuic", "wireguard", "kcp", "quic"];
+    private static readonly string[] QuicMarkers = ["hysteria", "tuic", "quic"];
+
     public string Uuid { get; set; }
     public string Tag { get; set; }
+    public string Type { get; set; }
+    public string Network { get; set; }
     public string Security { get; set; }
     public JsonElement? RawInbound { get; set; }
+
+    public bool IsUdp
+    {
+        get
+        {
+            var raw = RawInbound is { ValueKind: JsonValueKind.Object } value ? value : default;
+            var protocol = raw.ValueKind == JsonValueKind.Object && raw.TryGetProperty("protocol", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+            var transport = raw.ValueKind == JsonValueKind.Object && raw.TryGetProperty("streamSettings", out var stream)
+                && stream.TryGetProperty("network", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+
+            return Matches(UdpMarkers, protocol, transport);
+        }
+    }
+
+    public bool IsQuic
+    {
+        get
+        {
+            var raw = RawInbound is { ValueKind: JsonValueKind.Object } value ? value : default;
+            var protocol = raw.ValueKind == JsonValueKind.Object && raw.TryGetProperty("protocol", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+            var transport = raw.ValueKind == JsonValueKind.Object && raw.TryGetProperty("streamSettings", out var stream)
+                && stream.TryGetProperty("network", out var n) && n.ValueKind == JsonValueKind.String ? n.GetString() : null;
+
+            return Matches(QuicMarkers, protocol, transport);
+        }
+    }
+
+    public bool HasObfs => RawInbound is { ValueKind: JsonValueKind.Object } raw && ContainsKey(raw, "obfs");
+
+    public List<string> Alpns
+        => RawInbound is { ValueKind: JsonValueKind.Object } raw && raw.TryGetProperty("streamSettings", out var stream)
+            && stream.TryGetProperty("tlsSettings", out var tls) && tls.TryGetProperty("alpn", out var alpn) && alpn.ValueKind == JsonValueKind.Array
+            ? alpn.EnumerateArray().Where(v => v.ValueKind == JsonValueKind.String).Select(v => v.GetString()).ToList()
+            : [];
+
+    private bool Matches(string[] markers, string protocol, string transport)
+        => new[] { Type, Network, protocol, transport }
+            .Any(v => v is not null && markers.Any(marker => v.Contains(marker, StringComparison.OrdinalIgnoreCase)));
+
+    private static bool ContainsKey(JsonElement element, string key) => element.ValueKind switch
+    {
+        JsonValueKind.Object => element.EnumerateObject().Any(p => p.NameEquals(key) || ContainsKey(p.Value, key)),
+        JsonValueKind.Array => element.EnumerateArray().Any(item => ContainsKey(item, key)),
+        _ => false
+    };
 
     public IEnumerable<string> ServerNames
     {
@@ -127,6 +177,7 @@ public sealed class RemnaHost
     public bool IsDisabled { get; set; }
     public string SecurityLayer { get; set; }
     public bool OverrideSniFromAddress { get; set; }
+    public string Alpn { get; set; }
     public RemnaHostInbound Inbound { get; set; }
     public List<string> Nodes { get; set; }
 }

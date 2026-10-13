@@ -66,6 +66,14 @@ public sealed class RemnaStore
         return closed;
     }
 
+    public Task CloseIncidentsAsync(RemnaServer server, Func<RemnaIncident, bool> match, DateTimeOffset end) => WriteAsync(state =>
+    {
+        var open = state.Incidents.Where(i => i.Server == server.Url && i.End is null && match(i)).ToList();
+        foreach (var incident in open)
+            incident.End = end;
+        return open.Count > 0;
+    });
+
     public Task<bool> HasOpenIncidentAsync(RemnaServer server, string uuid)
         => ReadAsync(state => state.Incidents.Any(i => i.Server == server.Url && i.Uuid == uuid && i.End is null));
 

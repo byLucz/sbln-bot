@@ -97,6 +97,8 @@ public sealed class RemnaWatchService
     private async Task LoopAsync(CancellationToken cancellationToken)
     {
         await LoggingService.LogInformationAsync("REMNA", $"{Name} запущен, серверов {_remna.Servers.Count}, интервал {Interval.TotalSeconds:0}с");
+        if (!RemnaProbe.QuicSupported)
+            await LoggingService.LogWarningAsync("REMNA", $"{Name}: QUIC недоступен (нет libmsquic), Hysteria и TUIC не проверяются");
 
         using var timer = new PeriodicTimer(Interval);
         try
@@ -192,13 +194,21 @@ public sealed class RemnaWatchService
     {
         var now = DateTimeOffset.UtcNow;
         var results = await RemnaProbe.CheckAsync(_remna, servers, cancellationToken);
+        var active = results.Select(r => PortIncident(r.Target)).ToHashSet();
+        var keys = results.Select(r => r.Target.Key).ToHashSet();
+
+        foreach (var server in servers.Where(s => s.Result.Ok).Select(s => s.Server))
+            await _store.CloseIncidentsAsync(server, i => i.Uuid?.StartsWith("port:", StringComparison.Ordinal) == true && !active.Contains(i.Uuid), now);
+        foreach (var gone in _ports.Keys.Where(key => !keys.Contains(key)).ToList())
+            _ports.Remove(gone);
+        _expiring.RemoveWhere(key => !keys.Contains(key));
 
         foreach (var result in results)
         {
             var target = result.Target;
             var key = target.Key;
-            var incidentId = $"port:{target.Endpoint}:{target.Sni}";
-            var where = $"{target.Endpoint}{(target.Tls ? $", SNI {target.Sni}" : "")}";
+            var incidentId = PortIncident(target);
+            var where = target.Endpoint;
 
             if (result.Ok || result.Expiring)
             {
@@ -230,6 +240,8 @@ public sealed class RemnaWatchService
                 detail: $"{where}\n⚠️ {result.Error}", sinceLabel: "с", since: down.Since);
         }
     }
+
+    private static string PortIncident(RemnaProbeTarget target) => $"port:{target.Endpoint}:{target.Sni}";
 
     private async Task AlertAsync(
         string title,
