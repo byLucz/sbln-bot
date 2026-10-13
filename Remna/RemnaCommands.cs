@@ -72,25 +72,18 @@ public class RemnaCommands : ModuleBase<SocketCommandContext>
         await ReplyAsync(embed: embed);
     }
 
-    [Frontier]
-    [Command("рв сни")]
-    [Alias("ремна сни", "впн сни")]
-    public async Task RemnaSni(string node)
+    [Frontier(Buttons = true)]
+    [Command("рагент")]
+    [Alias("рв агент", "ремна агент", "впн агент")]
+    public async Task RemnaAgents()
     {
-        var target = await FindNodeAsync(node, "сни");
-        if (target is null)
-            return;
+        var (embed, nodes) = await RemnaPanelBuilder.BuildAgentsAsync(_remna);
 
-        var current = target.Node.Snis.FirstOrDefault();
-        var reply = await ReplyAsync(embed: EmbedHandler.Simple($"{RemnaPanelBuilder.Source}/сни",
-            $"🔎 {RemnaWatchService.AgentName} на {target.Node.Name} сканирует домены, это до пары минут", Color.DarkBlue, EmbedHandler.LoisFooter));
-
-        var scan = await _remna.ScanAsync(target.Node, current);
-        var embed = scan.Ok
-            ? RemnaPanelBuilder.BuildScanEmbed(_remna, target, current, scan.Data)
-            : await EmbedHandler.CreateErrorEmbed($"{RemnaPanelBuilder.Source}/сни",
-                $"{RemnaWatchService.AgentName} на {target.Node.Address}:{Global.Vars.Cfg.remnaAgentPort}: {scan.Error}");
-        await reply.ModifyAsync(properties => properties.Embed = embed);
+        await _pager.SendAsync(
+            Context.Channel,
+            [embed],
+            decorate: RemnaPanelBuilder.BuildAgentControls(_remna, nodes),
+            scope: $"remna-agent:{Context.Channel.Id}:{Context.User.Id}");
     }
 
     private async Task<RemnaNodeRef> FindNodeAsync(string node, string action)
@@ -223,6 +216,81 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
     }
 
     [RequireDevAccessInteraction]
+    [ComponentInteraction("remna_agents_refresh")]
+    public async Task AgentsRefresh()
+    {
+        if (Context.Interaction is not IComponentInteraction component)
+            return;
+
+        await DeferAsync();
+        var (embed, nodes) = await RemnaPanelBuilder.BuildAgentsAsync(_remna);
+        await _pager.ReplaceAsync(component.Message, [embed], decorate: RemnaPanelBuilder.BuildAgentControls(_remna, nodes));
+    }
+
+    [RequireDevAccessInteraction]
+    [ComponentInteraction("remna_agent")]
+    public async Task SelectAgent(string[] values)
+    {
+        await DeferAsync(ephemeral: true);
+        var parts = values[0].Split(':', 2);
+        await ShowAgentAsync(_remna.Server(parts[0]), parts.Length > 1 ? parts[1] : "", newMessage: true);
+    }
+
+    [RequireDevAccessInteraction]
+    [ComponentInteraction("remna_ag:*:*:*")]
+    public async Task AgentAction(string action, string serverIndex, string uuid)
+    {
+        await DeferAsync();
+        var server = _remna.Server(serverIndex);
+
+        if (action == "show")
+        {
+            await ShowAgentAsync(server, uuid, newMessage: false);
+            return;
+        }
+
+        var node = await _remna.NodeAsync(server, uuid);
+        if (!node.Ok)
+        {
+            await FollowupAsync(embed: await EmbedHandler.CreateErrorEmbed(RemnaWatchService.AgentName, node.Error), ephemeral: true);
+            return;
+        }
+
+        if (action == "clean")
+        {
+            if (!await SuperuserGate.IsBotOwnerAsync(Context.Client, Context.User))
+            {
+                await FollowupAsync(embed: await EmbedHandler.CreateErrorEmbed(RemnaWatchService.AgentName, "недостаточно прав"), ephemeral: true);
+                return;
+            }
+
+            await LoggingService.LogWarningAsync("REMNA", $"{Context.User.Username} ({Context.User.Id}) чистит диск на {node.Data.Name}");
+            var progress = await FollowupAsync(embed: EmbedHandler.Simple(RemnaWatchService.AgentName,
+                $"🧹 чищу диск на {node.Data.DisplayName}, это до пары минут", Color.DarkBlue, EmbedHandler.LoisFooter), ephemeral: true);
+            var result = await _remna.AgentCleanAsync(node.Data);
+            var embed = result is { Ok: true, Data.Ok: true }
+                ? EmbedHandler.Simple(RemnaWatchService.AgentName,
+                    $"🧹 {node.Data.DisplayName}: освобождено {CommonUtils.Text.Bytes(result.Data.Freed)}, свободно {CommonUtils.Text.Bytes(result.Data.Free)}",
+                    Color.Green, EmbedHandler.LoisFooter)
+                : await EmbedHandler.CreateErrorEmbed(RemnaWatchService.AgentName, result.Error ?? result.Data?.Error ?? "очистка не удалась");
+            await progress.ModifyAsync(properties => properties.Embed = embed);
+            return;
+        }
+
+        if (action == "sni")
+        {
+            var current = node.Data.Snis.FirstOrDefault();
+            var progress = await FollowupAsync(embed: EmbedHandler.Simple(RemnaWatchService.AgentName,
+                $"🔎 {RemnaWatchService.AgentName} на {node.Data.DisplayName} сканирует домены, это до пары минут", Color.DarkBlue, EmbedHandler.LoisFooter), ephemeral: true);
+            var scan = await _remna.ScanAsync(node.Data, current);
+            var embed = scan.Ok
+                ? RemnaPanelBuilder.BuildScanEmbed(_remna, new RemnaNodeRef(server, node.Data), current, scan.Data)
+                : await EmbedHandler.CreateErrorEmbed(RemnaWatchService.AgentName, scan.Error);
+            await progress.ModifyAsync(properties => properties.Embed = embed);
+        }
+    }
+
+    [RequireDevAccessInteraction]
     [ComponentInteraction("remna_restart_all")]
     public async Task RestartAll()
     {
@@ -240,6 +308,27 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
             ephemeral: true);
     }
 
+    private async Task ShowAgentAsync(RemnaServer server, string uuid, bool newMessage)
+    {
+        var node = await _remna.NodeAsync(server, uuid);
+        if (!node.Ok)
+        {
+            await FollowupAsync(embed: await EmbedHandler.CreateErrorEmbed(RemnaWatchService.AgentName, node.Error), ephemeral: true);
+            return;
+        }
+
+        var (embed, components) = RemnaPanelBuilder.BuildAgentCard(server, node.Data, await _remna.AgentHealthAsync(node.Data),
+            await SuperuserGate.IsBotOwnerAsync(Context.Client, Context.User));
+        if (newMessage)
+            await FollowupAsync(embed: embed, components: components, ephemeral: true);
+        else
+            await ModifyOriginalResponseAsync(properties =>
+            {
+                properties.Embed = embed;
+                properties.Components = components;
+            });
+    }
+
     private async Task<string> BeginMaintenanceAsync(RemnaServer server, string uuid, string message)
     {
         var node = await _remna.NodeAsync(server, uuid);
@@ -253,7 +342,7 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
     private async Task<string> EndMaintenanceAsync(RemnaServer server, string uuid)
     {
         var node = await _remna.NodeAsync(server, uuid);
-        return node.Ok ? await _watch.EndMaintenanceAsync(server, node.Data, Context.User.Username) : node.Error;
+        return node.Ok ? await _watch.EndMaintenanceAsync(server, node.Data) : node.Error;
     }
 
     private async Task ShowCardAsync(RemnaServer server, string uuid, string error, string content, bool newMessage = false)

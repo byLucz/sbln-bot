@@ -44,7 +44,7 @@ public static class RemnaPanelBuilder
         };
 
         if (maintenance is not null)
-            lines.Add($"🛠 тех. работы {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - maintenance.Since)}: {maintenance.Message} ({maintenance.By})");
+            lines.Add($"🛠 тех. работы {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - maintenance.Since)}: {maintenance.Message}");
         else if (!node.IsConnected && !node.IsDisabled)
             lines.Add($"⚠️ {CommonUtils.Text.FirstMeaningfulLine(node.LastStatusMessage, "без сообщения", 150)}");
 
@@ -95,7 +95,7 @@ public static class RemnaPanelBuilder
                         .Select(item =>
                         {
                             var entry = Find(maintenance, item);
-                            return new EmbedFieldSpec(Title(remna, item, entry), Describe(item.Node, entry), false);
+                            return new EmbedFieldSpec(Title(remna, item, entry), Describe(item.Node, entry) + "\n\u200b", false);
                         })
                         .ToList(),
                 Footer = EmbedHandler.LoisFooter
@@ -178,7 +178,7 @@ public static class RemnaPanelBuilder
 
         if (maintenance.Count > 0)
             fields.Add(new("🛠 Тех. работы", string.Join("\n", maintenance.Select(m =>
-                $"**{m.Node}**, {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - m.Since)}: {m.Message} ({m.By})")), false));
+                $"**{m.Node}**, {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - m.Since)}: {m.Message}")), false));
 
         if (traffic.Count > 0)
             fields.Add(new("📶 Трафик на пределе", string.Join("\n", traffic.Select(n =>
@@ -196,34 +196,21 @@ public static class RemnaPanelBuilder
                 : string.Join("\n", unreachable.Select(p =>
                     $"{(p.Expiring ? "⚠️" : "❌")} **{p.Target.Label}** `{p.Target.Endpoint}`{(p.Target.Tls ? $" SNI {p.Target.Sni}" : "")}: {p.Error}")), false));
 
-        if (RemnaService.AgentConfigured)
-        {
-            var online = list.Where(n => n.Node.IsConnected && !n.Node.IsDisabled).ToList();
-            var agents = await Task.WhenAll(online.Select(async n =>
-            {
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-                var health = await remna.AgentHealthAsync(n.Node);
-                return (Node: n, Health: health, Ms: sw.ElapsedMilliseconds);
-            }));
-            if (agents.Length > 0)
-                fields.Add(new($"🛰 {RemnaWatchService.AgentName} ({agents.Count(a => a.Health.Ok)}/{agents.Length})", string.Join("\n", agents.Select(a =>
-                    a.Health.Ok
-                        ? $"✅ {a.Node.Node.DisplayName}: v{a.Health.Data.Version}, {a.Health.Data.Domains} доменов, {a.Ms} мс"
-                        : $"{(a.Health.Error.StartsWith("неверный") ? "⚠️" : "❌")} {a.Node.Node.DisplayName}: {a.Health.Error}")), false));
-        }
-
         var incidents = await store.IncidentsAsync();
         var now = DateTimeOffset.UtcNow;
-        fields.Add(new($"📜 Падения за {RemnaStore.HistoryWindow.TotalHours:0}ч", incidents.Count == 0
-            ? "✅ падений не было"
-            : string.Join("\n", incidents
+        fields.Add(new($"📜 Падения за {RemnaStore.HistoryWindow.TotalHours:0}ч", CommonUtils.Text.CodeTable(
+            incidents.Count == 0 ? [] : new[] { (IReadOnlyList<string>)["нода", "раз", "простой", "время", "ошибка"] }.Concat(incidents
                 .GroupBy(i => (i.Server, i.Uuid, i.Node))
                 .Select(g => (g.Key.Node, Count: g.Count(), Open: g.Any(i => i.End is null),
                     Downtime: TimeSpan.FromTicks(g.Sum(i => ((i.End ?? now) - (i.Start < now - RemnaStore.HistoryWindow ? now - RemnaStore.HistoryWindow : i.Start)).Ticks)),
                     Last: g.First()))
                 .OrderByDescending(g => g.Downtime)
-                .Select(g => $"{(g.Open ? "🔴" : "🟢")} **{g.Node}**: {g.Count} раз, простой {CommonUtils.Time.FormatAge(g.Downtime)}, "
-                    + $"последнее {CommonUtils.Time.FormatAge(now - g.Last.Start)} назад: {CommonUtils.Text.Truncate(g.Last.Message, 120)}")), false));
+                .Select(g => (IReadOnlyList<string>)
+                [
+                    CommonUtils.Text.Truncate(g.Node, 18), g.Count.ToString(), CommonUtils.Time.FormatAge(g.Downtime),
+                    g.Last.Start.ToLocalTime().ToString("HH:mm"), CommonUtils.Web.BriefError(g.Last.Message)
+                ])),
+            "✅ падений не было"), false));
 
         fields.Add(new($"🐕 {RemnaWatchService.Name}", RemnaWatchService.Enabled
             ? $"каждые {RemnaWatchService.Interval.TotalSeconds:0}с"
@@ -239,6 +226,83 @@ public static class RemnaPanelBuilder
             Timestamp = DateTimeOffset.UtcNow,
             Footer = EmbedHandler.LoisFooter
         });
+    }
+
+    public static string Disk(RemnaAgentDisk disk)
+        => disk is { Total: > 0 }
+            ? $"💾 {CommonUtils.Text.Bytes(disk.Used)}/{CommonUtils.Text.Bytes(disk.Total)} ({disk.Used / disk.Total * 100:0}%)"
+            : "💾 нет данных";
+
+    private static string AgentLine(RemnaNodeRef item, RemnaResult<RemnaAgentHealth> health, long ms)
+        => health.Ok
+            ? $"✅ {item.Node.DisplayName}: v{health.Data.Version}, {ms} мс, {Disk(health.Data.Disk)}"
+            : $"{(health.Error.StartsWith("неверный") ? "⚠️" : "❌")} {item.Node.DisplayName}: {health.Error}";
+
+    public static async Task<(Embed Embed, List<RemnaNodeRef> Nodes)> BuildAgentsAsync(RemnaService remna)
+    {
+        if (!RemnaService.AgentConfigured)
+            return (await EmbedHandler.CreateErrorEmbed(RemnaWatchService.AgentName, "не задан Remna:AgentToken"), []);
+
+        var nodes = (await remna.AllNodesAsync()).Refs().Where(n => n.Node.IsConnected && !n.Node.IsDisabled).ToList();
+        var agents = await Task.WhenAll(nodes.Select(async n =>
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var health = await remna.AgentHealthAsync(n.Node);
+            return (Node: n, Health: health, Ms: sw.ElapsedMilliseconds);
+        }));
+
+        return (EmbedHandler.Build(new EmbedSpec
+        {
+            AuthorName = $"🛰 {RemnaWatchService.AgentName} ({agents.Count(a => a.Health.Ok)}/{agents.Length})",
+            Description = agents.Length == 0 ? "нет нод на связи" : string.Join("\n", agents.Select(a => AgentLine(a.Node, a.Health, a.Ms))),
+            Color = agents.All(a => a.Health.Ok) ? Color.Teal : Color.Orange,
+            Footer = EmbedHandler.LoisFooter
+        }), nodes);
+    }
+
+    public static Action<ComponentBuilder, int> BuildAgentControls(RemnaService remna, List<RemnaNodeRef> nodes) => (builder, _) =>
+    {
+        if (nodes.Count > 0)
+            builder.WithSelectMenu(new SelectMenuBuilder()
+                .WithCustomId("remna_agent")
+                .WithPlaceholder("🛰 Выбрать ноду")
+                .WithOptions(nodes.Take(25).Select(item => new SelectMenuOptionBuilder()
+                    .WithLabel(CommonUtils.Text.Truncate(item.Node.DisplayName, 100))
+                    .WithValue(item.Key)
+                    .WithDescription(CommonUtils.Text.Truncate(remna.Multi ? $"{item.Server.Name} / {item.Node.Address}" : item.Node.Address, 100)))
+                    .ToList()), row: 0);
+
+        builder.WithButton("Обновить", "remna_agents_refresh", ButtonStyle.Primary, row: 1);
+    };
+
+    public static (Embed Embed, MessageComponent Components) BuildAgentCard(RemnaServer server, RemnaNode node, RemnaResult<RemnaAgentHealth> health, bool owner)
+    {
+        var id = $"{server.Index}:{node.Uuid}";
+        var lines = new List<string> { $"`{node.Address}:{Global.Vars.Cfg.remnaAgentPort}`" };
+        if (health.Ok)
+        {
+            lines.Add($"✅ v{health.Data.Version}, доменов для скана: {health.Data.Domains}");
+            lines.Add(Disk(health.Data.Disk));
+            if (health.Data.Clean is { Ok: true, At: > 0 } clean)
+                lines.Add($"🧹 очистка {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeSeconds(clean.At))} назад, освобождено {CommonUtils.Text.Bytes(clean.Freed)}");
+        }
+        else
+            lines.Add($"❌ {health.Error}");
+        lines.Add(node.Snis is { Count: > 0 } snis ? $"🎭 SNI: {string.Join(", ", snis.Take(3))}" : "🎭 SNI: нет");
+
+        var buttons = new ComponentBuilder()
+            .WithButton("🔎 Проверить SNI", $"remna_ag:sni:{id}", ButtonStyle.Primary, disabled: !health.Ok);
+        if (owner)
+            buttons.WithButton("🧹 Очистить диск", $"remna_ag:clean:{id}", ButtonStyle.Danger, disabled: !health.Ok);
+        buttons.WithButton("Обновить", $"remna_ag:show:{id}", ButtonStyle.Secondary);
+
+        return (EmbedHandler.Build(new EmbedSpec
+        {
+            AuthorName = $"🛰 {node.DisplayName}",
+            Description = string.Join("\n", lines),
+            Color = health.Ok ? Color.Teal : Color.Red,
+            Footer = EmbedHandler.LoisFooter
+        }), buttons.Build());
     }
 
     public static Embed BuildScanEmbed(RemnaService remna, RemnaNodeRef target, string current, RemnaScan scan)
@@ -263,7 +327,7 @@ public static class RemnaPanelBuilder
                 lines.Add("👌 текущий SNI в числе лучших");
         }
 
-        lines.Add($"🔎 прошли {scan.Passed}/{scan.Total} доменов за {scan.ElapsedMs / 1000.0:0.#}с, {RemnaWatchService.AgentName} {scan.Host} v{scan.Version}");
+        lines.Add($"🔎 прошли {scan.Passed}/{scan.Total} доменов за {scan.ElapsedMs / 1000.0:0.#}с, {RemnaWatchService.AgentName} v{scan.Version}");
 
         return EmbedHandler.Build(new EmbedSpec
         {

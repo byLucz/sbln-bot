@@ -14,6 +14,7 @@ namespace sblngavnav6.Remna;
 [JsonSerializable(typeof(RemnaEnvelope<List<RemnaHost>>))]
 [JsonSerializable(typeof(RemnaScan))]
 [JsonSerializable(typeof(RemnaAgentHealth))]
+[JsonSerializable(typeof(RemnaAgentClean))]
 internal partial class RemnaJsonContext : JsonSerializerContext { }
 
 public sealed record RemnaServer(int Index, string Name, string Url, string Token);
@@ -199,6 +200,24 @@ public sealed class RemnaAgentHealth
     public string Name { get; set; }
     public string Version { get; set; }
     public int Domains { get; set; }
+    public RemnaAgentDisk Disk { get; set; }
+    public RemnaAgentClean Clean { get; set; }
+}
+
+public sealed class RemnaAgentDisk
+{
+    public double Total { get; set; }
+    public double Used { get; set; }
+    public double Free { get; set; }
+}
+
+public sealed class RemnaAgentClean
+{
+    public bool Ok { get; set; }
+    public double Freed { get; set; }
+    public double Free { get; set; }
+    public long At { get; set; }
+    public string Error { get; set; }
 }
 
 public sealed class RemnaScan

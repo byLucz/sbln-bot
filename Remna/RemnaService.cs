@@ -22,6 +22,7 @@ public sealed class RemnaService
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan AgentTimeout = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan AgentHealthTimeout = TimeSpan.FromSeconds(4);
+    private static readonly TimeSpan AgentCleanTimeout = TimeSpan.FromMinutes(6);
     private static readonly TimeSpan HostsLifetime = TimeSpan.FromMinutes(10);
 
     private readonly ConcurrentDictionary<string, (DateTimeOffset At, RemnaResult<List<RemnaHost>> Result)> _hosts = new();
@@ -85,6 +86,9 @@ public sealed class RemnaService
     public Task<RemnaResult<RemnaScan>> ScanAsync(RemnaNode node, string current, CancellationToken cancellationToken = default)
         => AgentAsync(node, $"/scan?top=10{(string.IsNullOrWhiteSpace(current) ? "" : $"&current={Uri.EscapeDataString(current)}")}",
             AgentTimeout, RemnaJsonContext.Default.RemnaScan, cancellationToken);
+
+    public Task<RemnaResult<RemnaAgentClean>> AgentCleanAsync(RemnaNode node, CancellationToken cancellationToken = default)
+        => AgentAsync(node, "/clean", AgentCleanTimeout, RemnaJsonContext.Default.RemnaAgentClean, cancellationToken);
 
     public Task<RemnaResult<RemnaAgentHealth>> AgentHealthAsync(RemnaNode node, CancellationToken cancellationToken = default)
         => AgentAsync(node, "/health", AgentHealthTimeout, RemnaJsonContext.Default.RemnaAgentHealth, cancellationToken);

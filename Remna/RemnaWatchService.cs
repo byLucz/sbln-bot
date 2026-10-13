@@ -75,11 +75,11 @@ public sealed class RemnaWatchService
         });
 
         await AlertAsync($"🛠 {node.DisplayName} ушла на тех. работы", server,
-            detail: $"{message}\nот {by}");
+            detail: message);
         return null;
     }
 
-    public async Task<string> EndMaintenanceAsync(RemnaServer server, RemnaNode node, string by)
+    public async Task<string> EndMaintenanceAsync(RemnaServer server, RemnaNode node)
     {
         var enabled = await _remna.EnableNodeAsync(server, node.Uuid);
         if (!enabled.Ok)
@@ -87,9 +87,7 @@ public sealed class RemnaWatchService
 
         var entry = await _store.EndMaintenanceAsync(server, node.Uuid);
         await AlertAsync($"✅ {node.DisplayName}: тех. работы завершены", server,
-            detail: entry is null
-                ? $"от {by}"
-                : $"{entry.Message}\nдлились {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - entry.Since)}, завершил {by}");
+            detail: entry is null ? null : $"{entry.Message}\nдлились {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - entry.Since)}");
         return null;
     }
 
@@ -160,7 +158,7 @@ public sealed class RemnaWatchService
                     await AlertAsync($"✅ {node.DisplayName} снова в строю", server,
                         detail: node.IsDisabled
                             ? "нода выключена вручную"
-                            : $"простой {CommonUtils.Time.FormatAge(now - (incident?.Start ?? state.Since))}, онлайн: {node.UsersOnline ?? 0}");
+                            : $"простой {CommonUtils.Time.FormatAge(now - (incident?.Start ?? state.Since))}");
 
                 _nodes.Remove(key);
                 continue;
