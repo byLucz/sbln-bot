@@ -26,11 +26,14 @@
     "ApexKey": ""
   },
   "Remna": {
-    "BaseUrl": "",
-    "Token": "",
+    "Servers": [
+      { "Name": "", "Url": "", "Token": "" }
+    ],
     "AlertTelegramChat": "",
     "AlertTelegramTopic": "0",
-    "WatchSeconds": "60"
+    "WatchSeconds": "60",
+    "AgentPort": "8687",
+    "AgentToken": ""
   },
   "Docker": {
     "NetworkMode": "bridge"

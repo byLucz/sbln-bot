@@ -71,11 +71,16 @@ namespace sblngavnav6.Data
                 public static readonly string pgApiToken = Str("Api:PgApiToken");
                 public static readonly string apexKey = Str("Api:ApexKey");
 
-                public static readonly string remnaBaseUrl = Str("Remna:BaseUrl");
-                public static readonly string remnaToken = Str("Remna:Token");
+                public static readonly IReadOnlyList<(string Name, string Url, string Token)> remnaServers = _config
+                    .GetSection("Remna:Servers").GetChildren()
+                    .Select(server => (server["Name"], server["Url"], server["Token"]))
+                    .Where(server => !string.IsNullOrWhiteSpace(server.Item2))
+                    .ToList();
                 public static readonly string remnaAlertTelegramChat = Str("Remna:AlertTelegramChat");
                 public static readonly int remnaAlertTelegramTopic = Int("Remna:AlertTelegramTopic", 0);
                 public static readonly int remnaWatchSeconds = Int("Remna:WatchSeconds", 60);
+                public static readonly int remnaAgentPort = Int("Remna:AgentPort", 8687);
+                public static readonly string remnaAgentToken = Str("Remna:AgentToken");
 
                 public static readonly string lavaHost = Str("Lava:LavaHost", "127.0.0.1");
                 public static readonly string lavaPass = Str("Lava:LavaPass", "youshallnotpass");

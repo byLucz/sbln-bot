@@ -66,6 +66,7 @@ namespace sblngavnav6.Core
                 .AddSingleton<PaginatorService>()
                 .AddSingleton<PgApiService>()
                 .AddSingleton<RemnaService>()
+                .AddSingleton<RemnaStore>()
                 .AddSingleton<RemnaWatchService>()
                 .AddSingleton<PpmServerService>()
                 .AddSingleton<PpmPanels>()
