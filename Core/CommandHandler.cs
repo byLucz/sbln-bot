@@ -234,16 +234,19 @@ namespace sblngavnav6.Core
             return true;
         }
 
-        private async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
+        private Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
+            => context.Channel is FrontierProxyChannel ? Task.CompletedTask : ReportFailureAsync(command, context, result);
+
+        public static async Task ReportFailureAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
         {
-            if (!command.IsSpecified || result.IsSuccess || context.Channel is FrontierProxyChannel)
+            if (!command.IsSpecified || result.IsSuccess)
                 return;
 
             var cmd = command.Value;
             string reason = result.Error switch
             {
                 CommandError.BadArgCount =>
-                    $"не хватает аргументов{BuildUsageHint(cmd)}",
+                    $"неверное число аргументов{BuildUsageHint(cmd)}",
 
                 CommandError.ParseFailed =>
                     $"неверный тип аргумента{BuildUsageHint(cmd)}",
