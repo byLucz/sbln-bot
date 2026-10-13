@@ -106,6 +106,8 @@ namespace sblngavnav6.Core
                 await _client.StartAsync();
                 await _ready.Task.WaitAsync(TimeSpan.FromSeconds(90), stopping.Token);
 
+                _frontierTask = KeepFrontierAsync(stopping.Token);
+
                 try { await DataBase.ApplyLastStatusAsync(_client); }
                 catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось восстановить статус", ex); }
 
@@ -132,7 +134,6 @@ namespace sblngavnav6.Core
                 _pager.StartCleanup(stopping.Token);
                 _remnaWatch.Start(stopping.Token);
                 await _ppm.StartSweeperAsync(stopping.Token);
-                _frontierTask = KeepFrontierAsync(stopping.Token);
 
                 lock (_readyLock)
                 {
@@ -226,12 +227,13 @@ namespace sblngavnav6.Core
                     {
                         reported = now;
                         await LoggingService.LogWarningAsync("DTFTG",
-                            $"Telegram-мост недоступен, попыток {attempt}, простой {FormatAge(now - since)}, повтор через минуту",
+                            $"Telegram-мост недоступен, попыток {attempt}, простой {FormatAge(now - since)}, повторяю",
                             attempt == 1 ? ex : null);
                     }
                 }
 
-                try { await Task.Delay(FrontierRetryDelay, cancellationToken); }
+                var delay = TimeSpan.FromSeconds(Math.Min(FrontierRetryDelay.TotalSeconds, 5 * Math.Pow(2, attempt - 1)));
+                try { await Task.Delay(delay, cancellationToken); }
                 catch (OperationCanceledException) { return; }
             }
         }

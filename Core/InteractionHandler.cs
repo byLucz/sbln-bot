@@ -89,6 +89,9 @@ namespace sblngavnav6.Core
             if (result.IsSuccess || result.Error == InteractionCommandError.UnknownCommand)
                 return;
 
+            if ((result as ExecuteResult?)?.Exception?.GetBaseException() is DiscordTelegramFrontier.FrontierStaleCallbackException)
+                return;
+
             var interaction = context.Interaction;
             var name = command?.Name ?? "?";
             var exception = (result as ExecuteResult?)?.Exception;
