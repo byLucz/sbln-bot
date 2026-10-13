@@ -28,9 +28,11 @@ install_agent() {
   port=${port:-8687}
   [[ -n "$token" ]] || token=$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')
   mkdir -p "$DIR"
-  curl -fsSL "$RAW/ragent.py" -o "$DIR/ragent.py.tmp"
-  curl -fsSL "$RAW/domains.txt" -o "$DIR/domains.txt.tmp"
-  curl -fsSL "$RAW/ragent.sh" -o "$BIN.tmp"
+  local fresh="?t=$(date +%s)"
+  curl -fsSL "$RAW/ragent.py$fresh" -o "$DIR/ragent.py.tmp"
+  curl -fsSL "$RAW/domains.txt$fresh" -o "$DIR/domains.txt.tmp"
+  curl -fsSL "$RAW/ragent.sh$fresh" -o "$BIN.tmp"
+  grep -q 'install_agent' "$BIN.tmp" || { echo '>> скачалась старая версия ragent.sh, повтори через пару минут' >&2; exit 1; }
   python3 -m py_compile "$DIR/ragent.py.tmp"
   bash -n "$BIN.tmp"
   mv "$DIR/ragent.py.tmp" "$DIR/ragent.py"
