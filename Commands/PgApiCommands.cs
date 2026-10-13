@@ -82,8 +82,7 @@ public static class PgApiPanelBuilder
     });
 }
 
-[RequireDevGuild]
-[RequireSuperuser]
+[RequireDevAccess]
 public class PgApiCommands : ModuleBase<SocketCommandContext>
 {
     private readonly PgApiService _pgApi;
@@ -119,8 +118,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
         _pager = pager;
     }
 
-    [RequireDevGuildInteraction]
-    [RequireSuperuserInteraction]
+    [RequireDevAccessInteraction]
     [ComponentInteraction("pgapi_health")]
     public async Task Health()
     {
@@ -137,8 +135,7 @@ public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
             decorate: PgApiPanelBuilder.BuildControls());
     }
 
-    [RequireDevGuildInteraction]
-    [RequireSuperuserInteraction]
+    [RequireDevAccessInteraction]
     [ComponentInteraction("pgapi_action:*")]
     public async Task ExecuteAction(string action)
     {

@@ -98,8 +98,7 @@ namespace sblngavnav6.PPM
         });
     }
 
-    [RequireDevGuild]
-    [RequireSuperuser]
+    [RequireDevAccess]
     public class PpmCommands : ModuleBase<SocketCommandContext>
     {
         private readonly PaginatorService _pager;
@@ -243,7 +242,7 @@ namespace sblngavnav6.PPM
         public string Password { get; set; }
     }
 
-    [RequireDevGuildInteraction]
+    [RequireDevAccessInteraction]
     public class PpmInteractions : InteractionModuleBase<SocketInteractionContext>
     {
         private static readonly ConcurrentDictionary<ulong, byte> _creating = new();
@@ -259,7 +258,6 @@ namespace sblngavnav6.PPM
             _panels = panels;
         }
 
-        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_new:*")]
         public async Task Create(string kind)
         {
@@ -272,7 +270,6 @@ namespace sblngavnav6.PPM
             await CreateCoreAsync(false, null, null);
         }
 
-        [RequireSuperuserInteraction]
         [ModalInteraction(PpmNameModal.Id)]
         public async Task Named(PpmNameModal modal) => await CreateCoreAsync(true, modal.Local, modal.Password);
 
@@ -320,15 +317,12 @@ namespace sblngavnav6.PPM
             }
         }
 
-        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_open:*")]
         public Task Open(string idRaw) => ShowInbox(idRaw, inPlace: false);
 
-        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_inbox:*")]
         public Task Refresh(string idRaw) => ShowInbox(idRaw, inPlace: true);
 
-        [RequireSuperuserInteraction]
         [ComponentInteraction("ppm_del:*")]
         public async Task Delete(string idRaw)
         {

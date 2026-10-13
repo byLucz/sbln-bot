@@ -44,7 +44,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     private static TimeSpan Uptime => DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime();
 
     [Command("111")]
-    [RequireOwner]
+    [RequireOwner(ErrorMessage = "недостаточно прав")]
     public Task ChangeLog() => ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
     {
         Description =
@@ -87,7 +87,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     }
 
     [Command("ст")]
-    [RequireOwner]
+    [RequireOwner(ErrorMessage = "недостаточно прав")]
     public async Task SetStatus(string status, [Remainder] string args = null)
     {
         var statusType = status switch
@@ -111,7 +111,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     }
 
     [Command("актив")]
-    [RequireOwner]
+    [RequireOwner(ErrorMessage = "недостаточно прав")]
     public async Task SetActivityAsync(string type, string linkOrText = null, [Remainder] string extra = null)
     {
         var activityType = type switch
