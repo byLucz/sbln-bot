@@ -7,17 +7,17 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace sblngavnav6.Remna;
 
-public sealed record RemnaProbeTarget(RemnaServer Server, string Label, string Address, int Port, string Sni, bool Tls, bool Quic = false, string[] Alpn = null)
+public sealed record RemnaProbeTarget(RemnaServer Server, string Label, string Address, int Port, string Sni, bool Tls, bool Quic = false, string[] Alpn = null, bool Reality = false)
 {
     public string Endpoint => $"{Address}:{Port}{(Quic ? "/udp" : "")}";
     public string Key => $"{Server.Url}|{Endpoint}|{Sni}";
 }
 
-public sealed record RemnaProbeResult(RemnaProbeTarget Target, bool Ok, string Error, int? CertDays, long Ms, bool Expiring = false);
+public sealed record RemnaProbeResult(RemnaProbeTarget Target, bool Ok, string Error, int? CertDays, long Ms, bool Expiring = false, DateTime? NotAfter = null);
 
 public static class RemnaProbe
 {
-    public const int CertWarningDays = 14;
+    public const int CertWarningDays = 7;
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(6);
 
@@ -51,8 +51,9 @@ public static class RemnaProbe
                     : host.Alpn?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) is { Length: > 0 } fromHost ? fromHost
                     : inbound.Alpns is { Count: > 0 } fromInbound ? fromInbound.ToArray()
                     : ["h3"];
+                var reality = !quic && string.Equals(security, "reality", StringComparison.OrdinalIgnoreCase);
                 return new RemnaProbeTarget(server, string.IsNullOrWhiteSpace(host.Remark) ? host.Address : host.Remark,
-                    host.Address, host.Port, sni, tls, quic, alpn);
+                    host.Address, host.Port, sni, tls, quic, alpn, reality);
             })
             .DistinctBy(target => target.Key)
             .ToList();
@@ -93,7 +94,7 @@ public static class RemnaProbe
                 ApplicationProtocols = [SslApplicationProtocol.Http2, SslApplicationProtocol.Http11]
             }, cts.Token);
 
-            return Evaluate(target, errors, notAfter, sw.ElapsedMilliseconds, strict: true);
+            return Evaluate(target, errors, notAfter, sw.ElapsedMilliseconds, strict: !target.Reality);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
@@ -140,6 +141,9 @@ public static class RemnaProbe
     {
         var days = notAfter is { } expires ? (int)Math.Floor((expires - DateTime.UtcNow).TotalDays) : (int?)null;
 
+        if (target.Reality)
+            return new RemnaProbeResult(target, true, null, null, ms);
+
         if (errors != SslPolicyErrors.None)
             return !strict
                 ? new RemnaProbeResult(target, true, null, null, ms)
@@ -150,9 +154,9 @@ public static class RemnaProbe
                     : "недоверенная цепочка сертификата",
                     days, ms);
 
-        return days is < CertWarningDays
-            ? new RemnaProbeResult(target, false, $"сертификат истекает через {days} дн.", days, ms, Expiring: true)
-            : new RemnaProbeResult(target, true, null, days, ms);
+        return days is <= CertWarningDays
+            ? new RemnaProbeResult(target, false, $"сертификат истекает через {days} дн.", days, ms, Expiring: true, NotAfter: notAfter)
+            : new RemnaProbeResult(target, true, null, days, ms, NotAfter: notAfter);
     }
 
     public static async Task<List<RemnaProbeResult>> CheckAsync(RemnaService remna, IEnumerable<RemnaServerNodes> servers, CancellationToken cancellationToken = default)

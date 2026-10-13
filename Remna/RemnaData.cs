@@ -293,4 +293,11 @@ public sealed class RemnaState
 {
     public List<RemnaMaintenance> Maintenance { get; set; } = [];
     public List<RemnaIncident> Incidents { get; set; } = [];
+    public Dictionary<string, RemnaCertWarning> CertAlerts { get; set; } = [];
+}
+
+public sealed class RemnaCertWarning
+{
+    public DateTimeOffset NotAfter { get; set; }
+    public int Days { get; set; }
 }

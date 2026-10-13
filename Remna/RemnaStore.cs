@@ -74,6 +74,20 @@ public sealed class RemnaStore
         return open.Count > 0;
     });
 
+    public async Task<bool> MarkCertWarningAsync(string key, DateTimeOffset notAfter, int days)
+    {
+        var due = false;
+        await WriteAsync(state =>
+        {
+            state.CertAlerts ??= [];
+            due = !state.CertAlerts.TryGetValue(key, out var known) || known.NotAfter != notAfter || days < known.Days;
+            if (due)
+                state.CertAlerts[key] = new RemnaCertWarning { NotAfter = notAfter, Days = days };
+            return due;
+        });
+        return due;
+    }
+
     public Task<bool> HasOpenIncidentAsync(RemnaServer server, string uuid)
         => ReadAsync(state => state.Incidents.Any(i => i.Server == server.Url && i.Uuid == uuid && i.End is null));
 
@@ -99,6 +113,8 @@ public sealed class RemnaStore
             if (!change(state))
                 return;
             state.Incidents.RemoveAll(i => i.End is { } end && end < DateTimeOffset.UtcNow - HistoryWindow);
+            foreach (var expired in (state.CertAlerts ?? []).Where(w => w.Value.NotAfter < DateTimeOffset.UtcNow - HistoryWindow).Select(w => w.Key).ToList())
+                state.CertAlerts.Remove(expired);
 
             var temp = _path + ".tmp";
             Directory.CreateDirectory(Path.GetDirectoryName(_path));

@@ -25,7 +25,6 @@ public sealed class RemnaWatchService
     private readonly Dictionary<string, Down> _nodes = new();
     private readonly Dictionary<string, Down> _apis = new();
     private readonly Dictionary<string, Down> _ports = new();
-    private readonly HashSet<string> _expiring = new();
     private CancellationTokenSource _cts;
     private Task _loop = Task.CompletedTask;
 
@@ -201,7 +200,6 @@ public sealed class RemnaWatchService
             await _store.CloseIncidentsAsync(server, i => i.Uuid?.StartsWith("port:", StringComparison.Ordinal) == true && !active.Contains(i.Uuid), now);
         foreach (var gone in _ports.Keys.Where(key => !keys.Contains(key)).ToList())
             _ports.Remove(gone);
-        _expiring.RemoveWhere(key => !keys.Contains(key));
 
         foreach (var result in results)
         {
@@ -218,9 +216,8 @@ public sealed class RemnaWatchService
                     await AlertAsync($"🔐 {target.Label} снова доступен клиентам", target.Server,
                         detail: $"{where}\nпростой {CommonUtils.Time.FormatAge(now - (incident?.Start ?? state.Since))}");
 
-                if (!result.Expiring)
-                    _expiring.Remove(key);
-                else if (_expiring.Add(key))
+                if (result is { Expiring: true, NotAfter: { } notAfter, CertDays: { } days }
+                    && await _store.MarkCertWarningAsync(key, new DateTimeOffset(notAfter, TimeSpan.Zero), days))
                     await AlertAsync($"📜 сертификат {target.Label} истекает через {result.CertDays} дн.", target.Server, detail: where);
                 continue;
             }

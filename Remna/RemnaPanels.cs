@@ -210,7 +210,7 @@ public static class RemnaPanelBuilder
                     + $"последнее {CommonUtils.Time.FormatAge(now - g.Last.Start)} назад: {CommonUtils.Text.Truncate(g.Last.Message, 120)}")), false));
 
         fields.Add(new($"🐕 {RemnaWatchService.Name}", RemnaWatchService.Enabled
-            ? $"каждые {RemnaWatchService.Interval.TotalSeconds:0}с ноды, API и клиентские порты, алерт после {RemnaWatchService.FailThreshold} провалов подряд, серверов {remna.Servers.Count}"
+            ? $"каждые {RemnaWatchService.Interval.TotalSeconds:0}с"
               + $"\nTelegram: `{Global.Vars.Cfg.remnaAlertTelegramChat}`{(Global.Vars.Cfg.remnaAlertTelegramTopic == 0 ? "" : $", тема {Global.Vars.Cfg.remnaAlertTelegramTopic}")}"
             : !Global.Vars.Cfg.remnaEnabled ? "выключен, модуль отключён (System:RemnaEnabled)" : "выключен, задай Remna:Servers, Remna:AlertTelegramChat и Telegram:Token", false));
 
