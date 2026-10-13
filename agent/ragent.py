@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import json
 import os
+import shutil
 import socket
 import ssl
 import statistics
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -12,14 +14,18 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 NAME = "R-WATCHER agent for sbln-bot"
-VERSION = "1.1"
+VERSION = "1.2"
 TOKEN = os.environ.get("RAGENT_TOKEN", "")
 PORT = int(os.environ.get("RAGENT_PORT", "8687"))
 TIMEOUT = float(os.environ.get("RAGENT_TIMEOUT", "4"))
 WORKERS = int(os.environ.get("RAGENT_WORKERS", "32"))
 DOMAINS_FILE = Path(os.environ.get("RAGENT_DOMAINS", Path(__file__).with_name("domains.txt")))
+STATE = Path(os.environ.get("STATE_DIRECTORY", "/var/lib/ragent"))
 SAMPLES = 3
 FINALISTS = 40
+CLEAN_START = 15
+CLEAN_WAIT = 300
+CLEAN_LOCK = threading.Lock()
 
 CONTEXT = ssl.create_default_context()
 CONTEXT.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -120,6 +126,34 @@ def scan(current, top):
     }
 
 
+def disk():
+    usage = shutil.disk_usage("/")
+    return {"total": usage.total, "used": usage.used, "free": usage.free}
+
+
+def last_clean():
+    try:
+        return json.loads((STATE / "clean.result").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def clean():
+    with CLEAN_LOCK:
+        request, result = STATE / "clean.request", STATE / "clean.result"
+        before = result.stat().st_mtime if result.exists() else 0
+        request.write_text(str(time.time()), encoding="utf-8")
+        started = time.monotonic()
+        while time.monotonic() - started < CLEAN_WAIT:
+            time.sleep(1)
+            if result.exists() and result.stat().st_mtime > before:
+                return last_clean()
+            if request.exists() and time.monotonic() - started > CLEAN_START:
+                request.unlink(missing_ok=True)
+                return {"ok": False, "error": "служба очистки не запустилась, обнови агента: sudo ragent update"}
+        return {"ok": False, "error": "очистка не уложилась в 5 минут, смотри: journalctl -u ragent-clean"}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "ragent/" + VERSION
 
@@ -129,7 +163,10 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         query = parse_qs(url.query)
         if url.path == "/health":
-            return self.reply(200, {"ok": True, "name": NAME, "version": VERSION, "domains": len(load_domains())})
+            return self.reply(200, {"ok": True, "name": NAME, "version": VERSION, "domains": len(load_domains()),
+                                    "disk": disk(), "clean": last_clean()})
+        if url.path == "/clean":
+            return self.reply(200, clean())
         if url.path == "/scan":
             current = (query.get("current") or [""])[0].strip().lower() or None
             raw = (query.get("top") or ["10"])[0]
