@@ -196,6 +196,22 @@ public static class RemnaPanelBuilder
                 : string.Join("\n", unreachable.Select(p =>
                     $"{(p.Expiring ? "⚠️" : "❌")} **{p.Target.Label}** `{p.Target.Endpoint}`{(p.Target.Tls ? $" SNI {p.Target.Sni}" : "")}: {p.Error}")), false));
 
+        if (RemnaService.AgentConfigured)
+        {
+            var online = list.Where(n => n.Node.IsConnected && !n.Node.IsDisabled).ToList();
+            var agents = await Task.WhenAll(online.Select(async n =>
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var health = await remna.AgentHealthAsync(n.Node);
+                return (Node: n, Health: health, Ms: sw.ElapsedMilliseconds);
+            }));
+            if (agents.Length > 0)
+                fields.Add(new($"🛰 {RemnaWatchService.AgentName} ({agents.Count(a => a.Health.Ok)}/{agents.Length})", string.Join("\n", agents.Select(a =>
+                    a.Health.Ok
+                        ? $"✅ {a.Node.Node.DisplayName}: v{a.Health.Data.Version}, {a.Health.Data.Domains} доменов, {a.Ms} мс"
+                        : $"{(a.Health.Error.StartsWith("неверный") ? "⚠️" : "❌")} {a.Node.Node.DisplayName}: {a.Health.Error}")), false));
+        }
+
         var incidents = await store.IncidentsAsync();
         var now = DateTimeOffset.UtcNow;
         fields.Add(new($"📜 Падения за {RemnaStore.HistoryWindow.TotalHours:0}ч", incidents.Count == 0

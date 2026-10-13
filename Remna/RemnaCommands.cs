@@ -4,6 +4,7 @@ using Discord.Interactions;
 using DiscordTelegramFrontier;
 using sblngavnav6.Common;
 using sblngavnav6.Core;
+using sblngavnav6.Data;
 using sblngavnav6.Services;
 
 namespace sblngavnav6.Remna;
@@ -87,7 +88,8 @@ public class RemnaCommands : ModuleBase<SocketCommandContext>
         var scan = await _remna.ScanAsync(target.Node, current);
         var embed = scan.Ok
             ? RemnaPanelBuilder.BuildScanEmbed(_remna, target, current, scan.Data)
-            : await EmbedHandler.CreateErrorEmbed($"{RemnaPanelBuilder.Source}/сни", scan.Error);
+            : await EmbedHandler.CreateErrorEmbed($"{RemnaPanelBuilder.Source}/сни",
+                $"{RemnaWatchService.AgentName} на {target.Node.Address}:{Global.Vars.Cfg.remnaAgentPort}: {scan.Error}");
         await reply.ModifyAsync(properties => properties.Embed = embed);
     }
 

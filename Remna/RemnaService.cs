@@ -21,6 +21,7 @@ public sealed class RemnaService
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan AgentTimeout = TimeSpan.FromMinutes(3);
+    private static readonly TimeSpan AgentHealthTimeout = TimeSpan.FromSeconds(4);
     private static readonly TimeSpan HostsLifetime = TimeSpan.FromMinutes(10);
 
     private readonly ConcurrentDictionary<string, (DateTimeOffset At, RemnaResult<List<RemnaHost>> Result)> _hosts = new();
@@ -79,32 +80,40 @@ public sealed class RemnaService
         return result;
     }
 
-    public async Task<RemnaResult<RemnaScan>> ScanAsync(RemnaNode node, string current, CancellationToken cancellationToken = default)
+    public static bool AgentConfigured => !string.IsNullOrWhiteSpace(Global.Vars.Cfg.remnaAgentToken);
+
+    public Task<RemnaResult<RemnaScan>> ScanAsync(RemnaNode node, string current, CancellationToken cancellationToken = default)
+        => AgentAsync(node, $"/scan?top=10{(string.IsNullOrWhiteSpace(current) ? "" : $"&current={Uri.EscapeDataString(current)}")}",
+            AgentTimeout, RemnaJsonContext.Default.RemnaScan, cancellationToken);
+
+    public Task<RemnaResult<RemnaAgentHealth>> AgentHealthAsync(RemnaNode node, CancellationToken cancellationToken = default)
+        => AgentAsync(node, "/health", AgentHealthTimeout, RemnaJsonContext.Default.RemnaAgentHealth, cancellationToken);
+
+    private async Task<RemnaResult<T>> AgentAsync<T>(RemnaNode node, string route, TimeSpan timeout, JsonTypeInfo<T> typeInfo, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.remnaAgentToken))
-            return RemnaResult<RemnaScan>.Fail("не задан Remna:AgentToken");
+        if (!AgentConfigured)
+            return RemnaResult<T>.Fail("не задан Remna:AgentToken");
 
         var response = await CommonUtils.Web.SendAsync(
             _httpClientFactory, "RemnaAgent", new UriBuilder("http", node.Address, Global.Vars.Cfg.remnaAgentPort).Uri.ToString(),
-            HttpMethod.Get, $"/scan?top=10{(string.IsNullOrWhiteSpace(current) ? "" : $"&current={Uri.EscapeDataString(current)}")}",
-            AgentTimeout,
+            HttpMethod.Get, route, timeout,
             request => request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Global.Vars.Cfg.remnaAgentToken),
             cancellationToken);
 
         if (!response.Ok)
-            return RemnaResult<RemnaScan>.Fail(response.Status is null
-                ? $"{RemnaWatchService.AgentName} на {node.Address}:{Global.Vars.Cfg.remnaAgentPort} недоступен: {response.Error}"
-                : $"{RemnaWatchService.AgentName} ответил {response.Error}: {CommonUtils.Text.Truncate(response.Body, 200)}");
+            return RemnaResult<T>.Fail(response.Status is null ? $"недоступен: {response.Error}"
+                : response.Status == System.Net.HttpStatusCode.Unauthorized ? "неверный токен (401)"
+                : $"ответил {response.Error}");
 
         try
         {
-            return JsonSerializer.Deserialize(response.Body, RemnaJsonContext.Default.RemnaScan) is { } scan
-                ? new RemnaResult<RemnaScan>(scan, null)
-                : RemnaResult<RemnaScan>.Fail("агент вернул пустой ответ");
+            return JsonSerializer.Deserialize(response.Body, typeInfo) is { } data
+                ? new RemnaResult<T>(data, null)
+                : RemnaResult<T>.Fail("пустой ответ");
         }
         catch (JsonException ex)
         {
-            return RemnaResult<RemnaScan>.Fail($"Кривой JSON от агента: {ex.Message}");
+            return RemnaResult<T>.Fail($"кривой JSON: {ex.Message}");
         }
     }
 

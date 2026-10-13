@@ -13,6 +13,7 @@ namespace sblngavnav6.Remna;
 [JsonSerializable(typeof(RemnaState))]
 [JsonSerializable(typeof(RemnaEnvelope<List<RemnaHost>>))]
 [JsonSerializable(typeof(RemnaScan))]
+[JsonSerializable(typeof(RemnaAgentHealth))]
 internal partial class RemnaJsonContext : JsonSerializerContext { }
 
 public sealed record RemnaServer(int Index, string Name, string Url, string Token);
@@ -190,6 +191,14 @@ public sealed class RemnaHost
 public sealed class RemnaHostInbound
 {
     public string ConfigProfileInboundUuid { get; set; }
+}
+
+public sealed class RemnaAgentHealth
+{
+    public bool Ok { get; set; }
+    public string Name { get; set; }
+    public string Version { get; set; }
+    public int Domains { get; set; }
 }
 
 public sealed class RemnaScan
