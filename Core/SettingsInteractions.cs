@@ -21,7 +21,7 @@ namespace sblngavnav6.Core
 
             return EmbedHandler.Build(new EmbedSpec
             {
-                Title = $"⚙️ Настройки сервера — {guild.Name}",
+                Title = $"⚙️ Настройки сервера: {guild.Name}",
                 Description = note,
                 Color = Color.Teal,
                 Fields =
@@ -69,8 +69,8 @@ namespace sblngavnav6.Core
     {
         public string Title => "Welcome-текст";
 
-        [InputLabel("Текст (пусто = по умолчанию)")]
-        [ModalTextInput("value", TextInputStyle.Paragraph, "@user, добро пожаловать!", maxLength: 1000)]
+        [InputLabel("Текст, {user} = новичок, пусто = дефолт")]
+        [ModalTextInput("value", TextInputStyle.Paragraph, "{user}, добро пожаловать!", maxLength: 1000)]
         [RequiredInput(false)]
         public string Value { get; set; }
     }
@@ -147,7 +147,7 @@ namespace sblngavnav6.Core
             {
                 case "su":
                     if (id is null && Context.User is IGuildUser { GuildPermissions.Administrator: false })
-                        return "Сброс superuser-роли доступен только администратору сервера — иначе потеряешь доступ к панели";
+                        return "Сброс superuser-роли доступен только администратору сервера, иначе потеряешь доступ к панели";
                     await DataBase.SetSuperuserRole(gid, id);
                     return null;
 

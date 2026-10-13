@@ -30,6 +30,7 @@
     <Content Remove="TelegramExtensions\**" />
     <None Remove="TelegramExtensions\**" />
     <EmbeddedResource Remove="TelegramExtensions\**" />
+    <None Remove=".dockerignore;.editorconfig;.gitignore;.gitmodules;Dockerfile;docker-compose.yml;install.sh;README.md;sbln.sh;sblnproto.sh;agent\**;config\**;.github\**" />
   </ItemGroup>
 
   <ItemGroup>

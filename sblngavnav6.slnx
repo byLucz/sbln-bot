@@ -7,6 +7,32 @@
   <Folder Name="/external/">
     <Project Path="external/DTF/DTF.csproj" />
   </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".dockerignore" />
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path=".gitmodules" />
+    <File Path="Directory.Build.props" />
+    <File Path="Dockerfile" />
+    <File Path="docker-compose.yml" />
+    <File Path="install.sh" />
+    <File Path="README.md" />
+    <File Path="sbln.sh" />
+    <File Path="sblnproto.sh" />
+  </Folder>
+  <Folder Name="/Solution Items/.github/">
+    <File Path=".github/workflows/release.yml" />
+  </Folder>
+  <Folder Name="/Solution Items/agent/">
+    <File Path="agent/domains.txt" />
+    <File Path="agent/ragent-clean.sh" />
+    <File Path="agent/ragent.py" />
+    <File Path="agent/ragent.sh" />
+  </Folder>
+  <Folder Name="/Solution Items/config/">
+    <File Path="config/config.example.json" />
+    <File Path="config/config-proto.example.json" />
+  </Folder>
   <Project Path="sblngavnav6.csproj" />
   <Project Path="TelegramExtensions/TelegramExtensions.csproj" />
 </Solution>

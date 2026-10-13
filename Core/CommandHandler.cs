@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.Commands;
+using Discord.Net;
 using Discord.WebSocket;
 using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
@@ -211,25 +212,33 @@ namespace sblngavnav6.Core
             if (!string.IsNullOrWhiteSpace(attachmentLinks))
                 fields.Add(new EmbedFieldSpec("Вложения", attachmentLinks));
 
-            await sender.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+            var delivered = true;
+            try
             {
-                Title = "📬 Ответ на почту",
-                Description = text,
-                Color = route.IsAnonymous ? Color.DarkGrey : Color.Blue,
-                Fields = fields,
-                Footer = footer
-            }));
+                await sender.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+                {
+                    Title = "📬 Ответ на почту",
+                    Description = text,
+                    Color = route.IsAnonymous ? Color.DarkGrey : Color.Blue,
+                    Fields = fields,
+                    Footer = footer
+                }));
+            }
+            catch (HttpException ex) when (ex.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
+            {
+                delivered = false;
+            }
 
             await message.Channel.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
-                Description = "✅ Ответ отправлен",
-                Color = Color.Green,
+                Description = delivered ? "✅ Ответ отправлен" : "❌ Не доставлено, у отправителя закрыты ЛС",
+                Color = delivered ? Color.Green : Color.Red,
                 Footer = footer
             }));
 
             await LoggingService.LogInformationAsync(
                 "XMAIL",
-                $"REPLY anonymous={route.IsAnonymous} sender={route.SenderId} recipient={route.RecipientId} replier={message.Author.Id} contentLength={message.Content.Length} attachments={message.Attachments.Count}");
+                $"REPLY delivered={delivered} anonymous={route.IsAnonymous} sender={route.SenderId} recipient={route.RecipientId} replier={message.Author.Id} contentLength={message.Content.Length} attachments={message.Attachments.Count}");
 
             return true;
         }

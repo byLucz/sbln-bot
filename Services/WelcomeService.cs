@@ -49,7 +49,9 @@ namespace sblngavnav6.Services
             await channel.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
             {
                 Title = user.Guild.Name,
-                Description = string.IsNullOrWhiteSpace(gs.WelcomeMessage) ? $"{user.Mention}, добро пожаловать!" : gs.WelcomeMessage,
+                Description = string.IsNullOrWhiteSpace(gs.WelcomeMessage)
+                    ? $"{user.Mention}, добро пожаловать!"
+                    : gs.WelcomeMessage.Replace("{user}", user.Mention, StringComparison.OrdinalIgnoreCase),
                 Color = Color.Green,
                 ThumbnailUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
             }));

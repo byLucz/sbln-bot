@@ -48,7 +48,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     public Task ChangeLog() => ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
     {
         Description =
-            $"{Format.Bold($"devlog {Versioning.Full}")} — Финальный кумулятивный патч перед переездом на .NET 10\n" +
+            $"{Format.Bold($"devlog {Versioning.Full}")}: Финальный кумулятивный патч перед переездом на .NET 10\n" +
             $"• AudioSeven: починка плейлистов/миксов, поиск по всем источникам + умные варианты, реакция шафл → команда {Format.Bold("перемешай")}\n" +
             $"• Ограничение голосования до 50 вариантов, фикс-таймер, появилась возможность скипнуть перечисления\n" +
             $"• Говорилка обновлена до версии 1.7, фиксы core/edge-кейсов\n" +
@@ -223,7 +223,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         var embed = EmbedHandler.Build(new EmbedSpec
         {
             Title = $"ℹ️ {guild.Name}",
-            Description = string.IsNullOrWhiteSpace(guild.Description) ? "—" : guild.Description,
+            Description = string.IsNullOrWhiteSpace(guild.Description) ? "-" : guild.Description,
             Color = Color.Blue,
             ThumbnailUrl = guild.IconUrl,
             Footer = "sbln инфа🔭",
@@ -294,7 +294,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         var description = versions.Count == 0
             ? "пока пусто"
-            : string.Join("\n", versions.Select(version => $"{version.Version} — *{version.Date:yyyy-MM-dd}*"));
+            : string.Join("\n", versions.Select(version => $"{version.Version} - *{version.Date:yyyy-MM-dd}*"));
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
@@ -591,7 +591,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             Color = Color.DarkGreen
         }));
 
-        await ReminderService.RemindAsyncSeconds(Context.User, seconds, remindMsg);
+        await ReminderService.RemindAsyncSeconds(Context.User, Context.Channel, seconds, remindMsg);
     }
 
     [Command("ембед")]

@@ -276,6 +276,8 @@ namespace sblngavnav6.Common
 
             public sealed record ApiResponse(bool Ok, System.Net.HttpStatusCode? Status, string Body, string Error)
             {
+                public HttpRequestError? Failure { get; init; }
+
                 public static ApiResponse Fail(string error) => new(false, null, null, error);
             }
 
@@ -317,7 +319,7 @@ namespace sblngavnav6.Common
                 }
                 catch (HttpRequestException ex)
                 {
-                    return ApiResponse.Fail($"Запрос не дошёл: {ex.Message}");
+                    return ApiResponse.Fail($"Запрос не дошёл: {ex.Message}") with { Failure = ex.HttpRequestError };
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {

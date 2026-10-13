@@ -2,6 +2,7 @@ using sblngavnav6.Common;
 using sblngavnav6.Data;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -98,15 +99,24 @@ public sealed class RemnaService
         if (!AgentConfigured)
             return RemnaResult<T>.Fail("не задан Remna:AgentToken");
 
+        var baseUri = new UriBuilder("http", node.Address, Global.Vars.Cfg.remnaAgentPort).Uri;
         var response = await CommonUtils.Web.SendAsync(
-            _httpClientFactory, "RemnaAgent", new UriBuilder("http", node.Address, Global.Vars.Cfg.remnaAgentPort).Uri.ToString(),
+            _httpClientFactory, "RemnaAgent", baseUri.ToString(),
             HttpMethod.Get, route, timeout,
-            request => request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Global.Vars.Cfg.remnaAgentToken),
+            request =>
+            {
+                var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+                var path = new Uri(baseUri, route).GetComponents(UriComponents.PathAndQuery, UriFormat.UriEscaped);
+                var sig = HMACSHA256.HashData(Encoding.UTF8.GetBytes(Global.Vars.Cfg.remnaAgentToken), Encoding.UTF8.GetBytes($"GET\n{path}\n{ts}"));
+                request.Headers.Add("X-Ragent-Ts", ts);
+                request.Headers.Add("X-Ragent-Sig", Convert.ToHexStringLower(sig));
+            },
             cancellationToken);
 
         if (!response.Ok)
-            return RemnaResult<T>.Fail(response.Status is null ? $"недоступен: {response.Error}"
-                : response.Status == System.Net.HttpStatusCode.Unauthorized ? "неверный токен (401)"
+            return RemnaResult<T>.Fail(response.Failure == HttpRequestError.ResponseEnded ? "неверный токен, сбиты часы или агент не обновлён (сброс соединения)"
+                : response.Status is null ? $"недоступен: {response.Error}"
+                : response.Status == System.Net.HttpStatusCode.Conflict ? "скан уже идёт, подожди пару минут"
                 : $"ответил {response.Error}");
 
         try

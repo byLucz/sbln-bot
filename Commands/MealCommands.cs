@@ -52,8 +52,8 @@ namespace sblngavnav6.Commands
 
             var ruName = await TranslateAsync(meal.strMeal ?? string.Empty);
             var ruInstr = await TranslateAsync(meal.strInstructions ?? string.Empty);
-            var ruCat = await TranslateAsync(meal.strCategory ?? "—");
-            var ruKitchen = await TranslateAsync(meal.strArea ?? "—");
+            var ruCat = await TranslateAsync(meal.strCategory ?? string.Empty);
+            var ruKitchen = await TranslateAsync(meal.strArea ?? string.Empty);
 
             var ingredients = BuildIngredients(meal).Take(25).ToList();
             var ruIngredients = await TranslateListAsync(ingredients);
@@ -61,8 +61,8 @@ namespace sblngavnav6.Commands
 
             var fields = new List<EmbedFieldSpec>
             {
-                new("Категория", string.IsNullOrWhiteSpace(ruCat) ? "—" : ruCat, true),
-                new("Кухня", string.IsNullOrWhiteSpace(ruKitchen) ? "—" : ruKitchen, true)
+                new("Категория", string.IsNullOrWhiteSpace(ruCat) ? "-" : ruCat, true),
+                new("Кухня", string.IsNullOrWhiteSpace(ruKitchen) ? "-" : ruKitchen, true)
             };
 
             if (!string.IsNullOrWhiteSpace(ingredientsStr))

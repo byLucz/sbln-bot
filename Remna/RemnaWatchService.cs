@@ -131,6 +131,9 @@ public sealed class RemnaWatchService
             if (++api.Fails == FailThreshold)
             {
                 api.Alerted = true;
+                if (await _store.HasOpenIncidentAsync(server, null))
+                    return;
+
                 await _store.OpenIncidentAsync(new RemnaIncident { Server = server.Url, Node = $"API {server.Name}", Message = result.Error, Start = api.Since });
                 await AlertAsync($"❌ API Remnawave {server.Name} не отвечает", server, detail: result.Error, sinceLabel: "падает с", since: api.Since);
             }
@@ -154,11 +157,14 @@ public sealed class RemnaWatchService
             if (node.IsDisabled || node.IsConnected)
             {
                 var incident = await _store.CloseIncidentAsync(server, node.Uuid, now);
+                var downtime = $"простой {CommonUtils.Time.FormatAge(now - (incident?.Start ?? state?.Since ?? now))}";
                 if (state is { Alerted: true } || incident is not null)
-                    await AlertAsync($"✅ {node.DisplayName} снова в строю", server,
-                        detail: node.IsDisabled
-                            ? "нода выключена вручную"
-                            : $"простой {CommonUtils.Time.FormatAge(now - (incident?.Start ?? state.Since))}");
+                {
+                    if (!node.IsDisabled)
+                        await AlertAsync($"✅ {node.DisplayName} снова в строю", server, detail: downtime);
+                    else if (await _store.MaintenanceAsync(server, node.Uuid) is null)
+                        await AlertAsync($"⏸️ {node.DisplayName} выключена вручную, инцидент закрыт", server, detail: downtime);
+                }
 
                 _nodes.Remove(key);
                 continue;

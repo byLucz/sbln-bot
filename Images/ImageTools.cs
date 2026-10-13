@@ -9,6 +9,7 @@ namespace sblngavnav6.Images
         public const int MaxSourceBytes = 8 * 1024 * 1024;
         public const int MaxSide = 1600;
         public const long MaxPixels = 40_000_000;
+        private static readonly TimeSpan ProcessTimeout = TimeSpan.FromSeconds(60);
 
         public static readonly SKSamplingOptions Smooth = new(SKFilterMode.Linear, SKMipmapMode.Linear);
 
@@ -180,16 +181,31 @@ namespace sblngavnav6.Images
                 psi.ArgumentList.Add(argument);
 
             using var process = Process.Start(psi) ?? throw new InvalidOperationException("tesseract не запустился");
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(ProcessTimeout);
 
-            var reading = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var errors = process.StandardError.ReadToEndAsync(cancellationToken);
+            string text, error;
+            try
+            {
+                var reading = process.StandardOutput.ReadToEndAsync(cts.Token);
+                var errors = process.StandardError.ReadToEndAsync(cts.Token);
 
-            await using (var input = process.StandardInput.BaseStream)
-                await input.WriteAsync(image, cancellationToken).ConfigureAwait(false);
+                await using (var input = process.StandardInput.BaseStream)
+                    await input.WriteAsync(image, cts.Token).ConfigureAwait(false);
 
-            var text = await reading.ConfigureAwait(false);
-            var error = await errors.ConfigureAwait(false);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                text = await reading.ConfigureAwait(false);
+                error = await errors.ConfigureAwait(false);
+                await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new InvalidOperationException($"tesseract не уложился в {ProcessTimeout.TotalSeconds:0}с");
+            }
+            finally
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException) { }
+            }
 
             if (process.ExitCode != 0)
                 throw new InvalidOperationException($"tesseract завершился с кодом {process.ExitCode}: {error.Trim()}");
@@ -272,24 +288,39 @@ namespace sblngavnav6.Images
 
             using var process = Process.Start(psi) ?? throw new InvalidOperationException("ffmpeg не запустился");
             using var output = new MemoryStream();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(ProcessTimeout);
 
-            var reading = process.StandardOutput.BaseStream.CopyToAsync(output, cancellationToken);
-            var errors = process.StandardError.ReadToEndAsync(cancellationToken);
-
-            var buffer = new byte[width * height * 4];
-
-            await using (var input = process.StandardInput.BaseStream)
+            string error;
+            try
             {
-                foreach (var frame in frames)
-                {
-                    frame.GetPixelSpan().CopyTo(buffer);
-                    await input.WriteAsync(buffer, cancellationToken).ConfigureAwait(false);
-                }
-            }
+                var reading = process.StandardOutput.BaseStream.CopyToAsync(output, cts.Token);
+                var errors = process.StandardError.ReadToEndAsync(cts.Token);
 
-            await reading.ConfigureAwait(false);
-            var error = await errors.ConfigureAwait(false);
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                var buffer = new byte[width * height * 4];
+
+                await using (var input = process.StandardInput.BaseStream)
+                {
+                    foreach (var frame in frames)
+                    {
+                        frame.GetPixelSpan().CopyTo(buffer);
+                        await input.WriteAsync(buffer, cts.Token).ConfigureAwait(false);
+                    }
+                }
+
+                await reading.ConfigureAwait(false);
+                error = await errors.ConfigureAwait(false);
+                await process.WaitForExitAsync(cts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new InvalidOperationException($"ffmpeg не уложился в {ProcessTimeout.TotalSeconds:0}с");
+            }
+            finally
+            {
+                try { if (!process.HasExited) process.Kill(entireProcessTree: true); }
+                catch (InvalidOperationException) { }
+            }
 
             if (process.ExitCode != 0)
                 throw new InvalidOperationException($"ffmpeg завершился с кодом {process.ExitCode}: {error.Trim()}");
