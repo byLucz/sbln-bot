@@ -6,5 +6,5 @@ public sealed record TelegramHelpSection(string Title, IReadOnlyList<TelegramHel
 
 public interface ITelegramHelpSource
 {
-    IReadOnlyList<TelegramHelpSection> Sections { get; }
+    IReadOnlyList<TelegramHelpSection> GetSections(long chatId, long? userId);
 }

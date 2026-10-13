@@ -12,7 +12,7 @@ public sealed class HelpModule : TelegramModuleBase
     [Alias("помоги", "помощь", "хелп")]
     public async Task HelpAsync()
     {
-        var sections = Context.Services.GetService<ITelegramHelpSource>()?.Sections;
+        var sections = Context.Services.GetService<ITelegramHelpSource>()?.GetSections(Context.Chat.Id, Context.User?.Id);
 
         if (sections is not { Count: > 0 })
         {
