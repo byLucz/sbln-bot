@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -14,7 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 NAME = "R-WATCHER agent for sbln-bot"
-VERSION = "1.2"
+VERSION = "1.3"
 TOKEN = os.environ.get("RAGENT_TOKEN", "")
 PORT = int(os.environ.get("RAGENT_PORT", "8687"))
 TIMEOUT = float(os.environ.get("RAGENT_TIMEOUT", "4"))
@@ -26,6 +28,8 @@ FINALISTS = 40
 CLEAN_START = 15
 CLEAN_WAIT = 300
 CLEAN_LOCK = threading.Lock()
+SCAN_LOCK = threading.Lock()
+SKEW = 60
 
 CONTEXT = ssl.create_default_context()
 CONTEXT.minimum_version = ssl.TLSVersion.TLSv1_2
@@ -102,6 +106,15 @@ def score(r):
 
 
 def scan(current, top):
+    if not SCAN_LOCK.acquire(blocking=False):
+        return None
+    try:
+        return run_scan(current, top)
+    finally:
+        SCAN_LOCK.release()
+
+
+def run_scan(current, top):
     domains = load_domains()
     if current:
         domains = [current] + [d for d in domains if d != current]
@@ -154,12 +167,18 @@ def clean():
         return {"ok": False, "error": "очистка не уложилась в 5 минут, смотри: journalctl -u ragent-clean"}
 
 
-class Handler(BaseHTTPRequestHandler):
-    server_version = "ragent/" + VERSION
+def signed(method, path, ts, sig):
+    if not TOKEN or not ts or not sig or not ts.isdigit() or abs(time.time() - int(ts)) > SKEW:
+        return False
+    expected = hmac.new(TOKEN.encode(), f"{method}\n{path}\n{ts}".encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig.lower())
 
+
+class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if not TOKEN or self.headers.get("Authorization") != f"Bearer {TOKEN}":
-            return self.reply(401, {"error": "unauthorized"})
+        if not signed("GET", self.path, self.headers.get("X-Ragent-Ts"), self.headers.get("X-Ragent-Sig")):
+            self.close_connection = True
+            return
         url = urlparse(self.path)
         query = parse_qs(url.query)
         if url.path == "/health":
@@ -171,16 +190,20 @@ class Handler(BaseHTTPRequestHandler):
             current = (query.get("current") or [""])[0].strip().lower() or None
             raw = (query.get("top") or ["10"])[0]
             top = max(1, min(int(raw) if raw.isdigit() else 10, 50))
-            return self.reply(200, scan(current, top))
+            result = scan(current, top)
+            return self.reply(200, result) if result else self.reply(409, {"error": "скан уже идёт"})
         return self.reply(404, {"error": "not found"})
 
     def reply(self, status, payload):
         body = json.dumps(payload, ensure_ascii=False).encode()
-        self.send_response(status)
+        self.send_response_only(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def send_error(self, code, message=None, explain=None):
+        self.close_connection = True
 
     def log_message(self, fmt, *args):
         pass

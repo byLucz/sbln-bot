@@ -12,9 +12,11 @@ branch=${branch:-proto}
 RAW=${RAGENT_RAW:-https://raw.githubusercontent.com/byLucz/sblngavna/$branch/agent}
 
 health() {
-  local token port
+  local token port path ts sig
   token=$(setting RAGENT_TOKEN); port=$(setting RAGENT_PORT)
-  curl -fsS -H "Authorization: Bearer $token" "http://127.0.0.1:${port:-8687}/${1:-health}"
+  path="/${1:-health}"; ts=$(date +%s)
+  sig=$(python3 -c 'import hashlib, hmac, sys; print(hmac.new(sys.argv[1].encode(), sys.argv[2].encode(), hashlib.sha256).hexdigest())' "$token" "GET"$'\n'"$path"$'\n'"$ts")
+  curl -fsS -H "X-Ragent-Ts: $ts" -H "X-Ragent-Sig: $sig" "http://127.0.0.1:${port:-8687}$path"
 }
 
 install_agent() {
