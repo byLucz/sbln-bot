@@ -27,7 +27,7 @@ public static class RemnaPanelBuilder
         var resources = stats is null || total <= 0
             ? "🧠 RAM: нет данных"
             : $"🧠 RAM {CommonUtils.Text.Bytes(stats.MemoryUsed)}/{CommonUtils.Text.Bytes(total)} ({stats.MemoryUsed / total * 100:0}%)"
-              + (stats.LoadAvg is { Count: > 0 } load ? $", ⚙️ load {load[0].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}/{node.System.Info?.Cpus ?? 0}" : "");
+              + (stats.LoadAvg is { Count: > 0 } load ? (node.System.Info?.Cpus is > 0 and var cpus ? $", ⚙️ load {load[0] / cpus * 100:0}%" : $", ⚙️ load {load[0].ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}") : "");
 
         var online = $"👥 онлайн: {node.UsersOnline ?? 0}"
             + (node.IsConnected && node.XrayUptime is > 0 ? $", ⏱️ аптайм: {CommonUtils.Time.FormatAge(TimeSpan.FromSeconds(node.XrayUptime.Value))}" : "");
@@ -52,7 +52,7 @@ public static class RemnaPanelBuilder
     }
 
     private static string Title(RemnaService remna, RemnaNodeRef item, RemnaMaintenance maintenance)
-        => $"{Status(item.Node, maintenance)} {item.Node.Name} {item.Node.CountryCode}{(remna.Multi ? $" / {item.Server.Name}" : "")}";
+        => $"{Status(item.Node, maintenance)} {item.Node.DisplayName}{(remna.Multi ? $" / {item.Server.Name}" : "")}";
 
     private static RemnaMaintenance Find(List<RemnaMaintenance> maintenance, RemnaNodeRef item)
         => maintenance.FirstOrDefault(m => m.Server == item.Server.Url && m.Uuid == item.Node.Uuid);
@@ -251,7 +251,7 @@ public static class RemnaPanelBuilder
 
         return EmbedHandler.Build(new EmbedSpec
         {
-            AuthorName = $"Скан SNI: {target.Node.Name} {target.Node.CountryCode}{(remna.Multi ? $" / {target.Server.Name}" : "")}",
+            AuthorName = $"Скан SNI: {target.Node.DisplayName}{(remna.Multi ? $" / {target.Server.Name}" : "")}",
             Description = string.Join("\n", lines),
             Color = mine is { Ok: true } ? Color.Green : Color.Orange,
             Fields =

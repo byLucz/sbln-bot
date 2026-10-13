@@ -1,3 +1,4 @@
+using sblngavnav6.Common;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -51,6 +52,10 @@ public sealed class RemnaNode
     public double? TrafficUsedBytes { get; set; }
     public double? TrafficLimitBytes { get; set; }
     public string CountryCode { get; set; }
+
+    public string DisplayName => CommonUtils.Text.Flag(CountryCode) is { Length: > 0 } flag && Name?.Contains(flag) != true
+        ? $"{flag} {Name}"
+        : Name;
     public int? UsersOnline { get; set; }
     public int? NotifyPercent { get; set; }
     public double? XrayUptime { get; set; }

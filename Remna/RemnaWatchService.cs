@@ -74,7 +74,7 @@ public sealed class RemnaWatchService
             Since = DateTimeOffset.UtcNow
         });
 
-        await AlertAsync($"🛠 {node.Name} {node.CountryCode} ушла на тех. работы", server,
+        await AlertAsync($"🛠 {node.DisplayName} ушла на тех. работы", server,
             detail: $"{message}\nот {by}");
         return null;
     }
@@ -86,7 +86,7 @@ public sealed class RemnaWatchService
             return enabled.Error;
 
         var entry = await _store.EndMaintenanceAsync(server, node.Uuid);
-        await AlertAsync($"✅ {node.Name} {node.CountryCode}: тех. работы завершены", server,
+        await AlertAsync($"✅ {node.DisplayName}: тех. работы завершены", server,
             detail: entry is null
                 ? $"от {by}"
                 : $"{entry.Message}\nдлились {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - entry.Since)}, завершил {by}");
@@ -157,7 +157,7 @@ public sealed class RemnaWatchService
             {
                 var incident = await _store.CloseIncidentAsync(server, node.Uuid, now);
                 if (state is { Alerted: true } || incident is not null)
-                    await AlertAsync($"✅ {node.Name} {node.CountryCode} снова в строю", server,
+                    await AlertAsync($"✅ {node.DisplayName} снова в строю", server,
                         detail: node.IsDisabled
                             ? "нода выключена вручную"
                             : $"простой {CommonUtils.Time.FormatAge(now - (incident?.Start ?? state.Since))}, онлайн: {node.UsersOnline ?? 0}");
@@ -177,7 +177,7 @@ public sealed class RemnaWatchService
                     continue;
 
                 await _store.OpenIncidentAsync(new RemnaIncident { Server = server.Url, Uuid = node.Uuid, Node = node.Name, Message = message, Start = state.Since });
-                await AlertAsync($"🔴 {node.Name} {node.CountryCode} упала", server,
+                await AlertAsync($"🔴 {node.DisplayName} упала", server,
                     address: node.Address,
                     detail: $"⚠️ {message}",
                     sinceLabel: "лежит с",

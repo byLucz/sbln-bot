@@ -140,6 +140,11 @@ namespace sblngavnav6.Common
             public static string Percent(double value, int digits) =>
                 (value * 100).ToString($"0.{new string('0', digits)}", System.Globalization.CultureInfo.InvariantCulture) + "%";
 
+            public static string Flag(string? countryCode)
+                => countryCode is { Length: 2 } code && code.All(char.IsAsciiLetter)
+                    ? string.Concat(code.ToUpperInvariant().Select(c => char.ConvertFromUtf32(0x1F1E6 + c - 'A')))
+                    : "";
+
             public static string Bytes(double bytes)
             {
                 string[] units = ["B", "KB", "MB", "GB", "TB", "PB"];
