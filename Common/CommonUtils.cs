@@ -228,6 +228,37 @@ namespace sblngavnav6.Common
 
         public static class Web
         {
+            private static readonly (string Brief, string[] Markers)[] Errors =
+            [
+                ("отказ в соединении", ["econnrefused", "connection refused", "отверг"]),
+                ("таймаут", ["etimedout", "timeout", "timed out", "таймаут"]),
+                ("хост недоступен", ["ehostunreach", "enetunreach", "no route to host", "host unreachable", "network is unreachable"]),
+                ("DNS не резолвит", ["enotfound", "getaddrinfo", "name or service not known", "no such host", "eai_again"]),
+                ("соединение сброшено", ["econnreset", "socket hang up", "connection reset", "broken pipe"]),
+                ("сертификат истёк", ["certificate has expired", "сертификат истёк"]),
+                ("сертификат не для домена", ["altnames", "does not match", "сертификат не для"]),
+                ("недоверенный сертификат", ["self signed", "self-signed", "unable to verify", "недоверенная"]),
+                ("старая версия ноды", ["required info is missing", "outdated version"]),
+                ("ошибка QUIC", ["quic"])
+            ];
+
+            private static readonly System.Text.RegularExpressions.Regex HttpStatus =
+                new(@"\bHTTP\s*(\d{3})\b", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            public static string BriefError(string? error, int max = 24)
+            {
+                if (string.IsNullOrWhiteSpace(error))
+                    return "-";
+
+                foreach (var (brief, markers) in Errors)
+                    if (markers.Any(marker => error.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+                        return brief;
+
+                return HttpStatus.Match(error) is { Success: true } http
+                    ? $"HTTP {http.Groups[1].Value}"
+                    : Text.FirstMeaningfulLine(error, "-", max);
+            }
+
             public sealed record ApiResponse(bool Ok, System.Net.HttpStatusCode? Status, string Body, string Error)
             {
                 public static ApiResponse Fail(string error) => new(false, null, null, error);
