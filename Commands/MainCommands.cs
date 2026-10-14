@@ -244,7 +244,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             Title = "🏆 все версии сыночка",
             Description = last is null
                 ? "пока пусто"
-                : $"версий: **{versions.Count}**, с **{versions.Min(version => version.Date.Year)}** года\nпоследняя **v{last.Version}**, {Stamp(last.Date, 'R')}",
+                : $"Выпущено версий: **{versions.Count}**\nПоследняя **v{last.Version}** ({Stamp(last.Date, 'R')})",
             Fields = fields,
             ThumbnailUrl = "https://sun9-15.userapi.com/impg/c857332/v857332436/15bc51/aBM7tGgnmY0.jpg?size=640x640&quality=96&sign=4ea7c6c8b39104be3a21ae7033cc0283&type=album",
             Footer = EmbedHandler.DevFooter,
