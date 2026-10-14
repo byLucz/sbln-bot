@@ -81,6 +81,7 @@ namespace sblngavnav6.Core
                 _client.Log += LogAsync;
                 _client.Ready += OnReadyAsync;
                 _client.Disconnected += OnDisconnectedAsync;
+                _client.PresenceUpdated += OnPresenceUpdatedAsync;
                 _client.Connected += OnConnectedAsync;
 
                 _commandHandler = _services.GetRequiredService<CommandHandler>();
@@ -178,6 +179,7 @@ namespace sblngavnav6.Core
                 {
                     _client.Ready -= OnReadyAsync;
                     _client.Disconnected -= OnDisconnectedAsync;
+                    _client.PresenceUpdated -= OnPresenceUpdatedAsync;
                     _client.Connected -= OnConnectedAsync;
                 }
 
@@ -334,6 +336,8 @@ namespace sblngavnav6.Core
             catch (ObjectDisposedException) { }
             cts.Dispose();
         }
+
+        private Task OnPresenceUpdatedAsync(SocketUser user, SocketPresence before, SocketPresence after) => Task.CompletedTask;
 
         private void SetReady(bool value)
         {
