@@ -403,7 +403,7 @@ namespace sblngavnav6.Audio8
         public string SearchPrefix { get; set; }
     }
 
-    internal sealed class Audio8Persistence
+    internal sealed class Audio8Persistence : IDisposable
     {
         private const string FileName = "audio8-state.json";
         private const int MaxStoredTracks = 500;
@@ -418,6 +418,8 @@ namespace sblngavnav6.Audio8
         public DateTimeOffset? LastSavedAtUtc { get; private set; }
 
         public int LastSavedGuilds { get; private set; }
+
+        public void Dispose() => _gate.Dispose();
 
         public async Task SaveAsync(Audio8State state, CancellationToken cancellationToken = default)
         {

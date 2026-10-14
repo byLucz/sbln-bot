@@ -11,7 +11,7 @@ using static sblngavnav6.Common.CommonUtils.Text;
 
 namespace sblngavnav6.GVR
 {
-    public sealed class GVRMessagesHandler
+    public sealed class GVRMessagesHandler : IDisposable
     {
         private const int DemotivatorChance = 50;
 
@@ -40,6 +40,8 @@ namespace sblngavnav6.GVR
             _db = db;
             _httpClientFactory = httpClientFactory;
         }
+
+        public void Dispose() => _modelGate.Dispose();
 
         public async Task<(int Added, int Images, int Scanned, int Removed, int Total)> CollectAsync(
             IMessageChannel channel, int count, CancellationToken cancellationToken = default)

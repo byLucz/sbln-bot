@@ -332,7 +332,7 @@ namespace sblngavnav6.PPM
             ObjectDisposedException.ThrowIf(_disposed, this);
             if (!Global.Vars.Cfg.ppmEnabled || _sweeperCts != null) return Task.CompletedTask;
             _sweeperCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _sweeperTask = Task.Run(() => SweepLoopAsync(_sweeperCts.Token));
+            _sweeperTask = Task.Run(() => SweepLoopAsync(_sweeperCts.Token), _sweeperCts.Token);
             return Task.CompletedTask;
         }
 

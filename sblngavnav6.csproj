@@ -51,6 +51,7 @@
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.9" />
     <PackageReference Include="MySqlConnector" Version="2.6.0" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     <PackageReference Include="TwitchLib.Api" Version="3.10.2" />
   </ItemGroup>
 

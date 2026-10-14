@@ -4,7 +4,7 @@ using System.Text.Json;
 
 namespace sblngavnav6.Remna;
 
-public sealed class RemnaStore
+public sealed class RemnaStore : IDisposable
 {
     public static readonly TimeSpan HistoryWindow = TimeSpan.FromHours(24);
 
@@ -13,6 +13,8 @@ public sealed class RemnaStore
         Environment.GetEnvironmentVariable("SBLN_DATA_DIR") is { Length: > 0 } dir ? dir : AppContext.BaseDirectory,
         "remna.json");
     private RemnaState _state;
+
+    public void Dispose() => _gate.Dispose();
 
     public async Task<RemnaMaintenance> MaintenanceAsync(RemnaServer server, string uuid)
         => await ReadAsync(state => state.Maintenance.FirstOrDefault(m => m.Server == server.Url && m.Uuid == uuid));

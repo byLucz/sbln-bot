@@ -369,6 +369,7 @@ namespace sblngavnav6.TwitchService
         {
             if (_disposed) return;
             _disposed = true;
+            GC.SuppressFinalize(this);
 
             var monitor = _liveStreamMonitor;
             if (monitor == null) return;

@@ -1,6 +1,8 @@
 ﻿using Discord;
 using sblngavnav6.Common;
 
+namespace sblngavnav6.Services;
+
 public static class HelpEmbedService
 {
     private const string AuthorIcon = "https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png";
