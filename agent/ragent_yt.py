@@ -22,11 +22,12 @@ CREDENTIALS = os.environ.get("CREDENTIALS_DIRECTORY")
 COOKIES_SOURCE = Path(CREDENTIALS) / "cookies" if CREDENTIALS else None
 COOKIES = CACHE.parent / "cookies.txt"
 SKEW = 60
-RESOLVE_TIMEOUT = 40
 DOWNLOAD_TIMEOUT = 120
 CHUNK = 64 * 1024
 VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 TYPES = {".webm": "audio/webm", ".m4a": "audio/mp4", ".opus": "audio/ogg", ".mp3": "audio/mpeg"}
+AUDIO_FORMAT = "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio"
+YTDLP_VERSION = None
 WORKERS = threading.BoundedSemaphore(2)
 DOWNLOADS = {}
 DOWNLOADS_LOCK = threading.Lock()
@@ -85,31 +86,40 @@ def download(video):
         if (found := cached(video)) is not None:
             found.touch()
             return found
-        CACHE.mkdir(parents=True, exist_ok=True)
-        result = ytdlp(["-f", "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio", "-o", str(CACHE / "%(id)s.%(ext)s"),
-                        f"https://www.youtube.com/watch?v={video}"], DOWNLOAD_TIMEOUT)
-        for part in CACHE.glob(f"{video}.*.part"):
-            part.unlink(missing_ok=True)
-        if result.returncode != 0:
-            raise RuntimeError(last_line(result.stderr) or "yt-dlp не скачал трек")
-        trim_cache()
+        try:
+            fetch(f"https://www.youtube.com/watch?v={video}", "yt-dlp не скачал трек")
+        finally:
+            drop_parts(video)
         if (found := cached(video)) is None:
             raise RuntimeError("yt-dlp не оставил файл")
         return found
 
 
+def drop_parts(video):
+    for part in CACHE.glob(f"{video}.*.part"):
+        part.unlink(missing_ok=True)
+
+
+def fetch(target, failure):
+    CACHE.mkdir(parents=True, exist_ok=True)
+    result = ytdlp(["--dump-json", "--no-simulate", "-f", AUDIO_FORMAT, "-o", str(CACHE / "%(id)s.%(ext)s"), target],
+                   DOWNLOAD_TIMEOUT)
+    if result.returncode != 0:
+        raise RuntimeError(last_line(result.stderr) or failure)
+    trim_cache()
+    lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
+    return json.loads(lines[-1]) if lines else {}
+
+
 def resolve(query):
     target = query if re.match(r"^https?://", query) else f"ytsearch1:{query}"
-    result = ytdlp(["--dump-single-json", "--skip-download", target], RESOLVE_TIMEOUT)
-    if result.returncode != 0:
-        raise RuntimeError(last_line(result.stderr) or "yt-dlp не нашёл трек")
-    info = json.loads(result.stdout)
-    if info.get("_type") == "playlist":
-        info = next(iter(info.get("entries") or []), None) or {}
+    info = fetch(target, "yt-dlp не нашёл трек")
     video = info.get("id") or ""
     if not VIDEO_ID.match(video):
         raise RuntimeError("ничего не нашлось")
-    download(video)
+    drop_parts(video)
+    if cached(video) is None:
+        raise RuntimeError("yt-dlp не оставил файл")
     return {"id": video, "title": info.get("title"), "uploader": info.get("uploader") or info.get("channel"),
             "duration": info.get("duration"), "thumbnail": info.get("thumbnail"),
             "url": info.get("webpage_url") or f"https://www.youtube.com/watch?v={video}"}
@@ -120,11 +130,12 @@ def last_line(text):
     return lines[-1][:300] if lines else ""
 
 
-def version():
+def detect_version():
+    global YTDLP_VERSION
     try:
-        return subprocess.run([YTDLP, "--version"], capture_output=True, text=True, timeout=10).stdout.strip()
+        YTDLP_VERSION = subprocess.run([YTDLP, "--version"], capture_output=True, text=True, timeout=30).stdout.strip() or None
     except (OSError, subprocess.TimeoutExpired):
-        return None
+        YTDLP_VERSION = None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -141,7 +152,7 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url.path == "/health":
             size = sum(p.stat().st_size for p in CACHE.glob("*") if p.is_file()) if CACHE.exists() else 0
-            return self.reply(200, {"ok": True, "version": VERSION, "ytdlp": version(), "cache": size, "limit": CACHE_LIMIT,
+            return self.reply(200, {"ok": True, "version": VERSION, "ytdlp": YTDLP_VERSION, "cache": size, "limit": CACHE_LIMIT,
                                     "cookies": COOKIES.is_file()})
         if url.path == "/resolve":
             text = first(query, "q").strip()
@@ -222,4 +233,5 @@ if __name__ == "__main__":
         raise SystemExit("RAGENT_TOKEN не задан")
     CACHE.mkdir(parents=True, exist_ok=True)
     prepare_cookies()
+    threading.Thread(target=detect_version, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

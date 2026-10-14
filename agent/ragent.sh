@@ -33,25 +33,31 @@ health() {
   curl -fsS -H "X-Ragent-Ts: $ts" -H "X-Ragent-Sig: $sig" "http://127.0.0.1:${port:-8687}$path"
 }
 
+units() { echo ragent; [[ ! -f "$YT_UNIT" ]] || echo ragent-yt; }
+
 yt_port() { local port; port=$(setting RAGENT_YT_PORT); echo "${port:-8688}"; }
 
-install_music() {
-  root
-  pin_raw
-  local port=${1:-$(yt_port)} ytdlp deno
-  [[ "$port" =~ ^[0-9]+$ ]] || { echo 'ragent music on [порт]' >&2; exit 1; }
-  [[ -f "$ENV" ]] || { echo '>> сначала установи агента: ragent [токен] [порт]' >&2; exit 1; }
+music_health() {
+  health health "$(yt_port)" 2>/dev/null | python3 -c 'import json, sys; print(json.load(sys.stdin).get(sys.argv[1]) or "")' "$1" 2>/dev/null || true
+}
+
+fetch_music_script() {
+  curl -fsSL "$RAW/ragent_yt.py?t=$(date +%s)" -o "$DIR/ragent_yt.py.tmp"
+  python3 -m py_compile "$DIR/ragent_yt.py.tmp"
+  mv "$DIR/ragent_yt.py.tmp" "$DIR/ragent_yt.py"
+  chmod 644 "$DIR/ragent_yt.py"
+  rm -rf "$DIR/__pycache__"
+}
+
+fetch_music_binaries() {
+  local ytdlp deno
   case "$(uname -m)" in
     x86_64|amd64) ytdlp=yt-dlp_linux; deno=deno-x86_64-unknown-linux-gnu.zip ;;
     aarch64|arm64) ytdlp=yt-dlp_linux_aarch64; deno=deno-aarch64-unknown-linux-gnu.zip ;;
     *) echo ">> архитектура $(uname -m) не поддерживается" >&2; exit 1 ;;
   esac
   mkdir -p "$DIR/bin"
-  curl -fsSL "$RAW/ragent_yt.py?t=$(date +%s)" -o "$DIR/ragent_yt.py.tmp"
-  python3 -m py_compile "$DIR/ragent_yt.py.tmp"
-  mv "$DIR/ragent_yt.py.tmp" "$DIR/ragent_yt.py"
-  chmod 644 "$DIR/ragent_yt.py"
-  rm -rf "$DIR/__pycache__"
+  echo '>> качаю yt-dlp и Deno'
   curl -fsSL "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/$ytdlp" -o "$DIR/bin/yt-dlp.tmp"
   curl -fsSL "https://github.com/denoland/deno/releases/latest/download/$deno" -o "$DIR/bin/deno.zip"
   python3 -c 'import sys, zipfile; zipfile.ZipFile(sys.argv[1]).extract("deno", sys.argv[2])' "$DIR/bin/deno.zip" "$DIR/bin"
@@ -59,20 +65,72 @@ install_music() {
   install -m 0755 "$DIR/bin/yt-dlp.tmp" "$DIR/bin/yt-dlp" && rm -f "$DIR/bin/yt-dlp.tmp"
   chmod 0755 "$DIR/bin/deno"
   "$DIR/bin/yt-dlp" --version >/dev/null
+}
+
+start_music() {
+  local port=$1
   if grep -q '^RAGENT_YT_PORT=' "$ENV"; then sed -i "s/^RAGENT_YT_PORT=.*/RAGENT_YT_PORT=$port/" "$ENV"; else echo "RAGENT_YT_PORT=$port" >> "$ENV"; fi
   write_music_unit
   systemctl enable ragent-yt >/dev/null
   systemctl restart ragent-yt
   sleep 1
-  if health health "$port" >/dev/null; then
-    echo ">> музыкальный резерв запущен на порту $port, yt-dlp $("$DIR/bin/yt-dlp" --version)"
+  health health "$port" >/dev/null || { echo '>> музыка не ответила, смотри: ragent logs' >&2; exit 1; }
+}
+
+install_music() {
+  root
+  local port=${1:-$(yt_port)}
+  [[ "$port" =~ ^[0-9]+$ ]] || { echo 'ragent music on [порт]' >&2; exit 1; }
+  [[ -f "$ENV" ]] || { echo '>> сначала установи агента: ragent [токен] [порт]' >&2; exit 1; }
+  pin_raw
+  fetch_music_script
+  fetch_music_binaries
+  start_music "$port"
+  echo ">> музыка включена на порту $port, настройка бота: ragent info"
+}
+
+music_update() {
+  root
+  [[ -f "$YT_UNIT" ]] || { echo '>> музыка не включена: ragent music on' >&2; exit 1; }
+  pin_raw
+  fetch_music_script
+  fetch_music_binaries
+  start_music "$(yt_port)"
+  sleep 2
+  echo ">> yt-dlp обновлён до $("$DIR/bin/yt-dlp" --version)"
+}
+
+info() {
+  root
+  local version port ytport token
+  version=$(sed -n 's/^VERSION = "\(.*\)"/\1/p' "$DIR/ragent.py" 2>/dev/null)
+  port=$(setting RAGENT_PORT); port=${port:-8687}
+  ytport=$(yt_port)
+  token=$(setting RAGENT_TOKEN)
+  echo "R-WATCHER agent v${version:-?}, ветка $branch"
+  echo "агент:   порт $port, служба $(systemctl is-active ragent 2>/dev/null || true)"
+  if [[ -f "$YT_UNIT" ]]; then
+    echo "музыка:  порт $ytport, служба $(systemctl is-active ragent-yt 2>/dev/null || true), yt-dlp $(music_health ytdlp), cookies $([[ -f "$DIR/cookies.txt" ]] && echo есть || echo нет)"
   else
-    echo ">> резерв не ответил, смотри: journalctl -u ragent-yt" >&2
-    exit 1
+    echo 'музыка:  выкл (ragent music on)'
   fi
-  echo ">> в конфиг бота: Lava:YtAgent = адрес этой ноды, Lava:YtAgentPort = $port"
-  echo ">> открой порт только для IP бота: ufw allow from <IP бота> to any port $port proto tcp"
-  echo ">> в Lavalink должен быть включён http-источник: lavalink.server.sources.http: true"
+  echo
+  echo "токен:   $token"
+  echo
+  echo 'конфиг бота:'
+  echo "  Remna:AgentToken = $token"
+  echo "  Remna:AgentPort  = $port"
+  if [[ -f "$YT_UNIT" ]]; then
+    echo '  Lava:YtAgent     = адрес этой ноды'
+    echo "  Lava:YtAgentPort = $ytport"
+    echo
+    echo 'Lavalink: lavalink.server.sources.http: true'
+  fi
+  echo
+  echo 'ufw, только для IP бота:'
+  echo "  ufw allow from <IP бота> to any port $port proto tcp"
+  [[ -f "$YT_UNIT" ]] && echo "  ufw allow from <IP бота> to any port $ytport proto tcp"
+  return 0
 }
 
 write_music_unit() {
@@ -80,7 +138,7 @@ write_music_unit() {
   [[ -f "$DIR/cookies.txt" ]] && credential="LoadCredential=cookies:$DIR/cookies.txt"
   cat > "$YT_UNIT" <<UNIT_END
 [Unit]
-Description=R-WATCHER agent music reserve
+Description=R-WATCHER agent music
 After=network-online.target
 Wants=network-online.target
 
@@ -111,7 +169,7 @@ UNIT_END
 
 music_cookies() {
   root
-  [[ -f "$YT_UNIT" ]] || { echo '>> сначала включи резерв: ragent music on' >&2; exit 1; }
+  [[ -f "$YT_UNIT" ]] || { echo '>> сначала включи музыку: ragent music on' >&2; exit 1; }
   local source=${1:-}
   if [[ "$source" = off ]]; then
     rm -f "$DIR/cookies.txt"
@@ -125,8 +183,8 @@ music_cookies() {
   write_music_unit
   systemctl restart ragent-yt
   sleep 1
-  health health "$(yt_port)" | python3 -c 'import json, sys; print(">> cookies подхвачены" if json.load(sys.stdin).get("cookies") else ">> резерв работает без cookies")' \
-    || echo '>> резерв не ответил, смотри: journalctl -u ragent-yt' >&2
+  health health "$(yt_port)" | python3 -c 'import json, sys; print(">> cookies подхвачены" if json.load(sys.stdin).get("cookies") else ">> музыка работает без cookies")' \
+    || echo '>> музыка не ответила, смотри: ragent logs' >&2
 }
 
 install_agent() {
@@ -160,6 +218,7 @@ install_agent() {
   local ytport
   ytport=$(yt_port)
   (umask 077 && printf 'RAGENT_TOKEN=%s\nRAGENT_PORT=%s\nRAGENT_BRANCH=%s\n' "$token" "$port" "$branch" > "$ENV")
+  [[ ! -f "$YT_UNIT" ]] || echo "RAGENT_YT_PORT=$ytport" >> "$ENV"
   cat > "$UNIT" <<EOF
 [Unit]
 Description=R-WATCHER agent
@@ -205,36 +264,29 @@ EOF
   systemctl restart ragent
   systemctl enable --now ragent-clean.path >/dev/null 2>&1
   sleep 1
-  if health >/dev/null; then
-    echo ">> R-WATCHER agent запущен на порту $port"
-  else
-    echo ">> агент не ответил, смотри: ragent logs" >&2
-    exit 1
-  fi
-  echo ">> токен: $token"
-  echo ">> в конфиг бота: Remna:AgentToken = этот токен, Remna:AgentPort = $port"
-  echo ">> открой порт только для IP бота: ufw allow from <IP бота> to any port $port proto tcp"
-  echo ">> управление: ragent help"
+  health >/dev/null || { echo '>> агент не ответил, смотри: ragent logs' >&2; exit 1; }
+  echo ">> R-WATCHER agent v$(sed -n 's/^VERSION = "\(.*\)"/\1/p' "$DIR/ragent.py") запущен на порту $port"
   if [[ -f "$YT_UNIT" ]]; then
-    echo '>> обновляю музыкальный резерв'
-    install_music "$ytport"
+    fetch_music_script
+    start_music "$ytport"
   fi
+  echo '>> токен и настройка бота: ragent info'
 }
 
 usage() {
   cat <<'EOF'
 ragent [токен] [порт]   установить или переустановить агента
-ragent status           статус сервиса и проверка /health
-ragent logs [N]         логи агента
+ragent status           статус служб и проверка /health, вместе с музыкой
+ragent logs [N]         логи агента, вместе с музыкой
 ragent start|stop|restart
 ragent update           обновить агента и список доменов, токен и порт сохраняются
-ragent token            показать токен и порт
+ragent info             версия, токен, порты и что прописать в бота, Lavalink и ufw
 ragent scan [домен]     пробный скан с этой ноды, топ-5
 ragent clean            очистить диск (образы Docker, логи, кэш apt)
-ragent music on [порт]  включить музыкальный резерв (yt-dlp), порт по умолчанию 8688
-ragent music off        выключить музыкальный резерв
-ragent music status     статус резерва и проверка /health
+ragent music on [порт]  включить музыку (yt-dlp), порт по умолчанию 8688
+ragent music update     обновить yt-dlp и Deno
 ragent music cookies <файл>|off   cookies YouTube-аккаунта для 18+ роликов
+ragent music off        выключить музыку
 ragent uninstall        удалить агента
 EOF
 }
@@ -242,14 +294,17 @@ EOF
 case "${1:-}" in
   help|-h|--help) usage ;;
   status)
-    systemctl --no-pager status ragent || true
+    systemctl --no-pager status $(units) || true
     echo
     health && echo || echo '>> /health не ответил'
+    if [[ -f "$YT_UNIT" ]]; then
+      health health "$(yt_port)" && echo || echo '>> /health музыки не ответил'
+    fi
     ;;
-  logs) journalctl -u ragent -n "${2:-100}" -f ;;
-  start|stop|restart) root; systemctl "$1" ragent ;;
+  logs) journalctl $(units | sed 's/^/-u /') -n "${2:-100}" -f ;;
+  start|stop|restart) root; systemctl "$1" $(units) ;;
   update) install_agent ;;
-  token) root; echo "токен: $(setting RAGENT_TOKEN)"; echo "порт: $(setting RAGENT_PORT)" ;;
+  info|token) info ;;
   clean)
     root
     systemctl start ragent-clean.service
@@ -264,6 +319,7 @@ case "${1:-}" in
   music)
     case "${2:-}" in
       on) install_music "${3:-}" ;;
+      update) music_update ;;
       cookies) music_cookies "${3:-}" ;;
       off)
         root
@@ -272,14 +328,9 @@ case "${1:-}" in
         rm -rf "$DIR/bin"
         sed -i '/^RAGENT_YT_PORT=/d' "$ENV"
         systemctl daemon-reload
-        echo '>> музыкальный резерв выключен'
+        echo '>> музыка выключена'
         ;;
-      status)
-        systemctl --no-pager status ragent-yt || true
-        echo
-        health health "$(yt_port)" && echo || echo '>> /health резерва не ответил'
-        ;;
-      *) echo 'ragent music on [порт] | off | status | cookies <файл>|off' >&2; exit 1 ;;
+      *) echo 'ragent music on [порт] | update | off | cookies <файл>|off' >&2; exit 1 ;;
     esac
     ;;
   uninstall)
