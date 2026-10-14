@@ -21,11 +21,6 @@ namespace sblngavnav6.Commands;
 
 public class MainCommands : ModuleBase<SocketCommandContext>
 {
-    private const string StatsFooter = "sbln статистикс🔭";
-    private const string StatusFooter = "sbln статус🎫";
-    private const string DevFooter = "part of Lois Media Group😋 \ndev by lucz@lois.media🏃";
-    private const string DevIcon = "https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x";
-
     private readonly DiscordSocketClient _client;
     private readonly CommandHandler _commandHandler;
     private readonly Audio8Service _audio;
@@ -41,8 +36,6 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
     private static readonly Regex MathSafeRegex = new(@"^[\d\s\+\-\*\/\(\)\.]+$", RegexOptions.Compiled);
 
-    private static TimeSpan Uptime => DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime();
-
     [Command("111")]
     [RequireOwner(ErrorMessage = "недостаточно прав")]
     public Task ChangeLog() => ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
@@ -53,8 +46,8 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             $"• Ограничение голосования до 50 вариантов, фикс-таймер, появилась возможность скипнуть перечисления\n" +
             $"• Говорилка обновлена до версии 1.7, фиксы core/edge-кейсов\n" +
             $"• [Полный чендж-лог доступен на сайте 🌀](https://lois.media/sbln/v{Versioning.Version})",
-        Footer = DevFooter,
-        FooterIconUrl = DevIcon
+        Footer = EmbedHandler.DevFooter,
+        FooterIconUrl = EmbedHandler.DevIcon
     }));
 
     [RequireGuild]
@@ -86,75 +79,12 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }));
     }
 
-    [Command("ст")]
-    [RequireOwner(ErrorMessage = "недостаточно прав")]
-    public async Task SetStatus(string status, [Remainder] string args = null)
-    {
-        var statusType = status switch
-        {
-            "днд" => UserStatus.DoNotDisturb,
-            "спит" => UserStatus.Idle,
-            "инвиз" => UserStatus.Invisible,
-            _ => UserStatus.Online
-        };
-
-        await DataBase.AddStatus(args, status, "", "");
-
-        await _client.SetStatusAsync(statusType);
-        await _client.SetGameAsync(args);
-
-        await ReplyAsync(embed: EmbedHandler.Simple(
-            string.Empty,
-            $"Игра изменена на **{args}** со статусом **{status}** ✅",
-            Color.Green,
-            StatusFooter));
-    }
-
-    [Command("актив")]
-    [RequireOwner(ErrorMessage = "недостаточно прав")]
-    public async Task SetActivityAsync(string type, string linkOrText = null, [Remainder] string extra = null)
-    {
-        var activityType = type switch
-        {
-            "стрим" => ActivityType.Streaming,
-            "смотрит" => ActivityType.Watching,
-            "слушает" => ActivityType.Listening,
-            "соревнуется" => ActivityType.Competing,
-            _ => ActivityType.Playing
-        };
-
-        string link = null;
-        string text;
-
-        if (activityType == ActivityType.Streaming)
-        {
-            link = linkOrText;
-            text = extra;
-        }
-        else
-        {
-            text = linkOrText;
-
-            if (!string.IsNullOrWhiteSpace(extra))
-                text += " " + extra;
-        }
-
-        await DataBase.AddStatus(text ?? "", "", link ?? "", activityType.ToString());
-        await _client.SetGameAsync(text, link, activityType);
-
-        await ReplyAsync(embed: EmbedHandler.Simple(
-            string.Empty,
-            $"Активность установлена: **{activityType}** - **{text}** ✅",
-            Color.Green,
-            StatusFooter));
-    }
-
     [RequireSuperuser]
     [Command("инфа разрабов")]
     [Alias("ир")]
     public async Task InfoDev()
     {
-        var process = Process.GetCurrentProcess();
+        using var process = Process.GetCurrentProcess();
         var collector = GCSettings.IsServerGC ? "server" : "workstation";
 
         var watch = Stopwatch.StartNew();
@@ -170,17 +100,17 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         var telegram = string.IsNullOrWhiteSpace(Global.Vars.Cfg.telegramToken) ? "выкл" : "вкл";
         var members = _client.Guilds.Sum(guild => guild.MemberCount);
         var players = _audio.GetActiveGuildIds().Count();
-        var interval = TimeSpan.FromMilliseconds(_commandHandler.GetTimerInterval());
+        var next = _commandHandler.NextCollection;
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
             Title = $"🤖 sblngavna {Versioning.Full}",
             Description =
-                $"Аптайм: **{FormatAge(Uptime)}**, запущен {Stamp(process.StartTime.ToUniversalTime())}\n" +
+                $"Аптайм: **{FormatAge(Uptime)}**, запущен {Stamp(Started)}\n" +
                 $".NET **{Environment.Version}**, GC **{collector}**, PID **{Environment.ProcessId}**",
             Color = Color.Blue,
             ThumbnailUrl = Avatar(_client.CurrentUser),
-            Footer = StatsFooter,
+            Footer = "sbln статистикс🔭",
             Fields =
             [
                 new EmbedFieldSpec("🌐 Гейтвей",
@@ -199,8 +129,8 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                     $"Выполнено: **{ThreadPool.CompletedWorkItemCount}**", true),
                 new EmbedFieldSpec("🗄️ Данные",
                     $"База: **{database}**\n" +
-                    $"Корпус говорилки: **{corpus}**\n" +
-                    $"Подзагрузка: **{FormatAge(interval)}**", true),
+                    $"Корпус GVR: **{corpus}**\n" +
+                    $"Подзагрузка GVR: {(next is { } at ? Stamp(at) : "**выкл**")}", true),
                 new EmbedFieldSpec("🎧 Звук",
                     $"Плееров: **{players}**\n" +
                     $"Нода: **{Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}**\n" +
@@ -291,18 +221,33 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     public async Task HallOfGlory()
     {
         var versions = await DataBase.GetAllVersions();
+        var last = versions.LastOrDefault();
 
-        var description = versions.Count == 0
-            ? "пока пусто"
-            : string.Join("\n", versions.Select(version => $"{version.Version} - *{version.Date:yyyy-MM-dd}*"));
+        var fields = versions
+            .GroupBy(version => version.Version.Split('.')[0])
+            .Select(major =>
+            {
+                var from = major.Min(version => version.Date.Year);
+                var to = major.Max(version => version.Date.Year);
+
+                return new EmbedFieldSpec(
+                    $"v{major.Key} ({(from == to ? $"{from}" : $"{from}-{to}")})",
+                    string.Join("\n", major.Select(version =>
+                        $"`{version.Version}` {version.Date:dd.MM.yy}{(string.IsNullOrWhiteSpace(version.Stage) ? "" : $" {version.Stage}")}")),
+                    true);
+            })
+            .ToList();
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            Title = "все версии сыночка",
-            Description = description,
-            ImageUrl = "https://sun9-15.userapi.com/impg/c857332/v857332436/15bc51/aBM7tGgnmY0.jpg?size=640x640&quality=96&sign=4ea7c6c8b39104be3a21ae7033cc0283&type=album",
-            Footer = DevFooter,
-            FooterIconUrl = DevIcon
+            Title = "🏆 все версии сыночка",
+            Description = last is null
+                ? "пока пусто"
+                : $"версий: **{versions.Count}**, с **{versions.Min(version => version.Date.Year)}** года\nпоследняя **v{last.Version}**, {Stamp(last.Date, 'R')}",
+            Fields = fields,
+            ThumbnailUrl = "https://sun9-15.userapi.com/impg/c857332/v857332436/15bc51/aBM7tGgnmY0.jpg?size=640x640&quality=96&sign=4ea7c6c8b39104be3a21ae7033cc0283&type=album",
+            Footer = EmbedHandler.DevFooter,
+            FooterIconUrl = EmbedHandler.DevIcon
         }));
     }
 
@@ -338,8 +283,8 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             Title = $"🤖 sblngavna {Versioning.Full}",
             Color = Color.LighterGrey,
             Fields = fields,
-            Footer = DevFooter,
-            FooterIconUrl = DevIcon
+            Footer = EmbedHandler.DevFooter,
+            FooterIconUrl = EmbedHandler.DevIcon
         }));
     }
 
@@ -460,7 +405,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             ImageUrl = (profile as Discord.Rest.RestUser)?.GetBannerUrl(size: 1024),
             Color = colored?.Colors.PrimaryColor ?? (profile as Discord.Rest.RestUser)?.AccentColor ?? Color.Default,
             Fields = fields,
-            Footer = StatsFooter
+            Footer = "sbln статистикс🔭"
         }));
     }
 

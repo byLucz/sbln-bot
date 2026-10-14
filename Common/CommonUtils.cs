@@ -363,6 +363,16 @@ namespace sblngavnav6.Common
 
         public static class Time
         {
+            public static readonly DateTimeOffset Started = ProcessStart();
+
+            public static TimeSpan Uptime => DateTimeOffset.UtcNow - Started;
+
+            private static DateTimeOffset ProcessStart()
+            {
+                using var process = System.Diagnostics.Process.GetCurrentProcess();
+                return process.StartTime.ToUniversalTime();
+            }
+
             public static long ToUnix(DateTime utc)
                 => new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeSeconds();
 

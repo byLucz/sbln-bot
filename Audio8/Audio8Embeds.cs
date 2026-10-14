@@ -291,7 +291,7 @@ namespace sblngavnav6.Audio8
                     $"в очередях: `{context.QueuedTracks}` трек(ов)",
                     true),
                 new("🖥️ Lavalink",
-                    $"аптайм: `{statistics.Uptime:d\\.hh\\:mm\\:ss}`\n" +
+                    $"аптайм: `{FormatAge(statistics.Uptime)}`\n" +
                     $"нагрузка: `{Percent(statistics.ProcessorUsage.LavalinkLoad, 1)}` из `{Percent(statistics.ProcessorUsage.SystemLoad, 1)}`\n" +
                     $"память: `{statistics.MemoryUsage.UsedMemory / 1024 / 1024}` / `{statistics.MemoryUsage.AllocatedMemory / 1024 / 1024}`MB",
                     true)

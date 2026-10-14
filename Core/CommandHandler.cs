@@ -37,6 +37,7 @@ namespace sblngavnav6.Core
 
         private bool _eventsHooked;
         private bool _timerStarted;
+        private DateTimeOffset? _nextCollection;
         private bool _stopped;
         private bool _disposed;
         private sealed record MailReplyRoute(ulong SenderId, ulong RecipientId, bool IsAnonymous, DateTimeOffset CreatedAt);
@@ -63,6 +64,17 @@ namespace sblngavnav6.Core
             {
                 if (_disposed) return;
                 _timer.Interval = amount;
+                if (_timerStarted && !_stopped)
+                    _nextCollection = DateTimeOffset.UtcNow.AddMilliseconds(amount);
+            }
+        }
+
+        public DateTimeOffset? NextCollection
+        {
+            get
+            {
+                lock (_timerLock)
+                    return _stopped ? null : _nextCollection;
             }
         }
 
@@ -327,6 +339,7 @@ namespace sblngavnav6.Core
                 if (_timerStarted || _stopped) return;
                 _timerStarted = true;
                 _timer.Start();
+                _nextCollection = DateTimeOffset.UtcNow.AddMilliseconds(_timer.Interval);
             }
 
             await LoggingService.LogInformationAsync("GOVOR", "Таймер сбора сообщений запущен");
@@ -337,6 +350,7 @@ namespace sblngavnav6.Core
         {
             lock (_timerLock)
             {
+                _nextCollection = DateTimeOffset.UtcNow.AddMilliseconds(_timer.Interval);
                 if (_stopped || !_timerTask.IsCompleted) return;
                 _timerTask = Task.Run(() => ProcessTimedEventAsync(_stopping.Token));
             }

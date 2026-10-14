@@ -4,8 +4,6 @@ using sblngavnav6.Common;
 public static class HelpEmbedService
 {
     private const string AuthorIcon = "https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png";
-    private const string FooterIcon = "https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x";
-    private const string FooterText = "dev by lucz@lois.media🏃";
 
     private static readonly (string Title, (string Command, string About, bool Telegram)[] Commands)[] Sections =
     [
@@ -89,8 +87,7 @@ public static class HelpEmbedService
             ("бан", "забанить кентошарика", false),
             ("удоли", "удалить сообщения <кол-во>", false),
             ("анонс", "анонс в канал обновлений сервера", false),
-            ("ст", "меняет статус бота", false),
-            ("актив", "ставит активность бота", false),
+            ("ст|статус", "панель статуса и активности бота", false),
             ("инфа разрабов|ир", "состояние процесса, базы и модулей", false),
             ("111", "девлог текущей версии", false),
             ("почта @ник", "внутренняя почта, письмо челиксу в лс", false),
@@ -134,7 +131,7 @@ public static class HelpEmbedService
             Fields = section.Commands
                 .Select(command => new EmbedFieldSpec(command.Telegram ? $"{command.Command} (Tg)" : command.Command, command.About))
                 .ToArray(),
-            Footer = FooterText,
-            FooterIconUrl = FooterIcon
+            Footer = EmbedHandler.DevFooter,
+            FooterIconUrl = EmbedHandler.DevIcon
         });
 }
