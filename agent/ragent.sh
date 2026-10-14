@@ -12,6 +12,19 @@ branch=${RAGENT_BRANCH:-$(setting RAGENT_BRANCH)}
 branch=${branch:-proto}
 RAW=${RAGENT_RAW:-https://raw.githubusercontent.com/byLucz/sblngavna/$branch/agent}
 
+pin_raw() {
+  [[ -z "${RAGENT_RAW:-}" ]] || return 0
+  [[ ! "$RAW" =~ /[0-9a-f]{40}/agent$ ]] || return 0
+  local sha
+  sha=$(curl -fsSL -m 10 -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/byLucz/sblngavna/commits/$branch" 2>/dev/null || true)
+  if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+    RAW="https://raw.githubusercontent.com/byLucz/sblngavna/$sha/agent"
+    echo ">> версия из $branch, коммит ${sha:0:7}"
+  else
+    echo ">> GitHub API не ответил, качаю по ветке $branch, свежий пуш может прийти через пару минут" >&2
+  fi
+}
+
 health() {
   local token port path ts sig
   token=$(setting RAGENT_TOKEN); port=${2:-$(setting RAGENT_PORT)}
@@ -24,6 +37,7 @@ yt_port() { local port; port=$(setting RAGENT_YT_PORT); echo "${port:-8688}"; }
 
 install_music() {
   root
+  pin_raw
   local port=${1:-$(yt_port)} ytdlp deno
   [[ "$port" =~ ^[0-9]+$ ]] || { echo 'ragent music on [порт]' >&2; exit 1; }
   [[ -f "$ENV" ]] || { echo '>> сначала установи агента: ragent [токен] [порт]' >&2; exit 1; }
@@ -117,6 +131,7 @@ music_cookies() {
 
 install_agent() {
   root
+  pin_raw
   local token=${1:-} port=${2:-}
   [[ -z "$port" || "$port" =~ ^[0-9]+$ ]] || { echo 'ragent [токен] [порт]' >&2; exit 1; }
   command -v python3 >/dev/null || { apt-get update -qq && apt-get install -y -qq python3; }
