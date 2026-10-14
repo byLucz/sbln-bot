@@ -224,16 +224,17 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         var last = versions.LastOrDefault();
 
         var fields = versions
-            .GroupBy(version => version.Version.Split('.')[0])
-            .Select(major =>
+            .Select(version => (Entry: version, Line: version.Stage?.Contains('X', StringComparison.OrdinalIgnoreCase) == true ? version.Stage.Trim() : null))
+            .GroupBy(item => item.Line ?? item.Entry.Version.Split('.')[0])
+            .Select(line =>
             {
-                var from = major.Min(version => version.Date.Year);
-                var to = major.Max(version => version.Date.Year);
+                var from = line.Min(item => item.Entry.Date.Year);
+                var to = line.Max(item => item.Entry.Date.Year);
 
                 return new EmbedFieldSpec(
-                    $"v{major.Key} ({(from == to ? $"{from}" : $"{from}-{to}")})",
-                    string.Join("\n", major.Select(version =>
-                        $"`{version.Version}` {version.Date:dd.MM.yy}{(string.IsNullOrWhiteSpace(version.Stage) ? "" : $" {version.Stage}")}")),
+                    $"v{line.Key} ({(from == to ? $"{from}" : $"{from}-{to}")})",
+                    string.Join("\n", line.Select(item =>
+                        $"`{item.Entry.Version}` {item.Entry.Date:dd.MM.yy}{(item.Line is not null || string.IsNullOrWhiteSpace(item.Entry.Stage) ? "" : $" {item.Entry.Stage}")}")),
                     true);
             })
             .ToList();
