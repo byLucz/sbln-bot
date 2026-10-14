@@ -41,6 +41,11 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app ./
+
+ARG SBLN_CHANNEL=
+ARG SBLN_VERSION=
+ARG SBLN_COMMIT=
+LABEL sbln.version="$SBLN_VERSION" sbln.channel="$SBLN_CHANNEL" sbln.commit="$SBLN_COMMIT"
 HEALTHCHECK --interval=10s --timeout=3s --start-period=120s --retries=6 CMD test -f /tmp/sbln-ready || exit 1
 
 ENTRYPOINT ["sh", "-eu", "-c", "rm -f /tmp/sbln-ready; mkdir -p /opt/sbln/data /opt/sbln/logs \"${SBLN_AUDIO_DIR:-/opt/sbln/audio/stable}\"; exec dotnet /app/sblngavnav6.dll \"$@\"", "sbln"]

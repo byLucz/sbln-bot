@@ -213,10 +213,19 @@ lava_links() {
 
 panel() {
   local channel=${1:-stable} name="$BOT" config="$BASE/config.json"
-  local state span image restarts lava info rc links free listener up players playing load used alloc
+  local state span image restarts lava info rc links free listener up players playing load used alloc version vchannel commit
   if [[ "$channel" = proto ]]; then name=sbln-bot-proto; config="$BASE/config-proto.json"; fi
 
-  printf '\n── состояние / %s ──\n' "$channel"
+  version=$(docker inspect --format '{{index .Config.Labels "sbln.version"}}' "$name" 2>/dev/null || true)
+  vchannel=$(docker inspect --format '{{index .Config.Labels "sbln.channel"}}' "$name" 2>/dev/null || true)
+  commit=$(docker inspect --format '{{index .Config.Labels "sbln.commit"}}' "$name" 2>/dev/null || true)
+  if [[ -n "$version" && "$version" != '<no value>' ]]; then
+    [[ "$vchannel" = '<no value>' ]] && vchannel=''
+    [[ "$commit" = '<no value>' ]] && commit=''
+    printf '\nsbln-bot panel / v%s%s%s\n' "$version" "${vchannel:+ $vchannel}" "${commit:+ / ${commit:0:7}}"
+  else
+    printf '\nsbln-bot panel / %s\n' "$channel"
+  fi
 
   state=$(container_state "$name")
   if [[ -z "$state" ]]; then
