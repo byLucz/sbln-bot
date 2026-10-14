@@ -3,6 +3,7 @@ using Discord.WebSocket;
 using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Audio8;
+using sblngavnav6.Commands;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.PPM;
@@ -108,7 +109,7 @@ namespace sblngavnav6.Core
 
                 _frontierTask = KeepFrontierAsync(stopping.Token);
 
-                try { await DataBase.ApplyLastStatusAsync(_client); }
+                try { await StatusPanel.ApplyAsync(_client, await DataBase.GetLastStatus()); }
                 catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось восстановить статус", ex); }
 
                 try

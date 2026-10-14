@@ -213,19 +213,33 @@ namespace sblngavnav6.Data
                 "DELETE FROM streamers WHERE twitch_id = @id",
                 cmd => cmd.Parameters.AddWithValue("@id", twitchId));
 
-        public static Task AddStatus(string text, string pos, string linkStr, string type)
+        public static Task AddStatus(BotStatus status)
         {
             return ExecAsync(
                 @"INSERT INTO statusbar (StatusText, StatusPos, StatusLink, StatusType)
                 VALUES (@text, @pos, @link, @type)",
                 cmd =>
                 {
-                    cmd.Parameters.AddWithValue("@text", text);
-                    cmd.Parameters.AddWithValue("@pos", pos);
-                    cmd.Parameters.AddWithValue("@link", linkStr);
-                    cmd.Parameters.AddWithValue("@type", type);
+                    cmd.Parameters.AddWithValue("@text", status.Text ?? "");
+                    cmd.Parameters.AddWithValue("@pos", status.Pos ?? "");
+                    cmd.Parameters.AddWithValue("@link", status.Link ?? "");
+                    cmd.Parameters.AddWithValue("@type", status.Type ?? "");
                 });
         }
+
+        public static Task<BotStatus> GetLastStatus() =>
+            RowAsync(
+                @"SELECT StatusText, StatusPos, StatusLink, StatusType
+                FROM statusbar
+                ORDER BY id DESC
+                LIMIT 1",
+                null,
+                reader => new BotStatus(
+                    reader.IsDBNull(0) ? "" : reader.GetString(0),
+                    reader.IsDBNull(1) ? "" : reader.GetString(1),
+                    reader.IsDBNull(2) ? "" : reader.GetString(2),
+                    reader.IsDBNull(3) ? "" : reader.GetString(3)),
+                new BotStatus("", "", "", ""));
 
         public static async Task<List<string>> GetAllEmotes()
         {
@@ -240,49 +254,6 @@ namespace sblngavnav6.Data
             if (all.Count == 0)
                 return null;
             return all.RandomList();
-        }
-
-        public static async Task ApplyLastStatusAsync(DiscordSocketClient client)
-        {
-            using var conn = new MySqlConnection(Global.Vars.Cfg.connectionString);
-            await conn.OpenAsync();
-
-            const string sql =
-                @"SELECT StatusText, StatusPos, StatusLink, StatusType
-                FROM statusbar
-                ORDER BY id DESC
-                LIMIT 1";
-
-            using var cmd = new MySqlCommand(sql, conn);
-            using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync()) return;
-
-            var stText = reader.GetString("StatusText");
-            var stPos = reader.GetString("StatusPos");
-            var stLink = reader.GetString("StatusLink");
-            var stType = reader.GetString("StatusType");
-
-            var userStatus = stPos switch
-            {
-                "днд" => UserStatus.DoNotDisturb,
-                "спит" => UserStatus.Idle,
-                "инвиз" => UserStatus.Invisible,
-                "онлайн" => UserStatus.Online,
-                _ => UserStatus.Online
-            };
-            await client.SetStatusAsync(userStatus);
-
-            var activityType = stType switch
-            {
-                "Streaming" => ActivityType.Streaming,
-                "Playing" => ActivityType.Playing,
-                "Watching" => ActivityType.Watching,
-                "Listening" => ActivityType.Listening,
-                "Competing" => ActivityType.Competing,
-                _ => ActivityType.Playing
-            };
-            string linkForActivity = activityType == ActivityType.Streaming ? stLink : null;
-            await client.SetGameAsync(stText, linkForActivity, activityType);
         }
 
         public static Task AddBook(string title, string authors, string imageUrl, string user)
@@ -471,11 +442,12 @@ namespace sblngavnav6.Data
         public static Task<List<VersionEntry>> GetAllVersions()
         {
             return RowsAsync(
-                "SELECT `version`, `date` FROM `versions` ORDER BY `id`",
+                "SELECT `version`, `stage`, `date` FROM `versions` ORDER BY `id`",
                 null,
                 reader => new VersionEntry
                 {
                     Version = reader.GetString("version"),
+                    Stage = reader.IsDBNull(reader.GetOrdinal("stage")) ? null : reader.GetString("stage"),
                     Date = reader.GetDateTime("date")
                 });
         }

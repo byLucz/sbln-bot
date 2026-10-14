@@ -70,6 +70,7 @@ namespace sblngavnav6.Data
         public class VersionEntry
         {
             public string Version { get; set; }
+            public string Stage { get; set; }
             public DateTime Date { get; set; }
         }
 
@@ -269,6 +270,8 @@ namespace sblngavnav6.Data
             public string Body { get; set; }
             public string Folder { get; set; }
         }
+
+        public sealed record BotStatus(string Text, string Pos, string Link, string Type);
 
         public sealed record PastaEntry(string Author, string AvatarUrl, string Content, DateTimeOffset Written);
 

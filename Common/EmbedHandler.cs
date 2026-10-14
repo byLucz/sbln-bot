@@ -49,6 +49,8 @@ namespace sblngavnav6.Common
         public static string VoteFooter => $"{Name} {VoteTag}";
         public static string PpmFooter => $"{Name} {PpmTag}";
         public static string LoisFooter => $"{Name} {LoisTag}";
+        public const string DevFooter = "part of Lois Media Group😋 \ndev by lucz@lois.media🏃";
+        public const string DevIcon = "https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x";
 
         public static EmbedBuilder Builder(EmbedSpec spec)
         {
