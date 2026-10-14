@@ -274,6 +274,19 @@ namespace sblngavnav6.Common
                     : Text.FirstMeaningfulLine(error, "-", max);
             }
 
+            public static string AgentSignature(string token, string path, string stamp) =>
+                Convert.ToHexStringLower(System.Security.Cryptography.HMACSHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(token ?? ""),
+                    System.Text.Encoding.UTF8.GetBytes($"GET\n{path}\n{stamp}")));
+
+            public static void SignAgent(HttpRequestMessage request, Uri baseUri, string route, string token)
+            {
+                var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+                var path = new Uri(baseUri, route).GetComponents(UriComponents.PathAndQuery, UriFormat.UriEscaped);
+                request.Headers.Add("X-Ragent-Ts", stamp);
+                request.Headers.Add("X-Ragent-Sig", AgentSignature(token, path, stamp));
+            }
+
             public sealed record ApiResponse(bool Ok, System.Net.HttpStatusCode? Status, string Body, string Error)
             {
                 public HttpRequestError? Failure { get; init; }

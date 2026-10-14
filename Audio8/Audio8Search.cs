@@ -80,7 +80,7 @@ namespace sblngavnav6.Audio8
                 "этот трек не играется, но есть похожее:").ConfigureAwait(false);
         }
 
-        private static string BuildQuery(LavalinkTrack track)
+        internal static string BuildQuery(LavalinkTrack track)
         {
             var title = track?.Title?.Trim();
 

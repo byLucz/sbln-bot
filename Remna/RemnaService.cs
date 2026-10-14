@@ -2,7 +2,6 @@ using sblngavnav6.Common;
 using sblngavnav6.Data;
 using System.Collections.Concurrent;
 using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
@@ -103,14 +102,7 @@ public sealed class RemnaService
         var response = await CommonUtils.Web.SendAsync(
             _httpClientFactory, "RemnaAgent", baseUri.ToString(),
             HttpMethod.Get, route, timeout,
-            request =>
-            {
-                var ts = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
-                var path = new Uri(baseUri, route).GetComponents(UriComponents.PathAndQuery, UriFormat.UriEscaped);
-                var sig = HMACSHA256.HashData(Encoding.UTF8.GetBytes(Global.Vars.Cfg.remnaAgentToken), Encoding.UTF8.GetBytes($"GET\n{path}\n{ts}"));
-                request.Headers.Add("X-Ragent-Ts", ts);
-                request.Headers.Add("X-Ragent-Sig", Convert.ToHexStringLower(sig));
-            },
+            request => CommonUtils.Web.SignAgent(request, baseUri, route, Global.Vars.Cfg.remnaAgentToken),
             cancellationToken);
 
         if (!response.Ok)

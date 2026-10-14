@@ -1,6 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using Lavalink4NET.Players;
+using Lavalink4NET.Rest.Entities.Tracks;
 using sblngavnav6.Common;
 using sblngavnav6.Core;
 using sblngavnav6.Services;
@@ -15,17 +16,20 @@ namespace sblngavnav6.Audio8
     {
         private readonly Audio8Service _service;
         private readonly Audio8SearchService _search;
+        private readonly Audio8Reserve _reserve;
         private readonly Audio8VoteService _vote;
         private readonly IHttpClientFactory _httpClientFactory;
 
         internal Audio8Commands(
             Audio8Service service,
             Audio8SearchService search,
+            Audio8Reserve reserve,
             Audio8VoteService vote,
             IHttpClientFactory httpClientFactory)
         {
             _service = service;
             _search = search;
+            _reserve = reserve;
             _vote = vote;
             _httpClientFactory = httpClientFactory;
         }
@@ -53,6 +57,20 @@ namespace sblngavnav6.Audio8
                 if (fallback.HasMatches)
                 {
                     result = fallback;
+                    query = query with { PlaylistIndex = 0, SelectedTrackId = null };
+                }
+            }
+
+            var (sourceName, isUrl) = Audio8Query.Detect(query.Identifier);
+
+            if (!result.HasMatches && Audio8Reserve.Configured && sourceName == "YouTube" && (result.IsFailed || isUrl))
+            {
+                using var typing = Context.Channel.EnterTypingState();
+
+                if (await _reserve.ResolveAsync(isUrl ? query.Identifier : Audio8Query.StripPrefix(query.Identifier)) is { } reserved)
+                {
+                    await ReplyAsync(embed: await Audio8Embeds.Accent("резерв", "🔁 YouTube не отдал трек, играю через резервный источник"));
+                    result = TrackLoadResult.CreateTrack(reserved);
                     query = query with { PlaylistIndex = 0, SelectedTrackId = null };
                 }
             }

@@ -85,6 +85,8 @@ namespace sblngavnav6.Data
                 public static readonly string lavaHost = Str("Lava:LavaHost", "127.0.0.1");
                 public static readonly string lavaPass = Str("Lava:LavaPass", "youshallnotpass");
                 public static readonly int lavaPort = Int("Lava:LavaPort", 2333);
+                public static readonly string lavaYtAgent = Str("Lava:YtAgent");
+                public static readonly int lavaYtAgentPort = Int("Lava:YtAgentPort", 8688);
                 public static readonly string lavaAudioPath =
                     Environment.GetEnvironmentVariable("SBLN_AUDIO_DIR_LAVA") ?? Str("Lava:AudioPath");
 

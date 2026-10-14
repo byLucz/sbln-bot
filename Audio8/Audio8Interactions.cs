@@ -189,13 +189,15 @@ namespace sblngavnav6.Audio8
         private readonly IAudioService _audio;
         private readonly Audio8Service _service;
         private readonly Audio8SearchService _search;
+        private readonly Audio8Reserve _reserve;
         private bool _disposed;
 
-        public Audio8Interactions(IAudioService audio, Audio8Service service, Audio8SearchService search)
+        public Audio8Interactions(IAudioService audio, Audio8Service service, Audio8SearchService search, Audio8Reserve reserve)
         {
             _audio = audio;
             _service = service;
             _search = search;
+            _reserve = reserve;
             _audio.TrackStarted += OnTrackStartedAsync;
             _audio.TrackException += OnTrackExceptionAsync;
             _audio.TrackStuck += OnTrackStuckAsync;
@@ -257,6 +259,9 @@ namespace sblngavnav6.Audio8
             string userReason,
             string logReason)
         {
+            if (await TryReserveAsync(source, track).ConfigureAwait(false))
+                return;
+
             await ReportTrackProblemAsync(source, track, userReason, logReason).ConfigureAwait(false);
 
             if (source is not Audio8Player player || player.SilentMode || track is null)
@@ -281,6 +286,47 @@ namespace sblngavnav6.Audio8
                 await LoggingService.LogWarningAsync(
                     Audio8Constants.LogSource,
                     $"Не смог предложить замену g={player.GuildId}: {ex.Message}");
+            }
+        }
+
+        private async Task<bool> TryReserveAsync(ILavalinkPlayer source, LavalinkTrack track)
+        {
+            if (!Audio8Reserve.Configured || source is not Audio8Player player || !Audio8Reserve.Covers(track))
+                return false;
+
+            try
+            {
+                var query = track.SourceName == "youtube" && track.Uri is not null
+                    ? track.Uri.ToString()
+                    : Audio8SearchService.BuildQuery(track);
+
+                if (await _reserve.ResolveAsync(query).ConfigureAwait(false) is not { } reserved)
+                    return false;
+
+                await player.LockedAsync(async () =>
+                {
+                    if (player.CurrentTrack is null)
+                        await player.PlayAsync(reserved, enqueue: false).ConfigureAwait(false);
+                    else
+                        await player.Queue.InsertAsync(0, new TrackQueueItem(new TrackReference(reserved))).ConfigureAwait(false);
+                }).ConfigureAwait(false);
+
+                await LoggingService.LogInformationAsync(Audio8Constants.LogSource,
+                    $"Резерв подхватил трек g={player.GuildId} track={track.Title}").ConfigureAwait(false);
+
+                if (!player.SilentMode && _service.ResolveTextChannel(player) is { } channel)
+                {
+                    try { await _service.SendAsync(channel, await Audio8Embeds.Accent("резерв", $"🔁 {track.Title}: YouTube не отдал трек, играю через резервный источник")).ConfigureAwait(false); }
+                    catch (Exception ex) when (ex is HttpException or TimeoutException) { }
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync(Audio8Constants.LogSource,
+                    $"Резерв не сработал g={player.GuildId}: {ex.Message}").ConfigureAwait(false);
+                return false;
             }
         }
 

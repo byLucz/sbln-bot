@@ -353,6 +353,7 @@ namespace sblngavnav6.Audio8
                     provider.GetRequiredService<Audio8StatsTracker>(),
                     provider.GetRequiredService<Audio8Persistence>()))
                 .AddSingleton<Audio8SearchService>()
+                .AddSingleton<Audio8Reserve>()
                 .AddSingleton<Audio8Interactions>()
                 .AddSingleton<Audio8VoteService>()
                 .AddSingleton(provider => new Audio8Runtime(
