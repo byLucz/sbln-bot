@@ -73,16 +73,23 @@ namespace sblngavnav6.Audio8
             }
 
             var (sourceName, isUrl) = Audio8Query.Detect(query.Identifier);
+            var reserveTried = false;
 
             if (!result.HasMatches && Audio8Reserve.Configured && sourceName == "YouTube" && (result.IsFailed || isUrl))
             {
+                reserveTried = true;
+                var notice = await ReplyAsync(embed: await Audio8Embeds.Accent("резерв", "🔁 YouTube не отдал трек, ищу через резервный источник, это может занять до минуты"));
                 using var typing = Context.Channel.EnterTypingState();
 
                 if (await _reserve.ResolveAsync(isUrl ? query.Identifier : Audio8Query.StripPrefix(query.Identifier)) is { } reserved)
                 {
-                    await ReplyAsync(embed: await Audio8Embeds.Accent("резерв", "🔁 YouTube не отдал трек, играю через резервный источник"));
+                    await _service.ModifyAsync(notice, await Audio8Embeds.Accent("резерв", "🔁 нашёл через резервный источник, ставлю"));
                     result = TrackLoadResult.CreateTrack(reserved);
                     query = query with { PlaylistIndex = 0, SelectedTrackId = null };
+                }
+                else
+                {
+                    await _service.ModifyAsync(notice, await Audio8Embeds.Error("резерв", "резерв тоже не нашёл трек"));
                 }
             }
 
@@ -96,7 +103,7 @@ namespace sblngavnav6.Audio8
                     return;
                 }
 
-                await ReplyAsync(embed: await Audio8Embeds.Error("играй", Audio8Reserve.Configured
+                await ReplyAsync(embed: await Audio8Embeds.Error("играй", Audio8Reserve.Configured && !reserveTried
                     ? $"ничего не нашлось по запросу..., попробуй `{Global.Vars.Cfg.pref1.Trim()} резерв`"
                     : "ничего не нашлось по запросу..."));
                 return;
@@ -151,14 +158,16 @@ namespace sblngavnav6.Audio8
             if (player is null)
                 return;
 
+            var notice = await ReplyAsync(embed: await Audio8Embeds.Accent("резерв", "🔁 ищу через резервный источник, это может занять до минуты"));
             using var typing = Context.Channel.EnterTypingState();
 
             if (await _reserve.ResolveAsync(searchQuery) is not { } track)
             {
-                await ReplyAsync(embed: await Audio8Embeds.Error("резерв", "резерв тоже не нашёл трек"));
+                await _service.ModifyAsync(notice, await Audio8Embeds.Error("резерв", "резерв тоже не нашёл трек"));
                 return;
             }
 
+            await _service.ModifyAsync(notice, await Audio8Embeds.Accent("резерв", "🔁 нашёл через резервный источник, ставлю"));
             LastMissed.TryRemove(Context.Guild.Id, out _);
 
             var outcome = await _service.EnqueueAsync(player, TrackLoadResult.CreateTrack(track), new Audio8QueryPlan(searchQuery, 0, null, null));

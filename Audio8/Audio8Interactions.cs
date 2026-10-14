@@ -300,8 +300,23 @@ namespace sblngavnav6.Audio8
                     ? track.Uri.ToString()
                     : Audio8SearchService.BuildQuery(track);
 
+                var channel = player.SilentMode ? null : _service.ResolveTextChannel(player);
+                IUserMessage notice = null;
+                if (channel is not null)
+                {
+                    try { notice = await _service.SendAsync(channel, await Audio8Embeds.Accent("резерв", $"🔁 {track.Title}: YouTube не отдал трек, ищу через резервный источник, это может занять до минуты")).ConfigureAwait(false); }
+                    catch (Exception ex) when (ex is HttpException or TimeoutException) { }
+                }
+
                 if (await _reserve.ResolveAsync(query).ConfigureAwait(false) is not { } reserved)
+                {
+                    if (notice is not null)
+                    {
+                        try { await notice.DeleteAsync().ConfigureAwait(false); }
+                        catch (Exception ex) when (ex is HttpException or TimeoutException) { }
+                    }
                     return false;
+                }
 
                 await player.LockedAsync(async () =>
                 {
@@ -314,9 +329,9 @@ namespace sblngavnav6.Audio8
                 await LoggingService.LogInformationAsync(Audio8Constants.LogSource,
                     $"Резерв подхватил трек g={player.GuildId} track={track.Title}").ConfigureAwait(false);
 
-                if (!player.SilentMode && _service.ResolveTextChannel(player) is { } channel)
+                if (notice is not null)
                 {
-                    try { await _service.SendAsync(channel, await Audio8Embeds.Accent("резерв", $"🔁 {track.Title}: YouTube не отдал трек, играю через резервный источник")).ConfigureAwait(false); }
+                    try { await _service.ModifyAsync(notice, await Audio8Embeds.Accent("резерв", $"🔁 {track.Title}: нашёл через резервный источник, {(player.CurrentTrack?.Identifier == reserved.Identifier ? "играю" : "играет следующим")}")).ConfigureAwait(false); }
                     catch (Exception ex) when (ex is HttpException or TimeoutException) { }
                 }
 
