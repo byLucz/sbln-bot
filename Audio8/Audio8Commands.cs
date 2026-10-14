@@ -4,7 +4,9 @@ using Lavalink4NET.Players;
 using Lavalink4NET.Rest.Entities.Tracks;
 using sblngavnav6.Common;
 using sblngavnav6.Core;
+using sblngavnav6.Data;
 using sblngavnav6.Services;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using static sblngavnav6.Common.CommonUtils.Text;
 using static sblngavnav6.Common.CommonUtils.Time;
@@ -14,6 +16,8 @@ namespace sblngavnav6.Audio8
     [RequireGuild]
     public sealed class Audio8Commands : ModuleBase<SocketCommandContext>
     {
+        private static readonly ConcurrentDictionary<ulong, string> LastMissed = new();
+
         private readonly Audio8Service _service;
         private readonly Audio8SearchService _search;
         private readonly Audio8Reserve _reserve;
@@ -84,13 +88,17 @@ namespace sblngavnav6.Audio8
 
             if (!result.HasMatches)
             {
+                LastMissed[Context.Guild.Id] = searchQuery.Trim();
+
                 if (Context.Channel is ITextChannel textChannel &&
                     await _search.TryRecoverAsync(Context.Guild.Id, textChannel, Context.User.Id, query.Identifier, result))
                 {
                     return;
                 }
 
-                await ReplyAsync(embed: await Audio8Embeds.Error("играй", "ничего не нашлось по запросу..."));
+                await ReplyAsync(embed: await Audio8Embeds.Error("играй", Audio8Reserve.Configured
+                    ? $"ничего не нашлось по запросу..., попробуй `{Global.Vars.Cfg.pref1.Trim()} резерв`"
+                    : "ничего не нашлось по запросу..."));
                 return;
             }
 
@@ -111,6 +119,52 @@ namespace sblngavnav6.Audio8
                     await ReplyAsync(embed: await Audio8Embeds.Error("играй", "нечего ставить в очередь"));
                     break;
             }
+        }
+
+        [Command("резерв")]
+        [Cooldown(10)]
+        public async Task ReserveAsync([Remainder] string searchQuery = null)
+        {
+            if (!Audio8Reserve.Configured)
+            {
+                await ReplyAsync(embed: await Audio8Embeds.Error("резерв", "резервный источник не настроен"));
+                return;
+            }
+
+            searchQuery = string.IsNullOrWhiteSpace(searchQuery)
+                ? LastMissed.GetValueOrDefault(Context.Guild.Id)
+                : searchQuery.Trim();
+
+            if (string.IsNullOrWhiteSpace(searchQuery))
+            {
+                await ReplyAsync(embed: await Audio8Embeds.Error("резерв", "нечего повторять, напиши запрос или ссылку"));
+                return;
+            }
+
+            if (!Audio8Query.IsAllowedUrl(searchQuery))
+            {
+                await ReplyAsync(embed: await Audio8Embeds.Error("резерв", "такие ссылки не поддерживаются, только YouTube"));
+                return;
+            }
+
+            var player = await EnsurePlayerAsync(requireSameChannel: false);
+            if (player is null)
+                return;
+
+            using var typing = Context.Channel.EnterTypingState();
+
+            if (await _reserve.ResolveAsync(searchQuery) is not { } track)
+            {
+                await ReplyAsync(embed: await Audio8Embeds.Error("резерв", "резерв тоже не нашёл трек"));
+                return;
+            }
+
+            LastMissed.TryRemove(Context.Guild.Id, out _);
+
+            var outcome = await _service.EnqueueAsync(player, TrackLoadResult.CreateTrack(track), new Audio8QueryPlan(searchQuery, 0, null, null));
+
+            if (outcome.Kind is Audio8PlayKind.Enqueued)
+                await _service.SendEnqueuedAsync(Context.Channel, Context.Guild.Id, Context.User.Id, outcome.Track);
         }
 
         [Command("озвучь")]
@@ -481,7 +535,9 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
-            await ReplyAsync(embed: embed);
+            await ReplyAsync(embed: embed.ToEmbedBuilder()
+                .AddField("🔁 Резерв (yt-dlp)", await _reserve.StatusAsync(), true)
+                .Build());
         }
 
         private async Task<Audio8Player> EnsurePlayerAsync(bool requireSameChannel, bool allowDuringVote = false)

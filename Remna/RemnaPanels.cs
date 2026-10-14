@@ -238,7 +238,7 @@ public static class RemnaPanelBuilder
 
     private static string AgentLine(RemnaNodeRef item, RemnaResult<RemnaAgentHealth> health, long ms)
         => health.Ok
-            ? $"✅ {item.Node.DisplayName}: v{health.Data.Version}, {ms} мс, {Disk(health.Data.Disk)}"
+            ? $"✅ {item.Node.DisplayName}: v{health.Data.Version}{(health.Data.Music ? "m" : "")}, {ms} мс, {Disk(health.Data.Disk)}"
             : $"{(health.Error.StartsWith("неверный") ? "⚠️" : "❌")} {item.Node.DisplayName}: {health.Error}";
 
     public static async Task<(Embed Embed, List<RemnaNodeRef> Nodes)> BuildAgentsAsync(RemnaService remna)
@@ -284,7 +284,7 @@ public static class RemnaPanelBuilder
         var lines = new List<string> { $"`{node.Address}:{Global.Vars.Cfg.remnaAgentPort}`" };
         if (health.Ok)
         {
-            lines.Add($"✅ v{health.Data.Version}, доменов для скана: {health.Data.Domains}");
+            lines.Add($"✅ v{health.Data.Version}{(health.Data.Music ? "m" : "")}, доменов для скана: {health.Data.Domains}");
             lines.Add(Disk(health.Data.Disk));
             if (health.Data.Clean is { Ok: true, At: > 0 } clean)
                 lines.Add($"🧹 очистка {CommonUtils.Time.FormatAge(DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeSeconds(clean.At))} назад, освобождено {CommonUtils.Text.Bytes(clean.Freed)}");

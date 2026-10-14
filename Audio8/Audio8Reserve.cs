@@ -11,6 +11,7 @@ namespace sblngavnav6.Audio8
     {
         private static readonly TimeSpan ResolveTimeout = TimeSpan.FromSeconds(90);
         private static readonly TimeSpan LinkLifetime = TimeSpan.FromHours(12);
+        private static readonly TimeSpan HealthTimeout = TimeSpan.FromSeconds(5);
 
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly Audio8Service _service;
@@ -21,11 +22,49 @@ namespace sblngavnav6.Audio8
             _service = service;
         }
 
+        private static Uri BaseUri => new UriBuilder("http", Global.Vars.Cfg.lavaYtAgent.Trim(), Global.Vars.Cfg.lavaYtAgentPort).Uri;
+
         public static bool Configured =>
             !string.IsNullOrWhiteSpace(Global.Vars.Cfg.lavaYtAgent) && !string.IsNullOrWhiteSpace(Global.Vars.Cfg.remnaAgentToken);
 
         public static bool Covers(LavalinkTrack track) =>
             track is not null && track.SourceName is not ("http" or "local" or "soundcloud");
+
+        public async Task<string> StatusAsync(CancellationToken cancellationToken = default)
+        {
+            if (!Configured)
+                return "`выкл`, не задан Lava:YtAgent";
+
+            var baseUri = BaseUri;
+            const string route = "/health";
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+
+            var response = await CommonUtils.Web.SendAsync(
+                _httpClientFactory, "YtAgent", baseUri.ToString(), HttpMethod.Get, route, HealthTimeout,
+                request => CommonUtils.Web.SignAgent(request, baseUri, route, Global.Vars.Cfg.remnaAgentToken),
+                cancellationToken).ConfigureAwait(false);
+
+            if (!response.Ok)
+                return response.Failure == HttpRequestError.ResponseEnded
+                    ? "⚠️ неверный токен, сбиты часы или агент не обновлён"
+                    : $"❌ {CommonUtils.Web.BriefError(response.Error, 60)}";
+
+            try
+            {
+                var info = JsonNode.Parse(response.Body);
+                var cache = info?["cache"]?.GetValue<long>() ?? 0;
+                var limit = info?["limit"]?.GetValue<long>() ?? 0;
+
+                return $"✅ на связи, `{watch.ElapsedMilliseconds}ms`\n" +
+                       $"yt-dlp `{info?["ytdlp"]?.GetValue<string>() ?? "?"}`\n" +
+                       $"кеш `{CommonUtils.Text.Bytes(cache)}` / `{CommonUtils.Text.Bytes(limit)}`\n" +
+                       $"cookies: `{(info?["cookies"]?.GetValue<bool>() == true ? "есть, 18+ доступны" : "нет")}`";
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+            {
+                return "⚠️ кривой ответ /health";
+            }
+        }
 
         public async Task<LavalinkTrack> ResolveAsync(string query, CancellationToken cancellationToken = default)
         {
@@ -33,7 +72,7 @@ namespace sblngavnav6.Audio8
                 return null;
 
             var token = Global.Vars.Cfg.remnaAgentToken;
-            var baseUri = new UriBuilder("http", Global.Vars.Cfg.lavaYtAgent, Global.Vars.Cfg.lavaYtAgentPort).Uri;
+            var baseUri = BaseUri;
             var route = $"/resolve?q={Uri.EscapeDataString(query.Trim())}";
 
             var response = await CommonUtils.Web.SendAsync(

@@ -202,6 +202,7 @@ public sealed class RemnaAgentHealth
     public int Domains { get; set; }
     public RemnaAgentDisk Disk { get; set; }
     public RemnaAgentClean Clean { get; set; }
+    public bool Music { get; set; }
 }
 
 public sealed class RemnaAgentDisk
