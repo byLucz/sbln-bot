@@ -11,12 +11,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-VERSION = "1.0"
+VERSION = next((line.split('"')[1] for line in Path(__file__).with_name("ragent.py").read_text(encoding="utf-8").splitlines()
+                if line.startswith("VERSION = ")), "?")
 TOKEN = os.environ.get("RAGENT_TOKEN", "")
 PORT = int(os.environ.get("RAGENT_YT_PORT", "8688"))
 CACHE = Path(os.environ.get("CACHE_DIRECTORY", "/var/cache/ragent-yt")) / "audio"
 CACHE_LIMIT = int(os.environ.get("RAGENT_YT_CACHE_MB", "1024")) * 1024 * 1024
 YTDLP = os.environ.get("RAGENT_YTDLP", "/opt/ragent/bin/yt-dlp")
+CREDENTIALS = os.environ.get("CREDENTIALS_DIRECTORY")
+COOKIES_SOURCE = Path(CREDENTIALS) / "cookies" if CREDENTIALS else None
+COOKIES = CACHE.parent / "cookies.txt"
 SKEW = 60
 RESOLVE_TIMEOUT = 40
 DOWNLOAD_TIMEOUT = 120
@@ -44,9 +48,19 @@ def signed_link(path, exp, sig):
     return hmac.compare_digest(digest(path, exp), sig.lower())
 
 
+def prepare_cookies():
+    if COOKIES_SOURCE is None or not COOKIES_SOURCE.is_file():
+        COOKIES.unlink(missing_ok=True)
+        return
+    COOKIES.parent.mkdir(parents=True, exist_ok=True)
+    COOKIES.write_bytes(COOKIES_SOURCE.read_bytes())
+    COOKIES.chmod(0o600)
+
+
 def ytdlp(args, timeout):
+    cookies = ["--cookies", str(COOKIES)] if COOKIES.is_file() else []
     with WORKERS:
-        return subprocess.run([YTDLP, "--no-warnings", "--no-playlist", "--no-cache-dir", *args],
+        return subprocess.run([YTDLP, "--no-warnings", "--no-playlist", "--no-cache-dir", *cookies, *args],
                               capture_output=True, text=True, timeout=timeout)
 
 
@@ -127,7 +141,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         if url.path == "/health":
             size = sum(p.stat().st_size for p in CACHE.glob("*") if p.is_file()) if CACHE.exists() else 0
-            return self.reply(200, {"ok": True, "version": VERSION, "ytdlp": version(), "cache": size, "limit": CACHE_LIMIT})
+            return self.reply(200, {"ok": True, "version": VERSION, "ytdlp": version(), "cache": size, "limit": CACHE_LIMIT,
+                                    "cookies": COOKIES.is_file()})
         if url.path == "/resolve":
             text = first(query, "q").strip()
             if not text:
@@ -206,4 +221,5 @@ if __name__ == "__main__":
     if not TOKEN:
         raise SystemExit("RAGENT_TOKEN не задан")
     CACHE.mkdir(parents=True, exist_ok=True)
+    prepare_cookies()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

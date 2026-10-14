@@ -16,7 +16,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 NAME = "R-WATCHER agent for sbln-bot"
-VERSION = "1.3"
+VERSION = "1.4"
+MUSIC_UNIT = Path("/etc/systemd/system/ragent-yt.service")
 TOKEN = os.environ.get("RAGENT_TOKEN", "")
 PORT = int(os.environ.get("RAGENT_PORT", "8687"))
 TIMEOUT = float(os.environ.get("RAGENT_TIMEOUT", "4"))
@@ -183,7 +184,7 @@ class Handler(BaseHTTPRequestHandler):
         query = parse_qs(url.query)
         if url.path == "/health":
             return self.reply(200, {"ok": True, "name": NAME, "version": VERSION, "domains": len(load_domains()),
-                                    "disk": disk(), "clean": last_clean()})
+                                    "disk": disk(), "clean": last_clean(), "music": MUSIC_UNIT.exists()})
         if url.path == "/clean":
             return self.reply(200, clean())
         if url.path == "/scan":

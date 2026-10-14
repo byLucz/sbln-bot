@@ -46,6 +46,24 @@ install_music() {
   chmod 0755 "$DIR/bin/deno"
   "$DIR/bin/yt-dlp" --version >/dev/null
   if grep -q '^RAGENT_YT_PORT=' "$ENV"; then sed -i "s/^RAGENT_YT_PORT=.*/RAGENT_YT_PORT=$port/" "$ENV"; else echo "RAGENT_YT_PORT=$port" >> "$ENV"; fi
+  write_music_unit
+  systemctl enable ragent-yt >/dev/null
+  systemctl restart ragent-yt
+  sleep 1
+  if health health "$port" >/dev/null; then
+    echo ">> музыкальный резерв запущен на порту $port, yt-dlp $("$DIR/bin/yt-dlp" --version)"
+  else
+    echo ">> резерв не ответил, смотри: journalctl -u ragent-yt" >&2
+    exit 1
+  fi
+  echo ">> в конфиг бота: Lava:YtAgent = адрес этой ноды, Lava:YtAgentPort = $port"
+  echo ">> открой порт только для IP бота: ufw allow from <IP бота> to any port $port proto tcp"
+  echo ">> в Lavalink должен быть включён http-источник: lavalink.server.sources.http: true"
+}
+
+write_music_unit() {
+  local credential=''
+  [[ -f "$DIR/cookies.txt" ]] && credential="LoadCredential=cookies:$DIR/cookies.txt"
   cat > "$YT_UNIT" <<UNIT_END
 [Unit]
 Description=R-WATCHER agent music reserve
@@ -69,23 +87,32 @@ CacheDirectory=ragent-yt
 MemoryMax=400M
 CPUQuota=50%
 TasksMax=64
+$credential
 
 [Install]
 WantedBy=multi-user.target
 UNIT_END
   systemctl daemon-reload
-  systemctl enable ragent-yt >/dev/null
+}
+
+music_cookies() {
+  root
+  [[ -f "$YT_UNIT" ]] || { echo '>> сначала включи резерв: ragent music on' >&2; exit 1; }
+  local source=${1:-}
+  if [[ "$source" = off ]]; then
+    rm -f "$DIR/cookies.txt"
+    echo '>> cookies удалены'
+  else
+    [[ -f "$source" ]] || { echo 'ragent music cookies <файл cookies.txt в формате Netscape> | off' >&2; exit 1; }
+    grep -q $'\t' "$source" || { echo '>> файл не похож на cookies.txt в формате Netscape' >&2; exit 1; }
+    install -m 0600 -o root -g root "$source" "$DIR/cookies.txt"
+    echo '>> cookies установлены, исходный файл можно удалить'
+  fi
+  write_music_unit
   systemctl restart ragent-yt
   sleep 1
-  if health health "$port" >/dev/null; then
-    echo ">> музыкальный резерв запущен на порту $port, yt-dlp $("$DIR/bin/yt-dlp" --version)"
-  else
-    echo ">> резерв не ответил, смотри: journalctl -u ragent-yt" >&2
-    exit 1
-  fi
-  echo ">> в конфиг бота: Lava:YtAgent = адрес этой ноды, Lava:YtAgentPort = $port"
-  echo ">> открой порт только для IP бота: ufw allow from <IP бота> to any port $port proto tcp"
-  echo ">> в Lavalink должен быть включён http-источник: lavalink.server.sources.http: true"
+  health health "$(yt_port)" | python3 -c 'import json, sys; print(">> cookies подхвачены" if json.load(sys.stdin).get("cookies") else ">> резерв работает без cookies")' \
+    || echo '>> резерв не ответил, смотри: journalctl -u ragent-yt' >&2
 }
 
 install_agent() {
@@ -192,6 +219,7 @@ ragent clean            очистить диск (образы Docker, логи
 ragent music on [порт]  включить музыкальный резерв (yt-dlp), порт по умолчанию 8688
 ragent music off        выключить музыкальный резерв
 ragent music status     статус резерва и проверка /health
+ragent music cookies <файл>|off   cookies YouTube-аккаунта для 18+ роликов
 ragent uninstall        удалить агента
 EOF
 }
@@ -221,10 +249,11 @@ case "${1:-}" in
   music)
     case "${2:-}" in
       on) install_music "${3:-}" ;;
+      cookies) music_cookies "${3:-}" ;;
       off)
         root
         systemctl disable --now ragent-yt 2>/dev/null || true
-        rm -f "$YT_UNIT" "$DIR/ragent_yt.py"
+        rm -f "$YT_UNIT" "$DIR/ragent_yt.py" "$DIR/cookies.txt"
         rm -rf "$DIR/bin"
         sed -i '/^RAGENT_YT_PORT=/d' "$ENV"
         systemctl daemon-reload
@@ -235,7 +264,7 @@ case "${1:-}" in
         echo
         health health "$(yt_port)" && echo || echo '>> /health резерва не ответил'
         ;;
-      *) echo 'ragent music on [порт] | off | status' >&2; exit 1 ;;
+      *) echo 'ragent music on [порт] | off | status | cookies <файл>|off' >&2; exit 1 ;;
     esac
     ;;
   uninstall)
