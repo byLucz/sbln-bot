@@ -323,6 +323,19 @@ namespace sblngavnav6.Audio8
             listId.Equals("LL", StringComparison.OrdinalIgnoreCase) ||
             listId.Equals("WL", StringComparison.OrdinalIgnoreCase);
 
+        private static readonly string[] AllowedHosts =
+            ["youtube.com", "youtu.be", "soundcloud.com", "spotify.com", "spotify.link"];
+
+        public static bool IsAllowedUrl(string identifier)
+        {
+            if (HasKnownPrefix(identifier) || !Uri.TryCreate(identifier, UriKind.Absolute, out var uri))
+                return true;
+
+            return (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp)
+                && AllowedHosts.Any(host => uri.Host.Equals(host, StringComparison.OrdinalIgnoreCase)
+                    || uri.Host.EndsWith("." + host, StringComparison.OrdinalIgnoreCase));
+        }
+
         private static bool IsYouTubeHost(string host) =>
             host.Contains("youtube.com", StringComparison.OrdinalIgnoreCase) ||
             host.Contains("youtu.be", StringComparison.OrdinalIgnoreCase);

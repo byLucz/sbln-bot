@@ -44,11 +44,18 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
+            var query = Audio8Query.Normalize(searchQuery, _service.GetSearchPrefix(Context.Guild.Id));
+
+            if (!Audio8Query.IsAllowedUrl(query.Identifier))
+            {
+                await ReplyAsync(embed: await Audio8Embeds.Error("играй", "такие ссылки не поддерживаются, только YouTube, SoundCloud и Spotify"));
+                return;
+            }
+
             var player = await EnsurePlayerAsync(requireSameChannel: false);
             if (player is null)
                 return;
 
-            var query = Audio8Query.Normalize(searchQuery, _service.GetSearchPrefix(Context.Guild.Id));
             var result = await _service.LoadAsync(query.Identifier);
 
             if (!result.HasMatches && !string.IsNullOrEmpty(query.FallbackIdentifier))
