@@ -227,6 +227,25 @@ namespace sblngavnav6.Data
                 });
         }
 
+        public static async Task UpdateLastStatus(BotStatus status)
+        {
+            var updated = await ExecAsync(
+                @"UPDATE statusbar
+                SET StatusText = @text, StatusPos = @pos, StatusLink = @link, StatusType = @type
+                ORDER BY id DESC
+                LIMIT 1",
+                cmd =>
+                {
+                    cmd.Parameters.AddWithValue("@text", status.Text ?? "");
+                    cmd.Parameters.AddWithValue("@pos", status.Pos ?? "");
+                    cmd.Parameters.AddWithValue("@link", status.Link ?? "");
+                    cmd.Parameters.AddWithValue("@type", status.Type ?? "");
+                }).ConfigureAwait(false);
+
+            if (updated == 0)
+                await AddStatus(status).ConfigureAwait(false);
+        }
+
         public static Task<BotStatus> GetLastStatus() =>
             RowAsync(
                 @"SELECT StatusText, StatusPos, StatusLink, StatusType

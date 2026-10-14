@@ -5,6 +5,7 @@ using Discord.WebSocket;
 using sblngavnav6.Common;
 using sblngavnav6.Core;
 using sblngavnav6.Data;
+using sblngavnav6.Services;
 using static sblngavnav6.Data.DataRoots;
 
 namespace sblngavnav6.Commands;
@@ -15,6 +16,10 @@ public static class StatusPanel
     private const string Custom = "Custom";
     private const string None = "None";
     private const string Streaming = nameof(ActivityType.Streaming);
+    public const int MaxText = 32;
+
+    private static readonly SemaphoreSlim ApplyGate = new(1, 1);
+    private static long _applyTicket;
 
     private static readonly (string Key, UserStatus Status, string Label)[] Statuses =
     [
@@ -44,26 +49,63 @@ public static class StatusPanel
     public static async Task ApplyAsync(DiscordSocketClient client, BotStatus status)
     {
         status = Normalize(status);
-        await client.SetStatusAsync(Statuses.First(s => s.Key == status.Pos).Status);
 
-        if (status.Type == None || string.IsNullOrWhiteSpace(status.Text))
+        var userStatus = Statuses.First(s => s.Key == status.Pos).Status;
+        if (client.Status != userStatus)
+            await client.SetStatusAsync(userStatus);
+
+        var hidden = status.Type == None || string.IsNullOrWhiteSpace(status.Text);
+        var link = status.Type == Streaming && !string.IsNullOrWhiteSpace(status.Link) ? status.Link : null;
+        var current = client.Activity;
+
+        var unchanged = hidden ? current is null
+            : status.Type == Custom ? current is CustomStatusGame custom && custom.State == status.Text
+            : current is not null && current is not CustomStatusGame
+              && current.Type == (link is null ? Enum.Parse<ActivityType>(status.Type) : ActivityType.Streaming)
+              && current.Name == status.Text
+              && (current as StreamingGame)?.Url == link;
+
+        if (unchanged)
+            return;
+
+        if (hidden)
             await client.SetGameAsync(null);
         else if (status.Type == Custom)
             await client.SetCustomStatusAsync(status.Text);
         else
-            await client.SetGameAsync(status.Text, status.Type == Streaming ? status.Link : null, Enum.Parse<ActivityType>(status.Type));
+            await client.SetGameAsync(status.Text, link, Enum.Parse<ActivityType>(status.Type));
     }
 
-    public static async Task<string> SaveAsync(DiscordSocketClient client, BotStatus status)
+    public static async Task<string> SaveAsync(BotStatus status, bool newRecord)
     {
         status = Normalize(status);
-        await DataBase.AddStatus(status);
-        await ApplyAsync(client, status);
+        await (newRecord ? DataBase.AddStatus(status) : DataBase.UpdateLastStatus(status));
 
         return status.Type == None ? "✅ Активность убрана"
             : string.IsNullOrWhiteSpace(status.Text) ? "⚠️ Текст не задан, активность не видна, жми ✏️"
             : status.Type == Streaming && !IsStreamUrl(status.Link) ? "⚠️ Для стрима нужна ссылка на twitch.tv или youtube.com, иначе Discord покажет «Играет в»"
-            : "✅ Применено";
+            : "✅ Сохранено";
+    }
+
+    public static async Task ApplyLatestAsync(DiscordSocketClient client)
+    {
+        var ticket = Interlocked.Increment(ref _applyTicket);
+        await ApplyGate.WaitAsync();
+        try
+        {
+            if (ticket != Interlocked.Read(ref _applyTicket))
+                return;
+
+            await ApplyAsync(client, await DataBase.GetLastStatus());
+        }
+        catch (Exception ex)
+        {
+            await LoggingService.LogErrorAsync("STATS", "Не удалось применить статус бота", ex);
+        }
+        finally
+        {
+            ApplyGate.Release();
+        }
     }
 
     public static (Embed Embed, MessageComponent Components) Build(BotStatus status, string note = null)
@@ -132,7 +174,7 @@ public class StatusModal : IModal
     public string Title => "Статус бота";
 
     [InputLabel("Текст активности")]
-    [ModalTextInput("text", TextInputStyle.Short, "что показать в профиле", maxLength: 128)]
+    [ModalTextInput("text", TextInputStyle.Short, "что показать в профиле", maxLength: StatusPanel.MaxText)]
     [RequiredInput(false)]
     public string Text { get; set; }
 
@@ -158,7 +200,7 @@ public class StatusInteractions : InteractionModuleBase<SocketInteractionContext
             _ => current
         };
 
-        await UpdateAsync((SocketMessageComponent)Context.Interaction, next);
+        await UpdateAsync((SocketMessageComponent)Context.Interaction, next, newRecord: false);
     }
 
     [RequireOwnerInteraction]
@@ -166,7 +208,11 @@ public class StatusInteractions : InteractionModuleBase<SocketInteractionContext
     public async Task Edit()
     {
         var current = await DataBase.GetLastStatus();
-        await Context.Interaction.RespondWithModalAsync("stmodal", new StatusModal { Text = current.Text, Link = current.Link });
+        await Context.Interaction.RespondWithModalAsync("stmodal", new StatusModal
+        {
+            Text = string.IsNullOrWhiteSpace(current.Text) ? null : CommonUtils.Text.Truncate(current.Text, StatusPanel.MaxText),
+            Link = string.IsNullOrWhiteSpace(current.Link) ? null : current.Link
+        });
     }
 
     [RequireOwnerInteraction]
@@ -174,12 +220,13 @@ public class StatusInteractions : InteractionModuleBase<SocketInteractionContext
     public async Task Save(StatusModal modal)
     {
         var current = await DataBase.GetLastStatus();
-        await UpdateAsync((SocketModal)Context.Interaction, current with { Text = modal.Text?.Trim() ?? "", Link = modal.Link?.Trim() ?? "" });
+        var next = current with { Text = modal.Text?.Trim() ?? "", Link = modal.Link?.Trim() ?? "" };
+        await UpdateAsync((SocketModal)Context.Interaction, next, newRecord: next.Text != current.Text || next.Link != current.Link);
     }
 
-    private async Task UpdateAsync(IDiscordInteraction interaction, BotStatus next)
+    private async Task UpdateAsync(IDiscordInteraction interaction, BotStatus next, bool newRecord)
     {
-        var note = await StatusPanel.SaveAsync(Context.Client, next);
+        var note = await StatusPanel.SaveAsync(next, newRecord);
         var (embed, components) = StatusPanel.Build(next, note);
 
         Action<MessageProperties> update = message =>
@@ -192,5 +239,7 @@ public class StatusInteractions : InteractionModuleBase<SocketInteractionContext
             await modal.UpdateAsync(update);
         else
             await ((SocketMessageComponent)interaction).UpdateAsync(update);
+
+        await StatusPanel.ApplyLatestAsync(Context.Client);
     }
 }
