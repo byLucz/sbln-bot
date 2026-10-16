@@ -17,7 +17,7 @@ public sealed record RemnaResult<T>(T Data, string Error)
 
 public sealed class RemnaService
 {
-    private const string RestartBody = "{\"forceRestart\":false}";
+    private const string RestartBody = "{\"forceRestart\":true}";
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan AgentTimeout = TimeSpan.FromMinutes(3);

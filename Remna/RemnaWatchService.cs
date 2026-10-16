@@ -201,7 +201,18 @@ public sealed class RemnaWatchService
         var keys = results.Select(r => r.Target.Key).ToHashSet();
 
         foreach (var server in servers.Where(s => s.Result.Ok).Select(s => s.Server))
-            await _store.CloseIncidentsAsync(server, i => i.Uuid?.StartsWith("port:", StringComparison.Ordinal) == true && !active.Contains(i.Uuid), now);
+        {
+            var orphans = await _store.CloseIncidentsAsync(server, i => i.Uuid?.StartsWith("port:", StringComparison.Ordinal) == true && !active.Contains(i.Uuid), now);
+            foreach (var orphan in orphans)
+            {
+                var endpoint = orphan.Uuid[5..orphan.Uuid.LastIndexOf(':')];
+                var current = results.FirstOrDefault(r => r.Target.Server.Url == server.Url && r.Target.Endpoint == endpoint);
+
+                if (current is { Ok: true } or { Expiring: true })
+                    await AlertAsync($"🔐 {current.Target.Label} снова доступен клиентам", server,
+                        detail: $"{endpoint}\nнастройки хоста изменены, простой {CommonUtils.Time.FormatAge(now - orphan.Start)}");
+            }
+        }
         foreach (var gone in _ports.Keys.Where(key => !keys.Contains(key)).ToList())
             _ports.Remove(gone);
 

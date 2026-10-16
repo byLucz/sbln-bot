@@ -68,13 +68,18 @@ public sealed class RemnaStore : IDisposable
         return closed;
     }
 
-    public Task CloseIncidentsAsync(RemnaServer server, Func<RemnaIncident, bool> match, DateTimeOffset end) => WriteAsync(state =>
+    public async Task<List<RemnaIncident>> CloseIncidentsAsync(RemnaServer server, Func<RemnaIncident, bool> match, DateTimeOffset end)
     {
-        var open = state.Incidents.Where(i => i.Server == server.Url && i.End is null && match(i)).ToList();
-        foreach (var incident in open)
-            incident.End = end;
-        return open.Count > 0;
-    });
+        List<RemnaIncident> closed = [];
+        await WriteAsync(state =>
+        {
+            closed = state.Incidents.Where(i => i.Server == server.Url && i.End is null && match(i)).ToList();
+            foreach (var incident in closed)
+                incident.End = end;
+            return closed.Count > 0;
+        });
+        return closed;
+    }
 
     public async Task<bool> MarkCertWarningAsync(string key, DateTimeOffset notAfter, int days)
     {
