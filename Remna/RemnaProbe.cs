@@ -64,6 +64,7 @@ public static class RemnaProbe
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(Timeout);
         var sw = System.Diagnostics.Stopwatch.StartNew();
+        var stage = target.Quic ? "QUIC-рукопожатия" : "TCP-подключения";
 
         try
         {
@@ -74,6 +75,7 @@ public static class RemnaProbe
 
             using var tcp = new TcpClient();
             await tcp.ConnectAsync(target.Address, target.Port, cts.Token);
+            stage = $"TLS-рукопожатия (TCP за {sw.ElapsedMilliseconds} мс)";
 
             if (!target.Tls)
                 return new RemnaProbeResult(target, true, null, null, sw.ElapsedMilliseconds);
@@ -98,7 +100,7 @@ public static class RemnaProbe
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return new RemnaProbeResult(target, false, $"таймаут {Timeout.TotalSeconds:0}с", null, sw.ElapsedMilliseconds);
+            return new RemnaProbeResult(target, false, $"таймаут {stage} {Timeout.TotalSeconds:0}с", null, sw.ElapsedMilliseconds);
         }
         catch (Exception ex) when (ex is SocketException or IOException or System.Security.Authentication.AuthenticationException or QuicException)
         {
