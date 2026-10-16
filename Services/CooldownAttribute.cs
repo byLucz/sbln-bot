@@ -1,4 +1,5 @@
 using Discord.Commands;
+using DiscordTelegramFrontier;
 using System.Collections.Concurrent;
 using static sblngavnav6.Common.CommonUtils.Time;
 
@@ -22,7 +23,7 @@ namespace sblngavnav6.Services
             CommandInfo command,
             IServiceProvider services)
         {
-            var key = new CooldownInfo(context.User.Id, command.GetHashCode());
+            var key = new CooldownInfo(context.Sender()?.Id ?? 0, command.GetHashCode());
             var now = DateTimeOffset.UtcNow;
 
             if (_cooldowns.TryGetValue(key, out var endsAt))

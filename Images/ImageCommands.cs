@@ -1,5 +1,6 @@
 using Discord;
 using Discord.Commands;
+using DiscordTelegramFrontier;
 using SkiaSharp;
 using sblngavnav6.Common;
 using sblngavnav6.Core;
@@ -28,11 +29,12 @@ namespace sblngavnav6.Images
 
         protected override void BeforeExecute(CommandInfo command) => _command = command.Name;
 
+        [Frontier]
         [Command("обоссать")]
         [Cooldown(15)]
         public async Task PissAsync(IUser user = null)
         {
-            var target = user ?? Context.Message.ReferencedMessage?.Author;
+            var target = user ?? Context.Message?.ReferencedMessage?.Author;
 
             if (target is null)
             {
@@ -40,10 +42,11 @@ namespace sblngavnav6.Images
                 return;
             }
 
-            var attackerBytes = await AvatarBytesAsync(Context.User);
+            var attacker = Context.Sender();
+            var attackerBytes = await AvatarBytesAsync(attacker);
             var victimBytes = await AvatarBytesAsync(target);
 
-            await RenderAsync("piss.gif", $"{Context.User.Mention} обоссал {target.Mention} 💦", async () =>
+            await RenderAsync("piss.gif", $"{attacker.Mention} обоссал {target.Mention} 💦", async () =>
             {
                 using var attacker = ImageTools.Circle(attackerBytes, 160);
                 using var victim = ImageTools.Circle(victimBytes, 160);
@@ -54,13 +57,14 @@ namespace sblngavnav6.Images
             });
         }
 
+        [Frontier]
         [Command("монетка")]
         [Alias("монета", "коин")]
         [Cooldown(10)]
         public async Task CoinAsync(IUser first = null, IUser second = null)
         {
             var (heads, tails) = second is null
-                ? (Context.User, first ?? Context.Message.ReferencedMessage?.Author)
+                ? (Context.Sender(), first ?? Context.Message?.ReferencedMessage?.Author)
                 : (first, second);
 
             if (tails is null)
@@ -84,6 +88,7 @@ namespace sblngavnav6.Images
             });
         }
 
+        [Frontier]
         [Command("демотиватор")]
         [Alias("демот")]
         [Cooldown(5)]
@@ -98,7 +103,7 @@ namespace sblngavnav6.Images
             }
 
             using var source = await SourceAsync(args)
-                ?? ImageTools.Decode(await AvatarBytesAsync(Mentioned(args) ?? Context.Message.ReferencedMessage?.Author ?? Context.User));
+                ?? ImageTools.Decode(await AvatarBytesAsync(Mentioned(args) ?? Context.Message?.ReferencedMessage?.Author ?? Context.Sender()));
 
             if (source is null)
             {
@@ -110,6 +115,7 @@ namespace sblngavnav6.Images
                 Task.FromResult(ImageEffects.Demotivator(source, Truncate(text[0], 120), text.Length > 1 ? Truncate(text[1], 240) : null)));
         }
 
+        [Frontier]
         [Command("шефограм")]
         [Alias("шфгр")]
         [Cooldown(10)]
@@ -143,6 +149,7 @@ namespace sblngavnav6.Images
             });
         }
 
+        [Frontier]
         [Command("скан")]
         [Alias("сканер")]
         [Cooldown(10)]
@@ -229,9 +236,12 @@ namespace sblngavnav6.Images
 
         private async Task<SKBitmap> SourceAsync(string args)
         {
-            var referenced = Context.Message.ReferencedMessage;
+            if (ImageTools.Decode(await Context.IncomingImageAsync(ImageTools.MaxSourceBytes)) is { } sent)
+                return sent;
 
-            var candidates = Context.Message.Attachments.Where(ImageTools.IsImage).Select(attachment => attachment.Url)
+            var referenced = Context.Message?.ReferencedMessage;
+
+            var candidates = (Context.Message?.Attachments ?? []).Where(ImageTools.IsImage).Select(attachment => attachment.Url)
                 .Concat(referenced?.Attachments.Where(ImageTools.IsImage).Select(attachment => attachment.Url) ?? [])
                 .Concat(referenced?.Embeds.Select(ImageTools.EmbedImage) ?? [])
                 .Concat(Words(args).Where(word => EmbedHandler.Link(word) is not null));
@@ -246,7 +256,7 @@ namespace sblngavnav6.Images
         }
 
         private IUser Mentioned(string args) =>
-            Context.Message.MentionedUsers.FirstOrDefault(user => Words(args).Any(word => MentionUtils.TryParseUser(word, out var id) && id == user.Id));
+            Context.Message?.MentionedUsers.FirstOrDefault(user => Words(args).Any(word => MentionUtils.TryParseUser(word, out var id) && id == user.Id));
 
         private static IEnumerable<string> Words(string args) =>
             (args ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries);
