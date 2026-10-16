@@ -1,3 +1,6 @@
+using Discord.WebSocket;
+using DiscordTelegramFrontier;
+using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.TelegramExtensions.Core;
 using System.Globalization;
 using System.Net;
@@ -16,9 +19,14 @@ public sealed class ChatInfoModule : TelegramModuleBase
 
     [Command("инфа")]
     [Alias("информация")]
-    [RequireGroup]
     public async Task InfoAsync()
     {
+        if (Context.Chat.Type == ChatType.Private)
+        {
+            await UserInfoAsync();
+            return;
+        }
+
         ChatFullInfo chat;
         try
         {
@@ -42,6 +50,54 @@ public sealed class ChatInfoModule : TelegramModuleBase
             InlineKeyboardButton.WithUrl(chat.Type == ChatType.Channel ? "🔗 Открыть канал" : "🔗 Открыть группу",
                 $"https://t.me/{Uri.EscapeDataString(username)}"));
         await ReplyAsync(CreateText(chat, memberCount), ParseMode.Html, keyboard);
+    }
+
+    private async Task UserInfoAsync()
+    {
+        if (Context.User is not { } user)
+        {
+            await ReplyAsync("не вижу, кто пишет 😕");
+            return;
+        }
+
+        ChatFullInfo? profile = null;
+        try
+        {
+            profile = await Context.Bot.GetChat(user.Id, Context.CancellationToken);
+        }
+        catch (ApiRequestException ex) when (ex.ErrorCode is 400 or 403) { }
+
+        var name = string.Join(" ", new[] { user.FirstName, user.LastName }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        var usernames = (profile?.ActiveUsernames ?? (user.Username is null ? [] : [user.Username])).ToList();
+
+        var text = new StringBuilder()
+            .Append("👤 <b>").Append(WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(name) ? "Без имени" : name)).AppendLine("</b>");
+        if (!string.IsNullOrWhiteSpace(profile?.Bio))
+            text.AppendLine().AppendLine(WebUtility.HtmlEncode(profile.Bio));
+
+        text.AppendLine()
+            .AppendLine("🪪 <b>Профиль</b>")
+            .Append("Юзернейм: ").AppendLine(usernames.Count == 0 ? "нет" : string.Join(", ", usernames.Select(username => "@" + WebUtility.HtmlEncode(username))))
+            .Append("ID: <code>").Append(user.Id.ToString(CultureInfo.InvariantCulture)).AppendLine("</code>")
+            .Append("Язык: ").AppendLine(string.IsNullOrWhiteSpace(user.LanguageCode) ? "нет данных" : WebUtility.HtmlEncode(user.LanguageCode))
+            .Append("Premium: ").AppendLine(user.IsPremium ? "да" : "нет");
+        if (profile?.Birthdate is { } birthdate)
+            text.Append("День рождения: ").AppendLine(birthdate.Year is { } year
+                ? $"{birthdate.Day:00}.{birthdate.Month:00}.{year}"
+                : $"{birthdate.Day:00}.{birthdate.Month:00}");
+
+        var linked = Context.Services.GetService<FrontierOptions>()?.UserToDiscord.TryGetValue(user.Id, out var discordId) == true
+            ? Context.Services.GetService<DiscordSocketClient>()?.GetUser(discordId) is { } discord
+                ? $"@{WebUtility.HtmlEncode(discord.Username)} (<code>{discordId.ToString(CultureInfo.InvariantCulture)}</code>)"
+                : $"<code>{discordId.ToString(CultureInfo.InvariantCulture)}</code>"
+            : "не привязан";
+        text.AppendLine()
+            .AppendLine("🔗 <b>Discord</b>")
+            .AppendLine(linked);
+
+        var keyboard = usernames.Count == 0 ? null : new InlineKeyboardMarkup(
+            InlineKeyboardButton.WithUrl("🔗 Открыть профиль", $"https://t.me/{Uri.EscapeDataString(usernames[0])}"));
+        await ReplyAsync(text.AppendLine().Append("<i>sbln инфа🔭</i>").ToString(), ParseMode.Html, keyboard);
     }
 
     private static string CreateText(ChatFullInfo chat, int? memberCount)
