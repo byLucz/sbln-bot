@@ -445,6 +445,13 @@ namespace sblngavnav6.Common
         public static bool IsIoFailure(Exception ex) =>
             ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
 
+        public static void WriteAtomic(string path, string content)
+        {
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, content);
+            File.Move(temp, path, overwrite: true);
+        }
+
         public static int RandomNumber(int min, int max) => (int)Random.Shared.NextInt64(min, (long)max + 1);
 
         public static T RandomList<T>(this IList<T> items) => items[Random.Shared.Next(items.Count)];

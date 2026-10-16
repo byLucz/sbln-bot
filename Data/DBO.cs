@@ -542,11 +542,7 @@ namespace sblngavnav6.Data
             string json = JsonSerializer.Serialize(books.Values.ToList(), AppJsonContext.Default.ListBookExportDto);
 
             lock (_exportLock)
-            {
-                string tmp = path + ".tmp";
-                File.WriteAllText(tmp, json);
-                File.Move(tmp, path, overwrite: true);
-            }
+                CommonUtils.WriteAtomic(path, json);
         }
 
         public static Task<List<string>> LoadStreamsOnline()

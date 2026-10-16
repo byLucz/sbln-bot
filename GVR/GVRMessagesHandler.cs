@@ -192,6 +192,14 @@ namespace sblngavnav6.GVR
             await context.Channel.SendMessageAsync(generated, allowedMentions: AllowedMentions.None);
         }
 
+        public async Task<string> PhraseAsync()
+        {
+            var step = (int)_config.Step;
+            var model = step <= 0 ? null : await GetModelAsync(step).ConfigureAwait(false);
+
+            return model is null ? null : GVRText.Plain(GenerateMessage(model, step, CommonUtils.RandomNumber(6, 14)));
+        }
+
         private async Task<Model> GetModelAsync(int step)
         {
             var (count, maxId) = await _db.StampAsync().ConfigureAwait(false);

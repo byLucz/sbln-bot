@@ -68,6 +68,7 @@ namespace sblngavnav6.Core
                 .AddSingleton<RemnaService>()
                 .AddSingleton<RemnaStore>()
                 .AddSingleton<RemnaWatchService>()
+                .AddSingleton<PortalService>()
                 .AddSingleton<PpmServerService>()
                 .AddSingleton<PpmPanels>()
                 .AddSingleton<PpmService>()

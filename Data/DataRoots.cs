@@ -105,6 +105,31 @@ namespace sblngavnav6.Data
             public double final { get; set; }
         }
 
+        public sealed class PortalStatusDto
+        {
+            public string version { get; set; } = "";
+            public string channel { get; set; } = "";
+            public string commit { get; set; } = "";
+            public bool online { get; set; }
+            public DateTimeOffset startedAt { get; set; }
+            public DateTimeOffset updatedAt { get; set; }
+            public int latency { get; set; }
+            public int guilds { get; set; }
+            public int members { get; set; }
+            public int playing { get; set; }
+            public string name { get; set; } = "";
+            public string discriminator { get; set; } = "";
+            public string avatar { get; set; } = "";
+            public string activityType { get; set; } = "";
+            public string activity { get; set; } = "";
+        }
+
+        public sealed class PortalPhraseDto
+        {
+            public string date { get; set; } = "";
+            public string text { get; set; } = "";
+        }
+
         public class MealResponse
         {
             [JsonPropertyName("meals")]
