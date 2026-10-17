@@ -9,9 +9,7 @@ public sealed class RemnaStore : IDisposable
     public static readonly TimeSpan HistoryWindow = TimeSpan.FromHours(24);
 
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly string _path = Path.Combine(
-        Environment.GetEnvironmentVariable("SBLN_DATA_DIR") is { Length: > 0 } dir ? dir : AppContext.BaseDirectory,
-        "remna.json");
+    private readonly string _path = Path.Combine(CommonUtils.DataDir, "remna.json");
     private RemnaState _state;
 
     public void Dispose() => _gate.Dispose();

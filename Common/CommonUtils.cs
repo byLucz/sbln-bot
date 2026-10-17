@@ -445,6 +445,9 @@ namespace sblngavnav6.Common
         public static bool IsIoFailure(Exception ex) =>
             ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
 
+        public static string DataDir { get; } =
+            Environment.GetEnvironmentVariable("SBLN_DATA_DIR") is { Length: > 0 } dir ? dir : AppContext.BaseDirectory;
+
         public static void WriteAtomic(string path, string content)
         {
             var temp = path + ".tmp";

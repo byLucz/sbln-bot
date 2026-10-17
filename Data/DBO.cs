@@ -487,8 +487,9 @@ namespace sblngavnav6.Data
         }
 
         private static readonly object _exportLock = new();
+        private static readonly string BooksExportPath = Path.Combine(CommonUtils.DataDir, "books.json");
 
-        public static async Task ExportBooksJson(string path, Dictionary<string, string> userNames)
+        public static async Task ExportBooksJson(Dictionary<string, string> userNames)
         {
             var books = new Dictionary<int, BookExportDto>();
 
@@ -542,7 +543,7 @@ namespace sblngavnav6.Data
             string json = JsonSerializer.Serialize(books.Values.ToList(), AppJsonContext.Default.ListBookExportDto);
 
             lock (_exportLock)
-                CommonUtils.WriteAtomic(path, json);
+                CommonUtils.WriteAtomic(BooksExportPath, json);
         }
 
         public static Task<List<string>> LoadStreamsOnline()

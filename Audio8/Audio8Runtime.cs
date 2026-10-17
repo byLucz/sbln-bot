@@ -574,15 +574,7 @@ namespace sblngavnav6.Audio8
         public static LavalinkTrack TryParseTrack(string raw) =>
             !string.IsNullOrWhiteSpace(raw) && LavalinkTrack.TryParse(raw, null, out var track) ? track : null;
 
-        private static string ResolvePath()
-        {
-            var directory = Environment.GetEnvironmentVariable("SBLN_DATA_DIR");
-
-            if (string.IsNullOrWhiteSpace(directory))
-                directory = AppContext.BaseDirectory;
-
-            return Path.Combine(directory, FileName);
-        }
+        private static string ResolvePath() => Path.Combine(CommonUtils.DataDir, FileName);
     }
 
     internal sealed class Audio8LoggerProvider : ILoggerProvider

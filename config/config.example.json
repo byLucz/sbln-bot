@@ -57,11 +57,7 @@
   },
   "Books": {
     "BooksSeason": "2",
-    "BooksJsonPath": "/opt/sbln/data/books.json",
     "BooksCountry": "PL"
-  },
-  "Portal": {
-    "Dir": "/opt/sbln/data/portal"
   },
   "Telegram": {
     "Token": "",

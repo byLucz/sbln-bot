@@ -233,7 +233,7 @@ namespace sblngavnav6.BooksClub
                     "**х оценить** - оценить книгу недели (или сразу `х оценить 8 9 7 10 9`)\n" +
                     "**х рейтинг** - показать текущий рейтинг клуба\n" +
                     "**х членыклуба** - статистика по средним оценкам и индексу душноты\n" +
-                    "**х книжныйэкспорт** - пересобрать books_data.json")
+                    "**х книжныйэкспорт** - пересобрать books.json")
             ],
             Footer = Footer
         }));
@@ -340,16 +340,10 @@ namespace sblngavnav6.BooksClub
         [Command("книжныйэкспорт")]
         public async Task ManualExportAsync()
         {
-            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath))
-            {
-                await FailAsync("`Books:BooksJsonPath` не задан в конфиге");
-                return;
-            }
-
             try
             {
-                await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, BookRating.UserNames(Context.Guild));
-                await ReplyAsync(embed: Simple("✅ `books_data.json` обновлён", Color.Green));
+                await DataBase.ExportBooksJson(BookRating.UserNames(Context.Guild));
+                await ReplyAsync(embed: Simple("✅ `books.json` обновлён", Color.Green));
             }
             catch (Exception ex) when (CommonUtils.IsIoFailure(ex))
             {

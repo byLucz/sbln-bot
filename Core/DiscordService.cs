@@ -71,8 +71,6 @@ namespace sblngavnav6.Core
             try
             {
                 SetReady(false);
-                if (!string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath))
-                    Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(Global.Vars.Cfg.booksJsonPath))!);
 
                 if (!await DataBase.CanConnect())
                     throw new InvalidOperationException("Старт без БД невозможен");

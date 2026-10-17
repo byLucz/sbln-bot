@@ -28,11 +28,11 @@ namespace sblngavnav6.Services
             _gvr = gvr;
         }
 
-        private static string Dir => Global.Vars.Cfg.portalDir;
+        private static readonly string Dir = Path.Combine(CommonUtils.DataDir, "portal");
 
         public void Start(CancellationToken cancellationToken = default)
         {
-            if (string.IsNullOrWhiteSpace(Dir) || _cts != null) return;
+            if (_cts != null) return;
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _loop = LoopAsync(_cts.Token);
         }

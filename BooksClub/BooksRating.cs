@@ -135,14 +135,11 @@ namespace sblngavnav6.BooksClub
 
         public static void TriggerExport(SocketGuild guild)
         {
-            if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.booksJsonPath))
-                return;
-
             var userNames = UserNames(guild);
 
             _ = Task.Run(async () =>
             {
-                try { await DataBase.ExportBooksJson(Global.Vars.Cfg.booksJsonPath, userNames); }
+                try { await DataBase.ExportBooksJson(userNames); }
                 catch (Exception ex) { await LoggingService.LogWarningAsync("BOOKS", $"JSON export fail: {ex.Message}"); }
             });
         }
