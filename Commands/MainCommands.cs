@@ -92,6 +92,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         watch.Stop();
 
         var (corpus, _) = await _gvr.StampAsync();
+        var pictures = await _gvr.ImageCountAsync();
 
         var database = alive ? $"жива, {watch.ElapsedMilliseconds}ms" : "недоступна";
         var twitch = Global.Vars.Cfg.streamsEnabled ? "вкл" : "выкл";
@@ -129,7 +130,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                     $"Выполнено: **{ThreadPool.CompletedWorkItemCount}**", true),
                 new EmbedFieldSpec("🗄️ Данные",
                     $"База: **{database}**\n" +
-                    $"Корпус GVR: **{corpus}**\n" +
+                    $"Корпус GVR: **{corpus}**, картинок **{pictures}**\n" +
                     $"Подзагрузка GVR: {(next is { } at ? Stamp(at) : "**выкл**")}", true),
                 new EmbedFieldSpec("🎧 Звук",
                     $"Плееров: **{players}**\n" +

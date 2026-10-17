@@ -144,6 +144,8 @@ namespace sblngavnav6.GVR
             }
         }
 
+        public Task<bool> SendDemotivatorAsync(SocketCommandContext context) => SendDemotivatorAsync(context, (int)_config.Step);
+
         private async Task<bool> SendDemotivatorAsync(SocketCommandContext context, int step)
         {
             if (step <= 0)

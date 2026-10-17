@@ -3,7 +3,7 @@ using Discord.Commands;
 using DiscordTelegramFrontier;
 using SkiaSharp;
 using sblngavnav6.Common;
-using sblngavnav6.Core;
+using sblngavnav6.GVR;
 using sblngavnav6.Services;
 using static sblngavnav6.Common.CommonUtils.Chat;
 using static sblngavnav6.Common.CommonUtils.Text;
@@ -17,11 +17,13 @@ namespace sblngavnav6.Images
         private const string NoPicture = "прикрепи картинку, ответь на сообщение с ней или дай ссылку";
 
         private readonly HttpClient _http;
+        private readonly GVRMessagesHandler _gvr;
 
         private string _command = "картинки";
 
-        public ImageCommands(IHttpClientFactory httpClientFactory)
+        public ImageCommands(IHttpClientFactory httpClientFactory, GVRMessagesHandler gvr)
         {
+            _gvr = gvr;
             _http = httpClientFactory.CreateClient();
             _http.Timeout = TimeSpan.FromSeconds(15);
         }
@@ -95,7 +97,8 @@ namespace sblngavnav6.Images
 
             if (string.IsNullOrWhiteSpace(text[0]))
             {
-                await FailAsync("нужен текст: `демотиватор заголовок | подпись`");
+                if (!await _gvr.SendDemotivatorAsync(Context))
+                    await FailAsync("говорилке пока не из чего собрать демотиватор, нужен текст: `демотиватор заголовок | подпись`");
                 return;
             }
 

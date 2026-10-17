@@ -111,6 +111,16 @@ namespace sblngavnav6.GVR
             return (Convert.ToInt32(reader.GetValue(0)), Convert.ToInt64(reader.GetValue(1)));
         }
 
+        public async Task<int> ImageCountAsync(CancellationToken cancellationToken = default)
+        {
+            if (!await ReadyAsync().ConfigureAwait(false))
+                return 0;
+
+            await using var conn = await ConnectAsync(cancellationToken).ConfigureAwait(false);
+            await using var cmd = Command(conn, "SELECT COUNT(*) FROM images");
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false));
+        }
+
         public async Task<int> AddAsync(ulong guildId, IReadOnlyCollection<string> contents, CancellationToken cancellationToken = default)
         {
             if (contents.Count == 0 || !await ReadyAsync().ConfigureAwait(false))
