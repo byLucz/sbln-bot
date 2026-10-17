@@ -298,7 +298,8 @@ namespace sblngavnav6.Audio8
                     catch (Exception ex) when (ex is HttpException or TimeoutException) { }
                 }
 
-                if (await _reserve.ResolveAsync(query).ConfigureAwait(false) is not { } reserved)
+                var (reserved, _) = await _reserve.ResolveAsync(query).ConfigureAwait(false);
+                if (reserved is null)
                 {
                     if (notice is not null)
                     {

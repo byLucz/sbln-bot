@@ -12,3 +12,4 @@ appsettings.*.local.json
 
 messages.csv
 docs/
+__pycache__/

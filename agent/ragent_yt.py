@@ -61,7 +61,7 @@ def prepare_cookies():
 def ytdlp(args, timeout):
     cookies = ["--cookies", str(COOKIES)] if COOKIES.is_file() else []
     with WORKERS:
-        return subprocess.run([YTDLP, "--no-warnings", "--no-playlist", "--no-cache-dir", *cookies, *args],
+        return subprocess.run([YTDLP, "--no-playlist", "--no-cache-dir", *cookies, *args],
                               capture_output=True, text=True, timeout=timeout)
 
 
@@ -108,15 +108,15 @@ def fetch(target, failure):
         raise RuntimeError(last_line(result.stderr) or failure)
     trim_cache()
     lines = [line for line in result.stdout.splitlines() if line.startswith("{")]
-    return json.loads(lines[-1]) if lines else {}
+    return (json.loads(lines[-1]) if lines else {}), result.stderr
 
 
 def resolve(query):
     target = query if re.match(r"^https?://", query) else f"ytsearch1:{query}"
-    info = fetch(target, "yt-dlp не нашёл трек")
+    info, stderr = fetch(target, "yt-dlp не нашёл трек")
     video = info.get("id") or ""
     if not VIDEO_ID.match(video):
-        raise RuntimeError("ничего не нашлось")
+        raise RuntimeError(last_line(stderr) or "yt-dlp ничего не нашёл по запросу")
     drop_parts(video)
     if cached(video) is None:
         raise RuntimeError("yt-dlp не оставил файл")
