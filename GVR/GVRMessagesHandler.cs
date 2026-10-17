@@ -21,6 +21,7 @@ namespace sblngavnav6.GVR
 
         private static readonly Regex SplitRegex = new(@"\s+", RegexOptions.Compiled);
         private static readonly Regex PunctRegex = new(@"^[!?.,;]+$", RegexOptions.Compiled);
+        private static readonly Regex WordRegex = new(@"\p{L}[\p{L}-]*", RegexOptions.Compiled);
 
         private static readonly string[] FunnyInterjections =
         {
@@ -40,6 +41,8 @@ namespace sblngavnav6.GVR
             _db = db;
             _httpClientFactory = httpClientFactory;
         }
+
+        public event Func<Task> Collected;
 
         public void Dispose() => _modelGate.Dispose();
 
@@ -75,7 +78,50 @@ namespace sblngavnav6.GVR
             var removed = await _db.PruneAsync(cancellationToken).ConfigureAwait(false);
             var (total, _) = await _db.StampAsync(cancellationToken).ConfigureAwait(false);
 
+            _ = Collected?.Invoke();
             return (added, addedImages, scanned, removed, total);
+        }
+
+        public async Task<(List<(string Word, int Count)> Words, List<(int A, int B, int Weight)> Links)> CoreAsync(int top, int linksPerWord)
+        {
+            var counts = new Dictionary<string, int>();
+            var messages = new List<string[]>();
+
+            foreach (var raw in await _db.LoadAsync().ConfigureAwait(false))
+            {
+                var words = WordRegex.Matches(GVRText.Plain(raw).ToLowerInvariant().Replace('ё', 'е'))
+                    .Select(match => match.Value)
+                    .Where(word => word.Length >= 3)
+                    .Distinct()
+                    .ToArray();
+
+                if (words.Length == 0)
+                    continue;
+
+                messages.Add(words);
+                foreach (var word in words)
+                    counts[word] = counts.GetValueOrDefault(word) + 1;
+            }
+
+            var ranked = counts.OrderByDescending(pair => pair.Value).Take(top).Select(pair => (pair.Key, pair.Value)).ToList();
+            var index = ranked.Select((word, i) => (word.Key, i)).ToDictionary(item => item.Key, item => item.i);
+            var pairs = new Dictionary<(int, int), int>();
+
+            foreach (var words in messages)
+            {
+                var ids = words.Where(index.ContainsKey).Select(word => index[word]).Order().ToArray();
+                for (var i = 0; i < ids.Length; i++)
+                    for (var j = i + 1; j < ids.Length; j++)
+                        pairs[(ids[i], ids[j])] = pairs.GetValueOrDefault((ids[i], ids[j])) + 1;
+            }
+
+            var links = Enumerable.Range(0, ranked.Count)
+                .SelectMany(i => pairs.Where(pair => pair.Key.Item1 == i || pair.Key.Item2 == i).OrderByDescending(pair => pair.Value).Take(linksPerWord))
+                .DistinctBy(pair => pair.Key)
+                .Select(pair => (pair.Key.Item1, pair.Key.Item2, pair.Value))
+                .ToList();
+
+            return (ranked, links);
         }
 
         public async Task TrySendGeneratedMessageAsync(SocketCommandContext context)

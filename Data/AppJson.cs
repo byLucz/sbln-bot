@@ -14,6 +14,7 @@ namespace sblngavnav6.Data
     [JsonSerializable(typeof(List<BookExportDto>))]
     [JsonSerializable(typeof(PortalStatusDto))]
     [JsonSerializable(typeof(List<PortalCommandSectionDto>))]
+    [JsonSerializable(typeof(PortalCoreDto))]
     [JsonSerializable(typeof(List<List<JsonElement>>))]
     internal partial class AppJsonContext : JsonSerializerContext { }
 }

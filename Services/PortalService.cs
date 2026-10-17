@@ -2,6 +2,7 @@ using Discord;
 using Discord.WebSocket;
 using sblngavnav6.Common;
 using sblngavnav6.Data;
+using sblngavnav6.GVR;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using static sblngavnav6.Data.DataRoots;
@@ -14,26 +15,33 @@ namespace sblngavnav6.Services
         private static readonly string Dir = Path.Combine(CommonUtils.DataDir, "portal");
         private static readonly string StatusPath = Path.Combine(Dir, "status.json");
         private static readonly string CommandsPath = Path.Combine(Dir, "commands.json");
+        private static readonly string CorePath = Path.Combine(Dir, "core.json");
+        private const int CoreWords = 48;
+        private const int CoreLinksPerWord = 4;
 
         private readonly DiscordSocketClient _client;
+        private readonly GVRMessagesHandler _gvr;
         private CancellationTokenSource _cts;
         private Task _loop = Task.CompletedTask;
 
-        public PortalService(DiscordSocketClient client)
+        public PortalService(DiscordSocketClient client, GVRMessagesHandler gvr)
         {
             _client = client;
+            _gvr = gvr;
         }
 
         public void Start(CancellationToken cancellationToken = default)
         {
             if (_cts != null) return;
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _gvr.Collected += WriteCoreAsync;
             _loop = LoopAsync(_cts.Token);
         }
 
         public async Task StopAsync()
         {
             if (_cts == null) return;
+            _gvr.Collected -= WriteCoreAsync;
             await _cts.CancelAsync();
             await _loop;
 
@@ -49,6 +57,8 @@ namespace sblngavnav6.Services
             try
             {
                 Write(CommandsPath, Commands(), AppJsonContext.Default.ListPortalCommandSectionDto);
+                if (!File.Exists(CorePath))
+                    await WriteCoreAsync();
 
                 do
                 {
@@ -59,6 +69,21 @@ namespace sblngavnav6.Services
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception ex) when (CommonUtils.IsIoFailure(ex)) { await LoggingService.LogWarningAsync("PORTL", $"Портал не запустился: {ex.Message}"); }
+        }
+
+        private async Task WriteCoreAsync()
+        {
+            try
+            {
+                var (words, links) = await _gvr.CoreAsync(CoreWords, CoreLinksPerWord);
+                Write(CorePath, new PortalCoreDto
+                {
+                    updatedAt = DateTimeOffset.UtcNow,
+                    words = words.Select(word => new PortalCoreWordDto { text = word.Word, count = word.Count }).ToList(),
+                    links = links.Select(link => new[] { link.A, link.B, link.Weight }).ToList()
+                }, AppJsonContext.Default.PortalCoreDto);
+            }
+            catch (Exception ex) { await LoggingService.LogWarningAsync("PORTL", $"Семантическое ядро не обновилось: {ex.Message}"); }
         }
 
         private static void Write<T>(string path, T value, JsonTypeInfo<T> type) =>

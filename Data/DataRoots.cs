@@ -119,6 +119,19 @@ namespace sblngavnav6.Data
             public string activity { get; set; } = "";
         }
 
+        public sealed class PortalCoreDto
+        {
+            public DateTimeOffset updatedAt { get; set; }
+            public List<PortalCoreWordDto> words { get; set; } = [];
+            public List<int[]> links { get; set; } = [];
+        }
+
+        public sealed class PortalCoreWordDto
+        {
+            public string text { get; set; } = "";
+            public int count { get; set; }
+        }
+
         public sealed class PortalCommandSectionDto
         {
             public string title { get; set; } = "";
