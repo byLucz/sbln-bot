@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 NAME = "R-WATCHER agent for sbln-bot"
-VERSION = "1.5"
+VERSION = "1.6"
 MUSIC_UNIT = Path("/etc/systemd/system/ragent-yt.service")
 TOKEN = os.environ.get("RAGENT_TOKEN", "")
 PORT = int(os.environ.get("RAGENT_PORT", "8687"))

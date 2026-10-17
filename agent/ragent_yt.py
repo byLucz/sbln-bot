@@ -24,9 +24,11 @@ COOKIES = CACHE.parent / "cookies.txt"
 SKEW = 60
 DOWNLOAD_TIMEOUT = 120
 CHUNK = 64 * 1024
-VIDEO_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
+VIDEO_ID = re.compile(r"^(?:[A-Za-z0-9_-]{11}|sc\d{1,20})$")
 TYPES = {".webm": "audio/webm", ".m4a": "audio/mp4", ".opus": "audio/ogg", ".mp3": "audio/mpeg"}
 AUDIO_FORMAT = "bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio"
+SC_FORMAT = "bestaudio[ext=opus]/bestaudio[ext=mp3]/bestaudio[ext=m4a]/bestaudio"
+SC_TARGET = re.compile(r"^(?:https?://(?:[\w-]+\.)?soundcloud\.com/|scsearch\d*:)", re.IGNORECASE)
 YTDLP_VERSION = None
 WORKERS = threading.BoundedSemaphore(2)
 DOWNLOADS = {}
@@ -87,7 +89,7 @@ def download(video):
             found.touch()
             return found
         try:
-            fetch(f"https://www.youtube.com/watch?v={video}", "yt-dlp не скачал трек")
+            fetch(source(video), "yt-dlp не скачал трек")
         finally:
             drop_parts(video)
         if (found := cached(video)) is None:
@@ -100,9 +102,15 @@ def drop_parts(video):
         part.unlink(missing_ok=True)
 
 
+def source(video):
+    return f"https://api.soundcloud.com/tracks/{video[2:]}" if video.startswith("sc") else f"https://www.youtube.com/watch?v={video}"
+
+
 def fetch(target, failure):
     CACHE.mkdir(parents=True, exist_ok=True)
-    result = ytdlp(["--dump-json", "--no-simulate", "-f", AUDIO_FORMAT, "-o", str(CACHE / "%(id)s.%(ext)s"), target],
+    soundcloud = SC_TARGET.match(target) is not None
+    result = ytdlp(["--dump-json", "--no-simulate", "-f", SC_FORMAT if soundcloud else AUDIO_FORMAT,
+                    "-o", str(CACHE / ("sc%(id)s.%(ext)s" if soundcloud else "%(id)s.%(ext)s")), target],
                    DOWNLOAD_TIMEOUT)
     if result.returncode != 0:
         raise RuntimeError(last_line(result.stderr) or failure)
@@ -112,9 +120,12 @@ def fetch(target, failure):
 
 
 def resolve(query):
-    target = query if re.match(r"^https?://", query) else f"ytsearch1:{query}"
+    if re.match(r"^scsearch:", query, re.IGNORECASE):
+        target = f"scsearch1:{query[len('scsearch:'):].strip()}"
+    else:
+        target = query if re.match(r"^https?://", query) else f"ytsearch1:{query}"
     info, stderr = fetch(target, "yt-dlp не нашёл трек")
-    video = info.get("id") or ""
+    video = (f"sc{info.get('id')}" if SC_TARGET.match(target) and info.get("id") else info.get("id")) or ""
     if not VIDEO_ID.match(video):
         raise RuntimeError(last_line(stderr) or "yt-dlp ничего не нашёл по запросу")
     drop_parts(video)
@@ -122,7 +133,7 @@ def resolve(query):
         raise RuntimeError("yt-dlp не оставил файл")
     return {"id": video, "title": info.get("title"), "uploader": info.get("uploader") or info.get("channel"),
             "duration": info.get("duration"), "thumbnail": info.get("thumbnail"),
-            "url": info.get("webpage_url") or f"https://www.youtube.com/watch?v={video}"}
+            "url": info.get("webpage_url") or source(video)}
 
 
 def last_line(text):
