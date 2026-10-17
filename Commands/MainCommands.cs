@@ -78,9 +78,8 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            Title = (string)item.Element(System.Xml.Linq.XName.Get("core", "https://lois.media/sbln")),
             Description =
-                $"{Format.Bold($"devlog ver {version}: {title}")}\n" +
+                $"{Format.Bold($"devlog ver {version}")} — {title}\n" +
                 string.Join("\n", points) +
                 $"\n• [Полный чендж-лог доступен на сайте 🌀]({(string)item.Element("link")})",
             Footer = EmbedHandler.DevFooter,
