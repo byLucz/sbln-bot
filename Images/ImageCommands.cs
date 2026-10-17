@@ -31,7 +31,7 @@ namespace sblngavnav6.Images
         protected override void BeforeExecute(CommandInfo command) => _command = command.Name;
 
         [Command("обоссать")]
-        [Cooldown(15)]
+        [Cooldown(5)]
         public async Task PissAsync(IUser user = null)
         {
             var target = user ?? Context.Message?.ReferencedMessage?.Author;
@@ -59,7 +59,7 @@ namespace sblngavnav6.Images
 
         [Command("монетка")]
         [Alias("монета", "коин")]
-        [Cooldown(10)]
+        [Cooldown(5)]
         public async Task CoinAsync(IUser first = null, IUser second = null)
         {
             var (heads, tails) = second is null
@@ -118,7 +118,7 @@ namespace sblngavnav6.Images
         [Frontier]
         [Command("шефограм")]
         [Alias("шфгр")]
-        [Cooldown(10)]
+        [Cooldown(5)]
         public async Task SheffogramAsync([Remainder] string args = "")
         {
             using var source = await SourceAsync(args);
@@ -152,7 +152,7 @@ namespace sblngavnav6.Images
         [Frontier]
         [Command("скан")]
         [Alias("сканер")]
-        [Cooldown(10)]
+        [Cooldown(5)]
         public async Task ScanAsync([Remainder] string args = "")
         {
             var languages = args.Contains("енг", StringComparison.OrdinalIgnoreCase) ? "eng"
