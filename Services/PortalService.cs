@@ -16,8 +16,8 @@ namespace sblngavnav6.Services
         private static readonly string StatusPath = Path.Combine(Dir, "status.json");
         private static readonly string CommandsPath = Path.Combine(Dir, "commands.json");
         private static readonly string CorePath = Path.Combine(Dir, "core.json");
-        private const int CoreWords = 80;
-        private const int CoreLinksPerWord = 4;
+        private const int CoreWords = 150;
+        private const int CoreLinksPerWord = 12;
 
         private readonly DiscordSocketClient _client;
         private readonly GVRMessagesHandler _gvr;
