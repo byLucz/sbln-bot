@@ -113,6 +113,8 @@ public static class HelpEmbedService
             ("убрать стримера", "убрать twitch-стримера из отслеживания", false)
         ]);
 
+    public static IReadOnlyList<(string Title, (string Command, string About, bool Telegram)[] Commands)> PublicSections => Sections;
+
     public static List<Embed> GetHelpPages(bool devGuild = false) =>
         (devGuild ? Sections.Append(DevSection) : Sections).Select(Page).ToList();
 
