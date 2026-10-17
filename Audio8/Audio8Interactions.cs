@@ -18,8 +18,7 @@ namespace sblngavnav6.Audio8
         ulong GuildId,
         ulong MessageId,
         ulong RequestedByUserId,
-        string TrackKey,
-        DateTimeOffset CreatedAtUtc);
+        string TrackKey);
 
     internal sealed record Audio8PickState(
         ulong GuildId,
@@ -37,8 +36,7 @@ namespace sblngavnav6.Audio8
         ulong GuildId,
         ulong MessageId,
         ulong RequestedByUserId,
-        string TrackKey,
-        DateTimeOffset CreatedAtUtc);
+        string TrackKey);
 
     internal sealed class Audio8MessageStates
     {
@@ -103,17 +101,9 @@ namespace sblngavnav6.Audio8
         {
             var now = DateTimeOffset.UtcNow;
 
-            foreach (var pair in _hoists.ToArray())
-                if (now - pair.Value.CreatedAtUtc > Audio8Constants.MessageStateLifetime)
-                    _hoists.TryRemove(pair);
-
             foreach (var pair in _picks.ToArray())
                 if (now - pair.Value.CreatedAtUtc > Audio8Constants.MessageStateLifetime)
                     _picks.TryRemove(pair);
-
-            foreach (var pair in _skips.ToArray())
-                if (now - pair.Value.CreatedAtUtc > Audio8Constants.MessageStateLifetime)
-                    _skips.TryRemove(pair);
         }
     }
 
@@ -563,13 +553,6 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
-            if (DateTimeOffset.UtcNow - state.CreatedAtUtc > Audio8Constants.ControlLifetime)
-            {
-                _states.RemoveHoist(state.MessageId);
-                await RespondAsync("кнопка устарела", ephemeral: true);
-                return;
-            }
-
             if (Context.User.Id != state.RequestedByUserId)
             {
                 await RespondAsync("это не твой трек", ephemeral: true);
@@ -613,8 +596,7 @@ namespace sblngavnav6.Audio8
                 state.GuildId,
                 component.Message.Id,
                 state.RequestedByUserId,
-                Audio8Service.TrackKey(track),
-                DateTimeOffset.UtcNow));
+                Audio8Service.TrackKey(track)));
         }
 
         [ComponentInteraction($"{Audio8Controls.PickId}:*")]
@@ -628,13 +610,6 @@ namespace sblngavnav6.Audio8
 
             if (!_states.TryGetPick(component.Message.Id, out var state))
             {
-                await RespondAsync("кнопка устарела", ephemeral: true);
-                return;
-            }
-
-            if (DateTimeOffset.UtcNow - state.CreatedAtUtc > Audio8Constants.ControlLifetime)
-            {
-                _states.RemovePick(state.MessageId);
                 await RespondAsync("кнопка устарела", ephemeral: true);
                 return;
             }
@@ -690,8 +665,7 @@ namespace sblngavnav6.Audio8
                     state.GuildId,
                     component.Message.Id,
                     state.RequestedByUserId,
-                    Audio8Service.TrackKey(picked),
-                    DateTimeOffset.UtcNow));
+                    Audio8Service.TrackKey(picked)));
             }
         }
 
@@ -731,10 +705,8 @@ namespace sblngavnav6.Audio8
             if (await VoteBlocksAsync())
                 return;
 
-            if (!_states.TryGetSkip(component.Message.Id, out var state) ||
-                DateTimeOffset.UtcNow - state.CreatedAtUtc > Audio8Constants.ControlLifetime)
+            if (!_states.TryGetSkip(component.Message.Id, out var state))
             {
-                _states.RemoveSkip(component.Message.Id);
                 await RespondAsync("кнопка устарела", ephemeral: true);
                 return;
             }

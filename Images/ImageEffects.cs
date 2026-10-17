@@ -44,7 +44,7 @@ namespace sblngavnav6.Images
 
             foreach (var line in titleLines)
             {
-                canvas.DrawText(line, width / 2f, y, SKTextAlign.Center, titleFont, paint);
+                ImageTools.DrawCentered(canvas, line, width / 2f, y, titleFont, paint);
                 y += 54;
             }
 
@@ -52,7 +52,7 @@ namespace sblngavnav6.Images
 
             foreach (var line in captionLines)
             {
-                canvas.DrawText(line, width / 2f, y, SKTextAlign.Center, captionFont, paint);
+                ImageTools.DrawCentered(canvas, line, width / 2f, y, captionFont, paint);
                 y += 32;
             }
 

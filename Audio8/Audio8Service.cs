@@ -607,8 +607,7 @@ namespace sblngavnav6.Audio8
                 guildId,
                 message.Id,
                 requestedByUserId,
-                TrackKey(track),
-                DateTimeOffset.UtcNow));
+                TrackKey(track)));
         }
 
         public Task<IUserMessage> SendWithControlsAsync(
@@ -927,7 +926,6 @@ namespace sblngavnav6.Audio8
         public const int ProgressBarSize = 15;
 
         public static readonly TimeSpan MessageStateLifetime = TimeSpan.FromMinutes(10);
-        public static readonly TimeSpan ControlLifetime = PaginatorService.ViewLifetime;
         public static readonly TimeSpan NowPlayingDedupeWindow = TimeSpan.FromMilliseconds(1200);
         public static readonly TimeSpan LavalinkReadyTimeout = TimeSpan.FromSeconds(30);
         public static readonly TimeSpan GuildWaitTimeout = TimeSpan.FromSeconds(20);

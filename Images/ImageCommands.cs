@@ -10,7 +10,6 @@ using static sblngavnav6.Common.CommonUtils.Text;
 
 namespace sblngavnav6.Images
 {
-    [RequireGuild]
     public sealed class ImageCommands : ModuleBase<SocketCommandContext>
     {
         private const string Author = "sbln картинки🖼️";
@@ -29,7 +28,6 @@ namespace sblngavnav6.Images
 
         protected override void BeforeExecute(CommandInfo command) => _command = command.Name;
 
-        [Frontier]
         [Command("обоссать")]
         [Cooldown(15)]
         public async Task PissAsync(IUser user = null)
@@ -57,7 +55,6 @@ namespace sblngavnav6.Images
             });
         }
 
-        [Frontier]
         [Command("монетка")]
         [Alias("монета", "коин")]
         [Cooldown(10)]

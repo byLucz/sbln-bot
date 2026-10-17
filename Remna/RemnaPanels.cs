@@ -226,7 +226,6 @@ public static class RemnaPanelBuilder
             Description = problems == 0 ? "✅ проблем нет" : $"⚠️ проблем: {problems}",
             Color = failed ? Color.Red : problems > 0 ? Color.Orange : Color.Green,
             Fields = fields,
-            Timestamp = DateTimeOffset.UtcNow,
             Footer = EmbedHandler.LoisFooter
         });
     }

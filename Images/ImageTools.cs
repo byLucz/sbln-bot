@@ -1,6 +1,10 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using Discord;
 using SkiaSharp;
+using SkiaSharp.HarfBuzz;
 
 namespace sblngavnav6.Images
 {
@@ -20,6 +24,8 @@ namespace sblngavnav6.Images
             ?? SKTypeface.Default);
 
         public static readonly SemaphoreSlim RenderGate = new(2, 2);
+
+        private static readonly ConcurrentDictionary<int, SKTypeface> Fallbacks = new();
 
         private static readonly Dictionary<char, char> ToLatin = new()
         {
@@ -106,7 +112,7 @@ namespace sblngavnav6.Images
             foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             {
                 var candidate = line.Length == 0 ? word : $"{line} {word}";
-                if (line.Length > 0 && font.MeasureText(candidate) > maxWidth)
+                if (line.Length > 0 && MeasureText(candidate, font) > maxWidth)
                 {
                     lines.Add(line);
                     line = word;
@@ -121,6 +127,66 @@ namespace sblngavnav6.Images
                 lines.Add(line);
 
             return lines;
+        }
+
+        public static float MeasureText(string text, SKFont font) => Runs(text, font).Sum(run => RunWidth(run, font));
+
+        public static void DrawCentered(SKCanvas canvas, string text, float centerX, float y, SKFont font, SKPaint paint)
+        {
+            var runs = Runs(text, font).ToList();
+            var x = centerX - runs.Sum(run => RunWidth(run, font)) / 2;
+
+            foreach (var run in runs)
+            {
+                if (run.Typeface == font.Typeface)
+                {
+                    canvas.DrawText(run.Text, x, y, SKTextAlign.Left, font, paint);
+                    x += font.MeasureText(run.Text);
+                    continue;
+                }
+
+                using var fallback = new SKFont(run.Typeface, font.Size);
+                using var shaper = new SKShaper(run.Typeface);
+                canvas.DrawShapedText(shaper, run.Text, x, y, SKTextAlign.Left, fallback, paint);
+                x += shaper.Shape(run.Text, fallback).Width;
+            }
+        }
+
+        private static float RunWidth((string Text, SKTypeface Typeface) run, SKFont font)
+        {
+            if (run.Typeface == font.Typeface)
+                return font.MeasureText(run.Text);
+
+            using var fallback = new SKFont(run.Typeface, font.Size);
+            using var shaper = new SKShaper(run.Typeface);
+            return shaper.Shape(run.Text, fallback).Width;
+        }
+
+        private static IEnumerable<(string Text, SKTypeface Typeface)> Runs(string text, SKFont font)
+        {
+            var run = new StringBuilder();
+            SKTypeface current = null;
+            var elements = StringInfo.GetTextElementEnumerator(text);
+
+            while (elements.MoveNext())
+            {
+                var element = elements.GetTextElement();
+                var typeface = font.ContainsGlyphs(element)
+                    ? font.Typeface
+                    : Fallbacks.GetOrAdd(char.ConvertToUtf32(element, 0), SKFontManager.Default.MatchCharacter) ?? font.Typeface;
+
+                if (current is not null && typeface != current)
+                {
+                    yield return (run.ToString(), current);
+                    run.Clear();
+                }
+
+                current = typeface;
+                run.Append(element);
+            }
+
+            if (run.Length > 0)
+                yield return (run.ToString(), current);
         }
 
         public static async Task<string> RecognizeTextAsync(SKBitmap source, string languages, CancellationToken cancellationToken = default)

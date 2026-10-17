@@ -28,6 +28,8 @@ public sealed class TelegramCommandContext
     public IServiceProvider Services => _frontier.Services;
     public CancellationToken CancellationToken => _frontier.CancellationToken;
 
+    public User? FindUser(string username) => _frontier.FindUser(username);
+
     public Task<Message> ReplyAsync(string text, ParseMode parseMode = ParseMode.None, ReplyMarkup? replyMarkup = null)
         => _frontier.ReplyAsync(text, parseMode, replyMarkup);
 }

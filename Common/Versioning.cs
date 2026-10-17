@@ -59,6 +59,7 @@ namespace sblngavnav6.Common
                 ("NLayer", typeof(NLayer.MpegFile)),
                 ("MailKit", typeof(MailKit.Net.Imap.ImapClient)),
                 ("MySqlConnector", typeof(MySqlConnector.MySqlConnection)),
+                ("SkiaSharp", typeof(SkiaSharp.SKCanvas)),
                 ("TwitchLib.Api", typeof(TwitchLib.Api.TwitchAPI)),
                 ("Telegram.Bot", typeof(Telegram.Bot.TelegramBotClient))
             };

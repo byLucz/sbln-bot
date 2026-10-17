@@ -21,9 +21,19 @@ public sealed class ChatInfoModule : TelegramModuleBase
     [Alias("информация")]
     public async Task InfoAsync()
     {
-        if (Context.Chat.Type == ChatType.Private)
+        var (target, unknown) = Target();
+        if (unknown is not null)
         {
-            await UserInfoAsync();
+            await ReplyAsync($"не знаю {unknown}, пусть сначала что-нибудь напишет в чат 😕");
+            return;
+        }
+
+        if (target is null && Context.Chat.Type == ChatType.Private)
+            target = Context.User;
+
+        if (target is not null)
+        {
+            await UserInfoAsync(target);
             return;
         }
 
@@ -52,14 +62,28 @@ public sealed class ChatInfoModule : TelegramModuleBase
         await ReplyAsync(CreateText(chat, memberCount), ParseMode.Html, keyboard);
     }
 
-    private async Task UserInfoAsync()
+    private (User? Target, string? Unknown) Target()
     {
-        if (Context.User is not { } user)
+        var message = Context.Message;
+        var text = message.Text ?? message.Caption ?? "";
+
+        foreach (var entity in (message.Text is not null ? message.Entities : message.CaptionEntities) ?? [])
         {
-            await ReplyAsync("не вижу, кто пишет 😕");
-            return;
+            if (entity.Type == MessageEntityType.TextMention && entity.User is { } mentioned)
+                return (mentioned, null);
+
+            if (entity.Type != MessageEntityType.Mention || entity.Offset + entity.Length > text.Length)
+                continue;
+
+            var username = text.Substring(entity.Offset, entity.Length);
+            return Context.FindUser(username) is { } known ? (known, null) : (null, username);
         }
 
+        return (message.ReplyToMessage?.From, null);
+    }
+
+    private async Task UserInfoAsync(User user)
+    {
         ChatFullInfo? profile = null;
         try
         {
@@ -95,9 +119,7 @@ public sealed class ChatInfoModule : TelegramModuleBase
             .AppendLine("🔗 <b>Discord</b>")
             .AppendLine(linked);
 
-        var keyboard = usernames.Count == 0 ? null : new InlineKeyboardMarkup(
-            InlineKeyboardButton.WithUrl("🔗 Открыть профиль", $"https://t.me/{Uri.EscapeDataString(usernames[0])}"));
-        await ReplyAsync(text.AppendLine().Append("<i>sbln инфа🔭</i>").ToString(), ParseMode.Html, keyboard);
+        await ReplyAsync(text.AppendLine().Append("<i>sbln инфа🔭</i>").ToString(), ParseMode.Html);
     }
 
     private static string CreateText(ChatFullInfo chat, int? memberCount)
