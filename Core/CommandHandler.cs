@@ -1,83 +1,103 @@
 ﻿using Discord;
 using Discord.Commands;
+using Discord.Net;
 using Discord.WebSocket;
+using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
-using sblngavnav5X.Data;
-using sblngavnav5X.GVR;
-using sblngavnav5X.Services;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using sblngavnav6.GVR;
+using sblngavnav6.Services;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Reflection;
-using Victoria;
+using System.Text.RegularExpressions;
+using static sblngavnav6.Common.CommonUtils.Text;
 using Timer = System.Timers.Timer;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
-    public sealed class CommandHandler : IDisposable
+    public sealed class CommandHandler : IDisposable, IAsyncDisposable
     {
         private readonly DiscordSocketClient _client;
+        private static readonly Regex ArgLabelRegex = new(@"[<\[][^>\]]+[>\]]", RegexOptions.Compiled);
+        private static string[] _commandNames = [];
+
         private readonly CommandService _commands;
         private readonly IServiceProvider _services;
-        private readonly GovorConfig _govorilka;
-        private readonly LavaNode<LavaPlayer<LavaTrack>, LavaTrack> _lavaNode;
-        private readonly GVRMessagesHandler _GVRMessagesHandler;
-        private readonly SemaphoreSlim _lavaReconnectLock = new(1, 1);
-        private static readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
+        private readonly GVRConfig _govorilka;
+        private readonly GVRMessagesHandler _gvrMessages;
+        private readonly GVRDb _gvrDb;
+        private readonly CancellationTokenSource _stopping = new();
+        private readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
+        private readonly object _timerLock = new();
 
-        private static readonly Timer _timer = new(Utils.govorUpdTime)
+        private readonly Timer _timer = new(GVRConfig.DefaultIntervalMs)
         {
             AutoReset = true,
             Enabled = false
         };
 
-        private static readonly object _timerLock = new();
+        private Task _timerTask = Task.CompletedTask;
 
         private bool _eventsHooked;
         private bool _timerStarted;
-        private int _timerBusy;
-        private DateTime _lastLavaReconnectAttemptUtc = DateTime.MinValue;
+        private DateTimeOffset? _nextCollection;
+        private bool _stopped;
         private bool _disposed;
         private sealed record MailReplyRoute(ulong SenderId, ulong RecipientId, bool IsAnonymous, DateTimeOffset CreatedAt);
 
-        public CommandHandler(IServiceProvider services, GovorConfig govorilka)
+        public CommandHandler(IServiceProvider services, GVRConfig govorilka)
         {
             _services = services;
             _govorilka = govorilka;
 
             _commands = services.GetRequiredService<CommandService>();
             _client = services.GetRequiredService<DiscordSocketClient>();
-            _lavaNode = services.GetRequiredService<LavaNode<LavaPlayer<LavaTrack>, LavaTrack>>();
-            _GVRMessagesHandler = services.GetRequiredService<GVRMessagesHandler>();
+            _gvrMessages = services.GetRequiredService<GVRMessagesHandler>();
+            _gvrDb = services.GetRequiredService<GVRDb>();
 
             HookEvents();
         }
 
-        public static void UpdateTimerInterval(double amount)
+        public void UpdateTimerInterval(double amount)
         {
             if (amount <= 0)
                 throw new ArgumentOutOfRangeException(nameof(amount), "Интервал должен быть больше 0");
 
             lock (_timerLock)
             {
+                if (_disposed) return;
                 _timer.Interval = amount;
-                Utils.govorUpdTime = (int)amount;
+                if (_timerStarted && !_stopped)
+                    _nextCollection = DateTimeOffset.UtcNow.AddMilliseconds(amount);
             }
         }
 
-        public static double GetTimerInterval()
+        public DateTimeOffset? NextCollection
+        {
+            get
+            {
+                lock (_timerLock)
+                    return _stopped ? null : _nextCollection;
+            }
+        }
+
+        public double GetTimerInterval()
         {
             lock (_timerLock)
             {
-                return _timer.Interval;
+                return _disposed ? GVRConfig.DefaultIntervalMs : _timer.Interval;
             }
         }
 
-        public static void RegisterMailReplyRoute(ulong sentMessageId, ulong senderId, ulong recipientId, bool isAnonymous)
+        public void RegisterMailReplyRoute(ulong sentMessageId, ulong senderId, ulong recipientId, bool isAnonymous)
         {
             var cutoff = DateTimeOffset.UtcNow.AddHours(-10);
-            foreach (var key in _mailReplyRoutes.Keys.ToArray())
+            foreach (var pair in _mailReplyRoutes.ToArray())
             {
-                if (_mailReplyRoutes.TryGetValue(key, out var r) && r.CreatedAt < cutoff)
-                    _mailReplyRoutes.TryRemove(key, out _);
+                if (pair.Value.CreatedAt < cutoff)
+                    _mailReplyRoutes.TryRemove(pair);
             }
 
             _mailReplyRoutes[sentMessageId] = new MailReplyRoute(senderId, recipientId, isAnonymous, DateTimeOffset.UtcNow);
@@ -85,9 +105,17 @@ namespace sblngavnav5X.Core
 
         public async Task InitializeAsync()
         {
+            _commands.AddFrontierUserReaders();
+
             await _commands.AddModulesAsync(
                 assembly: Assembly.GetEntryAssembly(),
                 services: _services);
+
+            _commandNames = _commands.Commands
+                .SelectMany(command => command.Aliases)
+                .Select(alias => alias.ToLowerInvariant())
+                .Distinct()
+                .ToArray();
         }
 
         private void HookEvents()
@@ -99,7 +127,6 @@ namespace sblngavnav5X.Core
             _commands.Log += LogAsync;
             _client.MessageReceived += HandleMessageAsync;
             _client.Ready += OnClientReadyAsync;
-            _client.Connected += OnClientConnectedAsync;
             _timer.Elapsed += OnTimedEvent;
 
             _eventsHooked = true;
@@ -114,7 +141,6 @@ namespace sblngavnav5X.Core
             _commands.Log -= LogAsync;
             _client.MessageReceived -= HandleMessageAsync;
             _client.Ready -= OnClientReadyAsync;
-            _client.Connected -= OnClientConnectedAsync;
             _timer.Elapsed -= OnTimedEvent;
 
             _eventsHooked = false;
@@ -135,8 +161,8 @@ namespace sblngavnav5X.Core
 
             int characterPos = 0;
             var hasPrefix =
-                message.HasStringPrefix(Utils.pref1, ref characterPos) ||
-                message.HasStringPrefix(Utils.pref2, ref characterPos);
+                message.HasStringPrefix(Global.Vars.Cfg.pref1, ref characterPos) ||
+                message.HasStringPrefix(Global.Vars.Cfg.pref2, ref characterPos);
 
             if (hasPrefix)
             {
@@ -152,7 +178,20 @@ namespace sblngavnav5X.Core
                 return;
             }
 
-            await _GVRMessagesHandler.TrySendGeneratedMessageAsync(context);
+            if (DevGuildGate.IsDevGuild(context.Guild))
+                _ = Task.Run(() => TrySendGeneratedAsync(context));
+        }
+
+        private async Task TrySendGeneratedAsync(SocketCommandContext context)
+        {
+            try
+            {
+                await _gvrMessages.TrySendGeneratedMessageAsync(context);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogErrorAsync("GOVOR", "Не удалось сгенерировать сообщение", ex);
+            }
         }
 
         private async Task<bool> TryHandleMailReplyAsync(SocketUserMessage message)
@@ -179,91 +218,237 @@ namespace sblngavnav5X.Core
                 ? string.Join('\n', message.Attachments.Select(a => a.Url))
                 : null;
 
-            var forwardedEmbed = new EmbedBuilder()
-                .WithColor(route.IsAnonymous ? Color.DarkGrey : Color.Blue)
-                .WithTitle("📬 Ответ на почту")
-                .WithDescription(text)
-                .WithFooter("sbln почта📧");
+            const string footer = "sbln внутренняя почта📧";
+
+            var fields = new List<EmbedFieldSpec>();
 
             if (route.IsAnonymous)
             {
-                forwardedEmbed.AddField("Отправитель:", "Анон", true);
+                fields.Add(new EmbedFieldSpec("Отправитель:", "Анон", true));
             }
             else
             {
-                forwardedEmbed
-                    .AddField("Отправитель:", $"{message.Author.Username}", true)
-                    .AddField("Получатель:", $"{sender.Username}", true);
+                fields.Add(new EmbedFieldSpec("Отправитель:", message.Author.Username, true));
+                fields.Add(new EmbedFieldSpec("Получатель:", sender.Username, true));
             }
 
             if (!string.IsNullOrWhiteSpace(attachmentLinks))
-                forwardedEmbed.AddField("Вложения", attachmentLinks);
+                fields.Add(new EmbedFieldSpec("Вложения", attachmentLinks));
 
-            await sender.SendMessageAsync(embed: forwardedEmbed.Build());
-            await message.Channel.SendMessageAsync(embed: new EmbedBuilder()
-                .WithColor(Color.Green)
-                .WithDescription("✅ Ответ отправлен")
-                .WithFooter("sbln почта📧")
-                .Build());
+            var delivered = true;
+            try
+            {
+                await sender.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+                {
+                    Title = "📬 Ответ на почту",
+                    Description = text,
+                    Color = route.IsAnonymous ? Color.DarkGrey : Color.Blue,
+                    Fields = fields,
+                    Footer = footer
+                }));
+            }
+            catch (HttpException ex) when (ex.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
+            {
+                delivered = false;
+            }
+
+            await message.Channel.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                Description = delivered ? "✅ Ответ отправлен" : "❌ Не доставлено, у отправителя закрыты ЛС",
+                Color = delivered ? Color.Green : Color.Red,
+                Footer = footer
+            }));
 
             await LoggingService.LogInformationAsync(
                 "XMAIL",
-                $"REPLY anonymous={route.IsAnonymous} sender={route.SenderId} recipient={route.RecipientId} replier={message.Author.Id} contentLength={message.Content} attachments={message.Attachments.Count}");
+                $"REPLY delivered={delivered} anonymous={route.IsAnonymous} sender={route.SenderId} recipient={route.RecipientId} replier={message.Author.Id} contentLength={message.Content.Length} attachments={message.Attachments.Count}");
 
             return true;
         }
 
-        private async Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
+        private Task CommandExecutedAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
+            => context.Channel is FrontierProxyChannel ? Task.CompletedTask : ReportFailureAsync(command, context, result);
+
+        public static async Task ReportFailureAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
         {
-            if (!command.IsSpecified || result.IsSuccess)
+            if (result.IsSuccess)
                 return;
 
-            var cmd = command.Value;
-            string reply = result.Error switch
+            var prefix = UsedPrefix(context);
+
+            if (!command.IsSpecified)
             {
-                CommandError.BadArgCount =>
-                    $"🔴 Не хватает аргументов\n{BuildUsageHint(cmd)}",
+                if (result.Error == CommandError.UnknownCommand && Suggest(context.Message?.Content, prefix) is { } guess)
+                    await context.Channel.SendMessageAsync($"🤔 такой команды нет, может `{prefix}{guess}`?", allowedMentions: AllowedMentions.None);
+                return;
+            }
 
-                CommandError.ParseFailed =>
-                    $"🔴 Неверный тип аргумента\n{BuildUsageHint(cmd)}",
+            var cmd = command.Value;
+            var help = HelpEmbedService.Find(cmd);
 
-                CommandError.ObjectNotFound =>
-                    $"🔴 Не найден объект: {result.ErrorReason}\n{BuildUsageHint(cmd)}",
+            var reason = result.Error switch
+            {
+                CommandError.BadArgCount or CommandError.ParseFailed or CommandError.ObjectNotFound =>
+                    ArgumentProblem(cmd, help, context, result) + UsageHint(cmd, help, prefix),
 
                 CommandError.UnmetPrecondition when !string.IsNullOrWhiteSpace(result.ErrorReason) =>
                     result.ErrorReason,
 
-                _ => $"🔴ОШИБКА🔴 - {result.ErrorReason}"
+                CommandError.Exception =>
+                    await ExceptionReasonAsync(cmd, result),
+
+                CommandError.Unsuccessful =>
+                    "команда не выполнилась",
+
+                _ => string.IsNullOrWhiteSpace(result.ErrorReason)
+                    ? result.Error.ToString()
+                    : FirstLine(result.ErrorReason)
             };
 
-            await context.Channel.SendMessageAsync(reply);
+            await context.Channel.SendMessageAsync(embed: await EmbedHandler.CreateErrorEmbed(cmd.Name, reason));
         }
 
-        private static string BuildUsageHint(CommandInfo cmd)
+        private static string UsedPrefix(ICommandContext context)
         {
+            if (context.Channel is FrontierProxyChannel)
+                return "/";
+
+            var content = context.Message?.Content ?? "";
+            return new[] { Global.Vars.Cfg.pref1, Global.Vars.Cfg.pref2 }
+                .FirstOrDefault(prefix => !string.IsNullOrEmpty(prefix) && content.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                ?? Global.Vars.Cfg.pref2;
+        }
+
+        private static string Suggest(string content, string prefix)
+        {
+            if (string.IsNullOrWhiteSpace(content) || !content.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var words = content[prefix.Length..].ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0)
+                return null;
+
+            string best = null;
+            var bestDistance = int.MaxValue;
+
+            foreach (var name in _commandNames)
+            {
+                var size = name.Count(symbol => symbol == ' ') + 1;
+                if (size > words.Length)
+                    continue;
+
+                var head = string.Join(' ', words.Take(size));
+                var distance = ToRuLayout(head) == name ? 0 : Distance(head, name);
+                var allowed = name.Length <= 3 ? 0 : name.Length <= 5 ? 1 : 2;
+
+                if (distance <= allowed && distance < bestDistance)
+                {
+                    best = name;
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
+        }
+
+        private static string ArgumentProblem(CommandInfo cmd, HelpCommand help, ICommandContext context, IResult result)
+        {
+            var parameters = cmd.Parameters;
+            var labels = ArgLabels(help, parameters);
+            var tokens = Arguments(cmd, context.Message?.Content);
+
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                var parameter = parameters[i];
+                if (parameter.IsRemainder || parameter.IsMultiple)
+                    break;
+
+                if (i >= tokens.Length)
+                {
+                    if (parameter.IsOptional)
+                        continue;
+                    return $"не хватает: {labels[i]}";
+                }
+
+                var type = Nullable.GetUnderlyingType(parameter.Type) ?? parameter.Type;
+                if (IsNumber(type) && !double.TryParse(tokens[i].Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                    return $"ожидал число вместо `{tokens[i]}`";
+
+                if (result.Error == CommandError.ObjectNotFound && typeof(IUser).IsAssignableFrom(type))
+                    return $"не нашёл участника `{tokens[i]}`";
+            }
+
+            return result.Error switch
+            {
+                CommandError.BadArgCount when tokens.Length > parameters.Count && !parameters.Any(p => p.IsRemainder || p.IsMultiple) => "лишние аргументы",
+                CommandError.BadArgCount => "не хватает аргументов",
+                CommandError.ObjectNotFound => "не нашёл, кого ты имел в виду",
+                _ => "не смог разобрать аргументы"
+            };
+        }
+
+        private static string[] Arguments(CommandInfo cmd, string content)
+        {
+            if (string.IsNullOrWhiteSpace(content))
+                return [];
+
+            var text = content.TrimStart();
+            var prefix = new[] { Global.Vars.Cfg.pref1, Global.Vars.Cfg.pref2 }
+                .FirstOrDefault(value => !string.IsNullOrEmpty(value) && text.StartsWith(value, StringComparison.OrdinalIgnoreCase));
+            if (prefix is not null)
+                text = text[prefix.Length..];
+
+            var alias = cmd.Aliases.Prepend(cmd.Name)
+                .OrderByDescending(value => value.Length)
+                .FirstOrDefault(value => text.StartsWith(value, StringComparison.OrdinalIgnoreCase));
+            if (alias is not null)
+                text = text[alias.Length..];
+
+            return text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        }
+
+        private static string[] ArgLabels(HelpCommand help, IReadOnlyList<Discord.Commands.ParameterInfo> parameters)
+        {
+            var fromHelp = help?.Args is { } args
+                ? ArgLabelRegex.Matches(args).Select(match => match.Value).ToArray()
+                : [];
+
+            return parameters
+                .Select((parameter, i) => fromHelp.Length == parameters.Count ? fromHelp[i] : $"<{FriendlyTypeName(parameter.Type)}>")
+                .ToArray();
+        }
+
+        private static string UsageHint(CommandInfo cmd, HelpCommand help, string prefix)
+        {
+            if (help is not null)
+                return $"\nкак надо: `{prefix}{help.Usage}`" + (help.Example is null ? "" : $"\nпример: `{help.Example}`");
+
             if (!cmd.Parameters.Any())
                 return string.Empty;
 
-            var paramStr = string.Join(" ", cmd.Parameters.Select(p =>
-            {
-                var typeName = FriendlyTypeName(p.Type);
-                var label = string.IsNullOrWhiteSpace(p.Summary) ? $"{p.Name}:{typeName}" : p.Summary;
-                return p.IsOptional ? $"[{label}]" : $"<{label}>";
-            }));
-
-            var prefix = Utils.pref1;
-            var aliases = cmd.Aliases.Count > 0 ? $" ({string.Join("/", cmd.Aliases)})" : "";
-            return $"Использование: `{prefix} {cmd.Name}{aliases} {paramStr}`";
+            var args = string.Join(" ", cmd.Parameters.Select(p => p.IsOptional ? $"[{FriendlyTypeName(p.Type)}]" : $"<{FriendlyTypeName(p.Type)}>"));
+            return $"\nкак надо: `{prefix}{cmd.Name} {args}`";
         }
+
+        private static async Task<string> ExceptionReasonAsync(CommandInfo cmd, IResult result)
+        {
+            var code = Guid.NewGuid().ToString("N")[..4].ToUpperInvariant();
+            var exception = result is ExecuteResult execute ? execute.Exception : null;
+            await LoggingService.LogErrorAsync("COMND", $"[{code}] команда {cmd.Name} упала", exception);
+            return $"внутренняя ошибка, код `{code}`";
+        }
+
+        private static bool IsNumber(Type type) =>
+            type == typeof(int) || type == typeof(long) || type == typeof(uint) || type == typeof(ulong) ||
+            type == typeof(float) || type == typeof(double) || type == typeof(decimal);
 
         private static string FriendlyTypeName(Type t)
         {
             var u = Nullable.GetUnderlyingType(t) ?? t;
-            if (u == typeof(int) || u == typeof(long) || u == typeof(uint)) return "число";
-            if (u == typeof(float) || u == typeof(double) || u == typeof(decimal)) return "число";
+            if (IsNumber(u)) return "число";
             if (u == typeof(string)) return "текст";
             if (u == typeof(bool)) return "да/нет";
-            if (u.Name.Contains("GuildUser") || u.Name.Contains("SocketUser")) return "@пользователь";
+            if (typeof(IUser).IsAssignableFrom(u)) return "@юзер";
             if (u.Name.Contains("Role")) return "@роль";
             if (u.Name.Contains("Channel")) return "#канал";
             return u.Name.ToLower();
@@ -271,175 +456,95 @@ namespace sblngavnav5X.Core
 
         private Task LogAsync(LogMessage log)
         {
-            return LoggingService.LogInformationAsync("COMND", log.ToString());
+            if (log.Exception is CommandException)
+                return Task.CompletedTask;
+
+            return LoggingService.LogAsync("COMND", log.Severity, log.Message, log.Exception);
         }
 
-        private async Task OnClientReadyAsync()
-        {
-            await StartTimerAsync();
-            await EnsureLavaNodeConnectedAsync("ready");
-        }
-
-        private Task OnClientConnectedAsync()
-        {
-            return EnsureLavaNodeConnectedAsync("connected");
-        }
+        private Task OnClientReadyAsync() => StartTimerAsync();
 
         private async Task StartTimerAsync()
         {
-            if (_timerStarted)
-                return;
-
-            _timerStarted = true;
-            _timer.Start();
+            lock (_timerLock)
+            {
+                if (_timerStarted || _stopped) return;
+                _timerStarted = true;
+                _timer.Start();
+                _nextCollection = DateTimeOffset.UtcNow.AddMilliseconds(_timer.Interval);
+            }
 
             await LoggingService.LogInformationAsync("GOVOR", "Таймер сбора сообщений запущен");
         }
 
-        private async Task EnsureLavaNodeConnectedAsync(string reason)
-        {
-            if (_lavaNode.IsConnected)
-            {
-                await LoggingService.LogInformationAsync("VI-KA", $"Lavalink подключен / State=({reason})");
-                return;
-            }
-
-            await _lavaReconnectLock.WaitAsync();
-            try
-            {
-                if (_lavaNode.IsConnected)
-                    return;
-
-                var elapsed = DateTime.UtcNow - _lastLavaReconnectAttemptUtc;
-                if (elapsed < TimeSpan.FromSeconds(5))
-                    await Task.Delay(TimeSpan.FromSeconds(5) - elapsed);
-
-                _lastLavaReconnectAttemptUtc = DateTime.UtcNow;
-
-                await LoggingService.LogInformationAsync("VI-KA", $"Переподключение Lavalink / State=({reason})...");
-                await _services.UseLavaNodeAsync();
-
-                if (_lavaNode.IsConnected)
-                    await LoggingService.LogInformationAsync("VI-KA", "Подключен к Lavalink");
-                else
-                    await LoggingService.LogCriticalAsync("VI-KA", "Не подключен к Lavalink");
-            }
-            catch (Exception ex)
-            {
-                await LoggingService.LogCriticalAsync("VI-KA", $"Ошибка переподключения Lavalink / State=({reason})", ex);
-            }
-            finally
-            {
-                _lavaReconnectLock.Release();
-            }
-        }
 
         private void OnTimedEvent(object? sender, System.Timers.ElapsedEventArgs e)
         {
-            if (Interlocked.Exchange(ref _timerBusy, 1) == 1)
-                return;
-
-            _ = Task.Run(async () =>
+            lock (_timerLock)
             {
-                try
-                {
-                    await ProcessTimedEventAsync();
-                }
-                finally
-                {
-                    Interlocked.Exchange(ref _timerBusy, 0);
-                }
-            });
+                _nextCollection = DateTimeOffset.UtcNow.AddMilliseconds(_timer.Interval);
+                if (_stopped || !_timerTask.IsCompleted) return;
+                _timerTask = Task.Run(() => ProcessTimedEventAsync(_stopping.Token));
+            }
         }
 
-        private async Task ProcessTimedEventAsync()
+        private async Task ProcessTimedEventAsync(CancellationToken cancellationToken)
         {
             try
             {
-                var channel = _client.GetChannel(Utils.messageSourceChannelId) as IMessageChannel;
+                var channel = _client.GetChannel(Global.Vars.Cfg.messageSourceChannelId) as IMessageChannel;
                 if (channel == null)
                 {
-                    await LoggingService.LogInformationAsync("GOVOR", $"Не удалось получить канал с ID {Utils.messageSourceChannelId}");
+                    await LoggingService.LogInformationAsync("GOVOR", $"Не удалось получить канал с ID {Global.Vars.Cfg.messageSourceChannelId}");
                     return;
                 }
 
-                var cursorPath = Utils.messagesFilePath + ".cursor";
-                ulong? oldestId = null;
-                if (File.Exists(cursorPath) && ulong.TryParse(await File.ReadAllTextAsync(cursorPath), out var parsed))
-                    oldestId = parsed;
+                var (added, images, scanned, removed, total) = await _gvrMessages.CollectAsync(channel, (int)_govorilka.Collection, cancellationToken);
 
-                var existingLines = File.Exists(Utils.messagesFilePath)
-                    ? new HashSet<string>((await File.ReadAllLinesAsync(Utils.messagesFilePath))
-                        .Select(l => l.Trim()).Where(l => l.Length > 0))
-                    : new HashSet<string>();
-
-                var newLines = new List<string>();
-                ulong? newOldestId = null;
-
-                var query = oldestId.HasValue
-                    ? channel.GetMessagesAsync(oldestId.Value, Direction.Before, (int)_govorilka.Collection).Flatten()
-                    : channel.GetMessagesAsync((int)_govorilka.Collection).Flatten();
-
-                await foreach (var message in query)
-                {
-                    if (message == null ||
-                        string.IsNullOrWhiteSpace(message.Content) ||
-                        message.Author.IsBot ||
-                        message.Attachments.Any() ||
-                        message.Embeds.Any())
-                    {
-                        continue;
-                    }
-
-                    var content = message.Content.Trim();
-
-                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase) ||
-                        content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase) ||
-                        content.Contains("https://", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    if (newOldestId == null || message.Id < newOldestId.Value)
-                        newOldestId = message.Id;
-
-                    if (existingLines.Add(content))
-                        newLines.Add(content);
-                }
-
-                if (newLines.Count > 0)
-                {
-                    await File.AppendAllLinesAsync(Utils.messagesFilePath, newLines);
-                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений: {newLines.Count}, всего в датасете: {existingLines.Count}");
-                }
-                else
-                {
-                    await LoggingService.LogInformationAsync("GOVOR", "Новых сообщений нет — история исчерпана или канал пуст");
-                }
-
-                if (newOldestId.HasValue)
-                    await File.WriteAllTextAsync(cursorPath, newOldestId.Value.ToString());
+                await LoggingService.LogInformationAsync("GOVOR",
+                    $"Сбор: просмотрено {scanned}, новых {added}, картинок {images}, вычищено {removed}, всего в базе {total}");
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("GOVOR", $"Произошла ошибка в обработке таймера: {ex.Message}");
+                await LoggingService.LogCriticalAsync("GOVOR", "Произошла ошибка в обработке таймера", ex);
             }
+        }
+
+        public async Task StopAsync()
+        {
+            if (_disposed) return;
+            Task timerTask;
+            lock (_timerLock)
+            {
+                _stopped = true;
+                _timer.Stop();
+                UnhookEvents();
+                timerTask = _timerTask;
+            }
+            await _stopping.CancelAsync();
+            await timerTask;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try { await StopAsync(); }
+            finally { Dispose(); }
         }
 
         public void Dispose()
         {
-            if (_disposed)
-                return;
-
+            if (_disposed) return;
             _disposed = true;
-
-            try
+            lock (_timerLock)
             {
+                _stopped = true;
                 _timer.Stop();
+                _timer.Dispose();
                 UnhookEvents();
-                _lavaReconnectLock.Dispose();
             }
-            catch
-            {
-            }
+            _stopping.Cancel();
+            _stopping.Dispose();
         }
     }
 }

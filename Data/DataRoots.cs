@@ -1,28 +1,17 @@
-﻿using Newtonsoft.Json;
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
-namespace sblngavnav5X.Data
+namespace sblngavnav6.Data
 {
     public static class DataRoots
     {
         public static class States
         {
-            public static int RealId { get; set; }
-            public static List<string> YaicaList { get; } = new();
-            public static List<string> VolkList { get; } = new();
-            public static List<string> PatList { get; } = new();
-            public static List<string> FffList { get; } = new();
-            public static List<string> HugList { get; } = new();
-            public static List<string> KissList { get; } = new();
-            public static List<string> KusList { get; } = new();
-            public static List<string> BuhatList { get; } = new();
-            public static List<string> EbaloList { get; } = new();
-            public static List<string> Streamers { get; } = new();
-            public static List<string> StreamerIds { get; } = new();
-            public static List<string> StatusText { get; } = new();
-            public static List<string> StatusPos { get; } = new();
-            public static List<string> StatusLink { get; } = new();
-            public static List<string> StatusType { get; } = new();
+            private static IReadOnlyDictionary<string, string> _streamers = new Dictionary<string, string>();
+
+            public static IReadOnlyDictionary<string, string> Streamers => Volatile.Read(ref _streamers);
+
+            public static void SetStreamers(IReadOnlyDictionary<string, string> streamers) =>
+                Volatile.Write(ref _streamers, streamers);
         }
 
         public class Rates
@@ -64,7 +53,7 @@ namespace sblngavnav5X.Data
         }
         public class CatData
         {
-            [JsonProperty("url")] public Uri Url { get; set; }
+            [JsonPropertyName("url")] public Uri Url { get; set; }
         }
 
         public class BookWithRating
@@ -81,6 +70,7 @@ namespace sblngavnav5X.Data
         public class VersionEntry
         {
             public string Version { get; set; }
+            public string Stage { get; set; }
             public DateTime Date { get; set; }
         }
 
@@ -114,6 +104,49 @@ namespace sblngavnav5X.Data
             public int[] scores { get; set; } = [];
             public double final { get; set; }
         }
+
+        public sealed class PortalStatusDto
+        {
+            public string version { get; set; } = "";
+            public bool online { get; set; }
+            public DateTimeOffset startedAt { get; set; }
+            public DateTimeOffset updatedAt { get; set; }
+            public int latency { get; set; }
+            public string name { get; set; } = "";
+            public string discriminator { get; set; } = "";
+            public string avatar { get; set; } = "";
+            public string activityType { get; set; } = "";
+            public string activity { get; set; } = "";
+        }
+
+        public sealed class PortalCoreDto
+        {
+            public DateTimeOffset updatedAt { get; set; }
+            public List<PortalCoreWordDto> words { get; set; } = [];
+            public List<int[]> links { get; set; } = [];
+        }
+
+        public sealed class PortalCoreWordDto
+        {
+            public string text { get; set; } = "";
+            public int count { get; set; }
+        }
+
+        public sealed class PortalCommandSectionDto
+        {
+            public string title { get; set; } = "";
+            public List<PortalCommandDto> commands { get; set; } = [];
+        }
+
+        public sealed class PortalCommandDto
+        {
+            public string[] names { get; set; } = [];
+            public string about { get; set; } = "";
+            public bool telegram { get; set; }
+            public string args { get; set; } = "";
+            public string example { get; set; } = "";
+        }
+
 
         public class MealResponse
         {
@@ -175,10 +208,125 @@ namespace sblngavnav5X.Data
             public string? strMeasure20 { get; set; }
         }
 
+        public class PpmMailbox
+        {
+            public int Id { get; set; }
+            public string Email { get; set; }
+            public string Password { get; set; }
+            public string OwnerId { get; set; }
+            public DateTime CreatedAt { get; set; }
+            public DateTime? ExpiresAt { get; set; }
+            public bool IsPermanent { get; set; }
+        }
+
         public class MyMemoryResult
         {
             public MyMemoryData? responseData { get; set; }
         }
+
+        public sealed class WeatherCondition
+        {
+            public int Id { get; set; }
+            public string Main { get; set; }
+            public string Description { get; set; }
+            public string Icon { get; set; }
+        }
+
+        public sealed class WeatherMain
+        {
+            public double Temp { get; set; }
+            [JsonPropertyName("feels_like")] public double FeelsLike { get; set; }
+            [JsonPropertyName("temp_min")] public double TempMin { get; set; }
+            [JsonPropertyName("temp_max")] public double TempMax { get; set; }
+            public double Pressure { get; set; }
+            public double Humidity { get; set; }
+        }
+
+        public sealed class WeatherWind
+        {
+            public double Speed { get; set; }
+            public double Deg { get; set; }
+            public double Gust { get; set; }
+        }
+
+        public sealed class WeatherSys
+        {
+            public string Country { get; set; }
+            public long Sunrise { get; set; }
+            public long Sunset { get; set; }
+        }
+
+        public sealed class WeatherClouds
+        {
+            public int All { get; set; }
+        }
+
+        public sealed class WeatherCurrent
+        {
+            public List<WeatherCondition> Weather { get; set; }
+            public WeatherMain Main { get; set; }
+            public WeatherWind Wind { get; set; }
+            public WeatherSys Sys { get; set; }
+            public WeatherClouds Clouds { get; set; }
+            public int Visibility { get; set; }
+            public long Dt { get; set; }
+            public int Timezone { get; set; }
+            public string Name { get; set; }
+        }
+
+        public sealed class WeatherSlot
+        {
+            public long Dt { get; set; }
+            public WeatherMain Main { get; set; }
+            public List<WeatherCondition> Weather { get; set; }
+            public WeatherWind Wind { get; set; }
+            public double Pop { get; set; }
+        }
+
+        public sealed class WeatherCity
+        {
+            public string Name { get; set; }
+            public string Country { get; set; }
+            public int Timezone { get; set; }
+            public long Sunrise { get; set; }
+            public long Sunset { get; set; }
+        }
+
+        public sealed class WeatherForecast
+        {
+            public List<WeatherSlot> List { get; set; }
+            public WeatherCity City { get; set; }
+        }
+
+        public sealed record WeatherResult(WeatherCurrent Current, WeatherForecast Forecast, string Error)
+        {
+            public bool Ok => Error is null && Current is not null;
+
+            public static WeatherResult Failed(string error) => new(null, null, error);
+        }
+
+        public class PpmMessageView
+        {
+            public string From { get; set; }
+            public string Subject { get; set; }
+            public DateTime Date { get; set; }
+            public string Body { get; set; }
+            public string Folder { get; set; }
+        }
+
+        public sealed record BotStatus(string Text, string Pos, string Link, string Type);
+
+        public sealed record PastaEntry(string Author, string AvatarUrl, string Content, DateTimeOffset Written);
+
+        public sealed record ClubMemberStats(
+            string Name,
+            double Plot,
+            double Style,
+            double Characters,
+            double Originality,
+            double Vibe,
+            double Total,
+            double Stuffiness);
 
         public class MyMemoryData
         {

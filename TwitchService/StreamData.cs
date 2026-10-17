@@ -1,7 +1,7 @@
-﻿using Discord.WebSocket;
+﻿using System.Collections.Concurrent;
 using TwitchLib.Api.Interfaces;
 
-namespace sblngavnav5X.TwitchService
+namespace sblngavnav6.TwitchService
 {
     public class StreamData
     {
@@ -17,26 +17,18 @@ namespace sblngavnav5X.TwitchService
 
     public abstract class StreamMonoServiceBase
     {
-        protected int CreationAttempts { get; set; } = 0;
+        protected int CreationAttempts { get; set; }
 
         public ITwitchAPI TwitchApi { get; protected set; }
 
-        protected int UpdInt { get; set; }
+        protected const int UpdInt = 600;
 
-        public List<string> StreamList { get; protected set; }
+        public ConcurrentDictionary<string, byte> StreamsOnline { get; } = new();
 
-        public List<string> StreamIdList { get; protected set; }
+        public IReadOnlyDictionary<string, string> Streamers { get; protected set; } = new Dictionary<string, string>();
 
-        public List<string> StreamsOnline { get; } = new List<string>();
+        protected Dictionary<string, StreamData> StreamModels { get; set; } = [];
 
-        public Dictionary<string, string> StreamIds { get; protected set; }
-
-        protected Dictionary<string, StreamData> StreamModels { get; set; }
-
-        protected Dictionary<string, string> StreamProfileImages { get; set; }
-
-        protected List<SocketTextChannel> StreamNotifChannels { get; set; }
-
-        protected string NotifChannelName { get; set; }
+        protected Dictionary<string, string> StreamProfileImages { get; set; } = [];
     }
 }

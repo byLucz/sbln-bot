@@ -1,11 +1,14 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
 
-namespace sblngavnav5X.Services
+namespace sblngavnav6.Services
 {
-    public class WelcomeService
+    public sealed class WelcomeService : IDisposable
     {
         private readonly DiscordSocketClient _client;
+        private bool _disposed;
 
         public WelcomeService(DiscordSocketClient client)
         {
@@ -13,26 +16,45 @@ namespace sblngavnav5X.Services
             _client.UserJoined += OnUserJoined;
         }
 
+        public Task StopAsync()
+        {
+            Dispose();
+            return Task.CompletedTask;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _client.UserJoined -= OnUserJoined;
+        }
+
         private async Task OnUserJoined(SocketGuildUser user)
         {
+            var gs = await DataBase.GetGuildSettings(user.Guild.Id);
 
-            var channel = user.Guild.TextChannels.FirstOrDefault(c => c.Name == "mainlobby");
-            if (channel == null) return;
-
-            var newbieRole = user.Guild.Roles.FirstOrDefault(r => r.Name == "Челик");
-            if (newbieRole != null)
+            if (gs.WelcomeRoleId is ulong roleId)
             {
-                await user.AddRoleAsync(newbieRole);
+                var role = user.Guild.GetRole(roleId);
+                if (role != null)
+                    try { await user.AddRoleAsync(role); } catch { }
             }
 
-            var embed = new EmbedBuilder()
-                .WithColor(Color.Green)
-                .WithTitle($"Добро пожаловать, {user.Username}!")
-                .WithDescription("Я сын гавна, а это официальное представительсво Lois Media в мире Дискордии, устраивайся поудобнее, еп <:Lois:754018858431545375>")
-                .WithThumbnailUrl(user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl())
-                .Build();
+            if (gs.WelcomeChannelId is not ulong chId)
+                return;
 
-            await channel.SendMessageAsync(embed: embed);
+            var channel = user.Guild.GetTextChannel(chId);
+            if (channel == null) return;
+
+            await channel.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
+            {
+                Title = user.Guild.Name,
+                Description = string.IsNullOrWhiteSpace(gs.WelcomeMessage)
+                    ? $"{user.Mention}, добро пожаловать!"
+                    : gs.WelcomeMessage.Replace("{user}", user.Mention, StringComparison.OrdinalIgnoreCase),
+                Color = Color.Green,
+                ThumbnailUrl = user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl()
+            }));
         }
     }
 }

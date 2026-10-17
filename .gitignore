@@ -6,6 +6,10 @@ obj/
 
 .env
 .env.*
+config/config.json
+config/config-proto.json
 appsettings.*.local.json
 
 messages.csv
+docs/
+__pycache__/

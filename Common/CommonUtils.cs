@@ -1,0 +1,597 @@
+﻿using Discord;
+using Discord.Net;
+
+namespace sblngavnav6.Common
+{
+    public static class CommonUtils
+    {
+        public static class Chat
+        {
+            public const string DefaultAvatar = "https://cdn-icons-png.flaticon.com/512/3670/3670157.png";
+
+            private static readonly TimeSpan BulkDeleteLimit = TimeSpan.FromDays(14) - TimeSpan.FromMinutes(5);
+
+            public static string Avatar(IUser user, ushort size = 128) =>
+                user?.GetAvatarUrl(ImageFormat.Auto, size) ?? user?.GetDefaultAvatarUrl() ?? DefaultAvatar;
+
+            public static string GuildAvatar(IGuildUser user, string fallback = DefaultAvatar) =>
+                user?.GetGuildAvatarUrl() ?? user?.GetAvatarUrl() ?? user?.GetDefaultAvatarUrl() ?? fallback;
+
+            public static string UserName(IUser user, bool mention = false) =>
+                (mention ? user?.Mention : user?.Username ?? user?.GlobalName) ?? "кто-то";
+
+            public static async Task ReactAsync(IUserMessage message, string emote)
+            {
+                if (message is null || !Emote.TryParse(emote, out var parsed))
+                    return;
+
+                try { await message.AddReactionAsync(parsed).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is HttpException or TimeoutException or NotSupportedException) { }
+            }
+
+            public static async Task<IUserMessage> AnimateAsync(
+                IMessageChannel channel,
+                IReadOnlyList<Embed> frames,
+                TimeSpan delay,
+                IUserMessage message = null)
+            {
+                ArgumentNullException.ThrowIfNull(channel);
+
+                if (frames is not { Count: > 0 })
+                    return message;
+
+                for (var index = 0; index < frames.Count; index++)
+                {
+                    var frame = frames[index];
+
+                    try
+                    {
+                        if (message is null)
+                            message = await channel.SendMessageAsync(embed: frame).ConfigureAwait(false);
+                        else
+                            await message.ModifyAsync(properties => properties.Embed = frame).ConfigureAwait(false);
+                    }
+                    catch (Exception ex) when (ex is HttpException or TimeoutException)
+                    {
+                        return message;
+                    }
+
+                    if (index < frames.Count - 1)
+                        await Task.Delay(delay).ConfigureAwait(false);
+                }
+
+                return message;
+            }
+
+            public static async Task<int> PurgeAsync(IMessageChannel channel, int count, ulong skipId = 0)
+            {
+                ArgumentNullException.ThrowIfNull(channel);
+
+                if (count <= 0)
+                    return 0;
+
+                var messages = (await channel.GetMessagesAsync(count).FlattenAsync().ConfigureAwait(false))
+                    .Where(message => message.Id != skipId)
+                    .ToList();
+
+                if (messages.Count == 0)
+                    return 0;
+
+                var threshold = DateTimeOffset.UtcNow - BulkDeleteLimit;
+                var bulk = messages.Where(message => message.Timestamp > threshold).ToList();
+                var single = messages.Except(bulk).ToList();
+                var removed = 0;
+
+                if (channel is ITextChannel text && bulk.Count > 1)
+                {
+                    try
+                    {
+                        await text.DeleteMessagesAsync(bulk).ConfigureAwait(false);
+                        removed += bulk.Count;
+                    }
+                    catch (Exception ex) when (ex is HttpException or TimeoutException)
+                    {
+                        single.AddRange(bulk);
+                    }
+                }
+                else
+                {
+                    single.AddRange(bulk);
+                }
+
+                foreach (var message in single)
+                {
+                    try
+                    {
+                        await channel.DeleteMessageAsync(message).ConfigureAwait(false);
+                        removed++;
+                    }
+                    catch (Exception ex) when (ex is HttpException or TimeoutException) { }
+                }
+
+                return removed;
+            }
+        }
+
+        public static class Text
+        {
+            private static readonly Dictionary<char, char> RuToEn = new()
+            {
+                ['й'] = 'q',
+                ['ц'] = 'w',
+                ['у'] = 'e',
+                ['к'] = 'r',
+                ['е'] = 't',
+                ['н'] = 'y',
+                ['г'] = 'u',
+                ['ш'] = 'i',
+                ['щ'] = 'o',
+                ['з'] = 'p',
+                ['х'] = '[',
+                ['ъ'] = ']',
+                ['ф'] = 'a',
+                ['ы'] = 's',
+                ['в'] = 'd',
+                ['а'] = 'f',
+                ['п'] = 'g',
+                ['р'] = 'h',
+                ['о'] = 'j',
+                ['л'] = 'k',
+                ['д'] = 'l',
+                ['ж'] = ';',
+                ['э'] = '\'',
+                ['я'] = 'z',
+                ['ч'] = 'x',
+                ['с'] = 'c',
+                ['м'] = 'v',
+                ['и'] = 'b',
+                ['т'] = 'n',
+                ['ь'] = 'm',
+                ['б'] = ',',
+                ['ю'] = '.'
+            };
+
+            private static readonly Dictionary<char, char> EnToRu =
+                RuToEn.ToDictionary(pair => pair.Value, pair => pair.Key);
+
+            public static int Distance(string a, string b)
+            {
+                var d = new int[a.Length + 1, b.Length + 1];
+                for (var i = 0; i <= a.Length; i++) d[i, 0] = i;
+                for (var j = 0; j <= b.Length; j++) d[0, j] = j;
+
+                for (var i = 1; i <= a.Length; i++)
+                    for (var j = 1; j <= b.Length; j++)
+                    {
+                        var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                        d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + cost);
+                        if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1])
+                            d[i, j] = Math.Min(d[i, j], d[i - 2, j - 2] + 1);
+                    }
+
+                return d[a.Length, b.Length];
+            }
+
+            public static string ToEnLayout(string source) => MapLayout(source, RuToEn);
+
+            public static string ToRuLayout(string source) => MapLayout(source, EnToRu);
+
+            private static string MapLayout(string source, Dictionary<char, char> map)
+            {
+                var builder = new System.Text.StringBuilder(source.Length);
+
+                foreach (var symbol in source)
+                {
+                    if (map.TryGetValue(char.ToLowerInvariant(symbol), out var replacement))
+                        builder.Append(char.IsUpper(symbol) ? char.ToUpperInvariant(replacement) : replacement);
+                    else
+                        builder.Append(symbol);
+                }
+
+                return builder.ToString();
+            }
+
+            public static string Truncate(string s, int max)
+            {
+                if (string.IsNullOrEmpty(s)) return s ?? "";
+                s = s.Replace("\r", "");
+                return s.Length <= max ? s : s.Substring(0, Math.Max(0, max - 1)) + "…";
+            }
+
+            public static string StripEmoji(string? s)
+            {
+                if (string.IsNullOrEmpty(s)) return s ?? "";
+                var sb = new System.Text.StringBuilder(s.Length);
+                foreach (var ch in s)
+                {
+                    if (char.IsSurrogate(ch) || ch is '\uFE0F' or '\u200D' or '\u20E3'
+                        || char.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.OtherSymbol)
+                        continue;
+                    sb.Append(ch);
+                }
+                return CollapseSpaces(sb.ToString());
+            }
+
+            public static string CollapseSpaces(string s)
+            {
+                if (string.IsNullOrEmpty(s)) return s ?? "";
+                while (s.Contains("  ", StringComparison.Ordinal))
+                    s = s.Replace("  ", " ");
+                return s.Trim();
+            }
+
+            public static string TrackLink(string? title, string? url)
+            {
+                var label = HasVisible(title) ? title.Trim() : "Без названия..";
+                label = label.Replace("[", "(").Replace("]", ")");
+                return HasVisible(url) ? $"[{label}]({url.Trim()})" : label;
+            }
+
+            public static string Percent(double value, int digits) =>
+                (value * 100).ToString($"0.{new string('0', digits)}", System.Globalization.CultureInfo.InvariantCulture) + "%";
+
+            public static string Flag(string? countryCode)
+                => countryCode is { Length: 2 } code && code.All(char.IsAsciiLetter)
+                    ? string.Concat(code.ToUpperInvariant().Select(c => char.ConvertFromUtf32(0x1F1E6 + c - 'A')))
+                    : "";
+
+            public static string Bytes(double bytes)
+            {
+                string[] units = ["B", "KB", "MB", "GB", "TB", "PB"];
+                var unit = 0;
+                while (bytes >= 1024 && unit < units.Length - 1)
+                {
+                    bytes /= 1024;
+                    unit++;
+                }
+                return bytes.ToString(unit == 0 ? "0" : "0.##", System.Globalization.CultureInfo.InvariantCulture) + " " + units[unit];
+            }
+
+            public static string FirstLine(string? s, int max = 300)
+                => string.IsNullOrWhiteSpace(s) ? "" : Truncate(s.Split('\n', 2)[0].Trim(), max);
+
+            public static string FirstMeaningfulLine(string? s, string fallback, int max = int.MaxValue)
+            {
+                if (string.IsNullOrWhiteSpace(s))
+                    return fallback;
+
+                foreach (var line in s.Split('\n'))
+                {
+                    var trimmed = line.Trim();
+
+                    if (trimmed.Length == 0 || trimmed.StartsWith("at ", StringComparison.Ordinal))
+                        continue;
+
+                    return max == int.MaxValue ? trimmed : Truncate(trimmed, max);
+                }
+
+                return fallback;
+            }
+
+            public static string CodeTable(IEnumerable<(string Name, string Value)> rows, string empty)
+                => CodeTable(rows.Select(row => (IReadOnlyList<string>)[row.Name, row.Value]), empty);
+
+            public static string CodeTable(IEnumerable<IReadOnlyList<string>> rows, string empty)
+            {
+                var items = rows.Select(row => row.ToArray()).ToList();
+
+                if (items.Count == 0)
+                    return empty;
+
+                var widths = new int[items.Max(row => row.Length)];
+
+                foreach (var row in items)
+                    for (var column = 0; column < row.Length; column++)
+                        widths[column] = Math.Max(widths[column], row[column]?.Length ?? 0);
+
+                var lines = items.Select(row => string.Join("   ", row.Select((cell, column) =>
+                    column == row.Length - 1 ? cell ?? "" : (cell ?? "").PadRight(widths[column]))).TrimEnd());
+
+                return "```\n" + string.Join("\n", lines) + "\n```";
+            }
+
+            private static bool HasVisible(string? s)
+            {
+                if (string.IsNullOrEmpty(s)) return false;
+                foreach (var ch in s)
+                {
+                    if (char.IsWhiteSpace(ch) || char.IsControl(ch)) continue;
+                    if (char.GetUnicodeCategory(ch) == System.Globalization.UnicodeCategory.Format) continue;
+                    switch (ch)
+                    {
+                        case 'ㅤ':
+                        case '⠀':
+                        case 'ᅟ':
+                        case 'ᅠ':
+                        case 'ﾠ':
+                        case '　':
+                        case '᠎':
+                        case '⁠':
+                        case '﻿':
+                            continue;
+                    }
+                    return true;
+                }
+                return false;
+            }
+        }
+
+        public static class Web
+        {
+            private static readonly (string Brief, string[] Markers)[] Errors =
+            [
+                ("отказ в соединении", ["econnrefused", "connection refused", "отверг"]),
+                ("таймаут", ["etimedout", "timeout", "timed out", "таймаут"]),
+                ("хост недоступен", ["ehostunreach", "enetunreach", "no route to host", "host unreachable", "network is unreachable"]),
+                ("DNS не резолвит", ["enotfound", "getaddrinfo", "name or service not known", "no such host", "eai_again"]),
+                ("соединение сброшено", ["econnreset", "socket hang up", "connection reset", "broken pipe"]),
+                ("сертификат истёк", ["certificate has expired", "сертификат истёк"]),
+                ("сертификат не для домена", ["altnames", "does not match", "сертификат не для"]),
+                ("недоверенный сертификат", ["self signed", "self-signed", "unable to verify", "недоверенная"]),
+                ("старая версия ноды", ["required info is missing", "outdated version"]),
+                ("ошибка TLS", ["ssl routines", "tlsv1 alert", "handshake failure", "ssl handshake"]),
+                ("ошибка QUIC", ["quic"])
+            ];
+
+            private static readonly System.Text.RegularExpressions.Regex HttpStatus =
+                new(@"\bHTTP\s*(\d{3})\b", System.Text.RegularExpressions.RegexOptions.Compiled | System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            public static string BriefError(string? error, int max = 24)
+            {
+                if (string.IsNullOrWhiteSpace(error))
+                    return "-";
+
+                foreach (var (brief, markers) in Errors)
+                    if (markers.Any(marker => error.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+                        return brief;
+
+                return HttpStatus.Match(error) is { Success: true } http
+                    ? $"HTTP {http.Groups[1].Value}"
+                    : Text.FirstMeaningfulLine(error, "-", max);
+            }
+
+            public static string AgentSignature(string token, string path, string stamp) =>
+                Convert.ToHexStringLower(System.Security.Cryptography.HMACSHA256.HashData(
+                    System.Text.Encoding.UTF8.GetBytes(token ?? ""),
+                    System.Text.Encoding.UTF8.GetBytes($"GET\n{path}\n{stamp}")));
+
+            public static void SignAgent(HttpRequestMessage request, Uri baseUri, string route, string token)
+            {
+                var stamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+                var path = new Uri(baseUri, route).GetComponents(UriComponents.PathAndQuery, UriFormat.UriEscaped);
+                request.Headers.Add("X-Ragent-Ts", stamp);
+                request.Headers.Add("X-Ragent-Sig", AgentSignature(token, path, stamp));
+            }
+
+            public sealed record ApiResponse(bool Ok, System.Net.HttpStatusCode? Status, string Body, string Error)
+            {
+                public HttpRequestError? Failure { get; init; }
+
+                public static ApiResponse Fail(string error) => new(false, null, null, error);
+            }
+
+            public static async Task<ApiResponse> SendAsync(
+                IHttpClientFactory factory,
+                string label,
+                string baseUrl,
+                HttpMethod method,
+                string route,
+                TimeSpan timeout,
+                Action<HttpRequestMessage> configure = null,
+                CancellationToken cancellationToken = default)
+            {
+                if (string.IsNullOrWhiteSpace(baseUrl))
+                    return ApiResponse.Fail($"{label} URL не задан");
+
+                if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var baseUri))
+                    return ApiResponse.Fail($"{label} URL невалидный: {baseUrl}");
+
+                var client = factory.CreateClient(label);
+                client.BaseAddress = baseUri;
+
+                using var request = new HttpRequestMessage(method, route);
+                configure?.Invoke(request);
+
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(timeout);
+
+                try
+                {
+                    using var response = await client.SendAsync(request, cts.Token).ConfigureAwait(false);
+                    var body = await response.Content.ReadAsStringAsync(cts.Token).ConfigureAwait(false);
+
+                    return new ApiResponse(
+                        response.IsSuccessStatusCode,
+                        response.StatusCode,
+                        body,
+                        response.IsSuccessStatusCode ? null : $"HTTP {(int)response.StatusCode}");
+                }
+                catch (HttpRequestException ex)
+                {
+                    return ApiResponse.Fail($"Запрос не дошёл: {ex.Message}") with { Failure = ex.HttpRequestError };
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    return ApiResponse.Fail($"Таймаут запроса, {timeout.TotalSeconds:0}с без ответа");
+                }
+            }
+
+            public const string PublicClient = "Public";
+
+            public static SocketsHttpHandler PublicHandler() => new()
+            {
+                UseProxy = false,
+                ConnectCallback = async (context, cancellationToken) =>
+                {
+                    var addresses = await System.Net.Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken).ConfigureAwait(false);
+                    if (addresses.Length == 0 || !addresses.All(IsPublicAddress))
+                        throw new HttpRequestException($"{context.DnsEndPoint.Host} ведёт во внутреннюю сеть");
+
+                    var socket = new System.Net.Sockets.Socket(addresses[0].AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+                    try
+                    {
+                        await socket.ConnectAsync(new System.Net.IPEndPoint(addresses[0], context.DnsEndPoint.Port), cancellationToken).ConfigureAwait(false);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                }
+            };
+
+            public static bool IsPublicAddress(System.Net.IPAddress address)
+            {
+                if (address.IsIPv4MappedToIPv6)
+                    address = address.MapToIPv4();
+
+                if (System.Net.IPAddress.IsLoopback(address))
+                    return false;
+
+                var bytes = address.GetAddressBytes();
+
+                if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    return !(bytes[0] is 0 or 10 or 127 || bytes[0] >= 224
+                        || bytes[0] == 100 && bytes[1] is >= 64 and <= 127
+                        || bytes[0] == 169 && bytes[1] == 254
+                        || bytes[0] == 172 && bytes[1] is >= 16 and <= 31
+                        || bytes[0] == 192 && bytes[1] == 168);
+
+                return !(address.Equals(System.Net.IPAddress.IPv6Any) || address.IsIPv6LinkLocal || address.IsIPv6SiteLocal
+                    || address.IsIPv6Multicast || (bytes[0] & 0xFE) == 0xFC);
+            }
+
+            public static async Task<byte[]> DownloadAsync(HttpClient http, string url, int maxBytes, CancellationToken cancellationToken = default)
+            {
+                if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+                    return null;
+
+                try
+                {
+                    using var response = await http.GetAsync(uri,HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+
+                    if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > maxBytes)
+                        return null;
+
+                    await using var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                    using var output = new MemoryStream();
+                    var buffer = new byte[81920];
+                    int read;
+
+                    while ((read = await input.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                    {
+                        if (output.Length + read > maxBytes)
+                            return null;
+
+                        output.Write(buffer, 0, read);
+                    }
+
+                    return output.ToArray();
+                }
+                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+                {
+                    return null;
+                }
+            }
+        }
+
+        public static class Time
+        {
+            public static readonly DateTimeOffset Started = ProcessStart();
+
+            public static TimeSpan Uptime => DateTimeOffset.UtcNow - Started;
+
+            private static DateTimeOffset ProcessStart()
+            {
+                using var process = System.Diagnostics.Process.GetCurrentProcess();
+                return process.StartTime.ToUniversalTime();
+            }
+
+            public static long ToUnix(DateTime utc)
+                => new DateTimeOffset(DateTime.SpecifyKind(utc, DateTimeKind.Utc)).ToUnixTimeSeconds();
+
+            public static string Stamp(DateTimeOffset at, char style = 'R') => $"<t:{at.ToUnixTimeSeconds()}:{style}>";
+
+            public static string Stamp(DateTime utc, char style = 'R') => $"<t:{ToUnix(utc)}:{style}>";
+
+            public static string DateAndAgo(DateTimeOffset at) => $"{Stamp(at, 'D')} ({Stamp(at)})";
+
+            public static string FormatTime(TimeSpan time)
+            {
+                if (time.TotalDays >= 1)
+                    return $"{(int)time.TotalDays}d {time:hh\\:mm\\:ss}";
+                return time.ToString(@"hh\:mm\:ss");
+            }
+
+            public static string Clock(DateTimeOffset at)
+                => $"{at.ToLocalTime():dd.MM HH:mm} " + (TimeZoneInfo.Local.Id == "Europe/Moscow" ? "МСК" : $"UTC{TimeZoneInfo.Local.BaseUtcOffset.TotalHours:+0;-0;+0}");
+
+            public static string FormatAge(TimeSpan age) => age switch
+            {
+                { TotalSeconds: < 60 } => $"{age.TotalSeconds:0}с",
+                { TotalMinutes: < 60 } => $"{age.TotalMinutes:0}м",
+                { TotalHours: < 24 } => $"{age.TotalHours:0}ч",
+                _ => $"{age.Days}д {age.Hours}ч"
+            };
+
+            public static bool TryParseTimecode(string input, out TimeSpan result)
+            {
+                result = default;
+
+                if (string.IsNullOrWhiteSpace(input))
+                    return false;
+
+                var parts = input.Trim().Split(':', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length is < 2 or > 3)
+                    return false;
+
+                int hours = 0, minutes, seconds;
+
+                if (parts.Length == 3 && !int.TryParse(parts[0], out hours))
+                    return false;
+
+                var offset = parts.Length == 3 ? 1 : 0;
+
+                if (!int.TryParse(parts[offset], out minutes) || !int.TryParse(parts[offset + 1], out seconds))
+                    return false;
+
+                if (hours < 0 || minutes is < 0 or > 59 || seconds is < 0 or > 59)
+                    return false;
+
+                result = new TimeSpan(hours, minutes, seconds);
+                return true;
+            }
+        }
+
+        public static bool IsIoFailure(Exception ex) =>
+            ex is IOException or UnauthorizedAccessException or NotSupportedException or ArgumentException;
+
+        public static string DataDir { get; } =
+            Environment.GetEnvironmentVariable("SBLN_DATA_DIR") is { Length: > 0 } dir ? dir : AppContext.BaseDirectory;
+
+        public static void WriteAtomic(string path, string content)
+        {
+            var temp = path + ".tmp";
+            File.WriteAllText(temp, content);
+            File.Move(temp, path, overwrite: true);
+        }
+
+        public static int RandomNumber(int min, int max) => (int)Random.Shared.NextInt64(min, (long)max + 1);
+
+        public static T RandomList<T>(this IList<T> items) => items[Random.Shared.Next(items.Count)];
+
+        public static string GetScoreEmoji(double score)
+        {
+            if (score >= 91) return "<:KK90:1352292878252249191> <:KKplus:1352292867170631731>";
+            if (score == 90) return "<:KK90:1352292878252249191>";
+            if (score >= 75) return "<:KK90:1352292878252249191> <:KKminus:1352292880022114324>";
+            if (score >= 61) return "<:KK60:1352292871260344400> <:KKplus:1352292867170631731>";
+            if (score == 60) return "<:KK60:1352292871260344400>";
+            if (score >= 45) return "<:KK60:1352292871260344400> <:KKminus:1352292880022114324>";
+            if (score >= 31) return "<:KK30:1352292869179965544> <:KKplus:1352292867170631731>";
+            if (score == 30) return "<:KK30:1352292869179965544>";
+            return "<:KK30:1352292869179965544> <:KKminus:1352292880022114324>";
+        }
+    }
+}

@@ -1,0 +1,20 @@
+﻿using System.Text.Json;
+using System.Text.Json.Serialization;
+using static sblngavnav6.Data.DataRoots;
+
+namespace sblngavnav6.Data
+{
+    [JsonSourceGenerationOptions(WriteIndented = true, PropertyNameCaseInsensitive = true)]
+    [JsonSerializable(typeof(CatData[]))]
+    [JsonSerializable(typeof(Converter))]
+    [JsonSerializable(typeof(WeatherCurrent))]
+    [JsonSerializable(typeof(WeatherForecast))]
+    [JsonSerializable(typeof(MealResponse))]
+    [JsonSerializable(typeof(MyMemoryResult))]
+    [JsonSerializable(typeof(List<BookExportDto>))]
+    [JsonSerializable(typeof(PortalStatusDto))]
+    [JsonSerializable(typeof(List<PortalCommandSectionDto>))]
+    [JsonSerializable(typeof(PortalCoreDto))]
+    [JsonSerializable(typeof(List<List<JsonElement>>))]
+    internal partial class AppJsonContext : JsonSerializerContext { }
+}

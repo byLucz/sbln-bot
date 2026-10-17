@@ -1,0 +1,411 @@
+﻿using Discord;
+using Discord.Commands;
+using DiscordTelegramFrontier;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
+using System.Globalization;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using static sblngavnav6.Common.CommonUtils.Chat;
+using static sblngavnav6.Data.DataRoots;
+
+namespace sblngavnav6.Commands;
+
+public class ApiCommands : ModuleBase<SocketCommandContext>
+{
+    private const string CatApiUrl = "https://api.thecatapi.com/v1/images/search?format=json";
+    private const string BitfinexApiUrl = "https://api-pub.bitfinex.com/v2/tickers?symbols=tBTCUSD,tETHUSD,tSOLUSD,tTONUSD";
+    private const string CurrencyApiUrl = "https://www.cbr-xml-daily.ru/latest.js";
+    private const string ApexMapsUrl = "https://api.apexlegendsstatus.com/maprotation?version=2";
+
+    private static readonly Regex JokeRegex =
+        new(@"""content""\s*:\s*""(?<joke>.*?)""", RegexOptions.Singleline | RegexOptions.Compiled);
+
+
+    private readonly HttpClient _http;
+
+    static ApiCommands() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+    public ApiCommands(IHttpClientFactory httpClientFactory)
+    {
+        _http = httpClientFactory.CreateClient();
+        _http.Timeout = TimeSpan.FromSeconds(10);
+    }
+
+    [Frontier]
+    [Command("кит")]
+    [Alias("кот")]
+    public async Task UploadCat()
+    {
+        CatData cat;
+
+        try
+        {
+            using var response = await _http.GetAsync(CatApiUrl);
+            response.EnsureSuccessStatusCode();
+
+            var content = await response.Content.ReadAsStringAsync();
+            cat = JsonSerializer.Deserialize(content, AppJsonContext.Default.CatDataArray)?.FirstOrDefault();
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            await FailAsync("кисики", ex.Message);
+            return;
+        }
+
+        if (cat?.Url is null)
+        {
+            await FailAsync("кисики", "кота не выдали");
+            return;
+        }
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            Title = "sbln кисики😼",
+            ImageUrl = cat.Url.OriginalString,
+            Color = Color.Teal,
+            Footer = "powered by thecatapi.com"
+        }));
+    }
+
+    [FrontierAsImage]
+    [Command("биток")]
+    [Alias("крипта")]
+    public async Task GetCoins([Remainder] string unused = null)
+    {
+        const string down = "битфинекс упал, статистики не будет((";
+
+        await Context.Channel.TriggerTypingAsync();
+
+        List<BitfinexCoin> coins;
+
+        try
+        {
+            using var response = await _http.GetAsync(BitfinexApiUrl);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await ReplyAsync(down);
+                return;
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            var results = JsonSerializer.Deserialize(content, AppJsonContext.Default.ListListJsonElement);
+
+            coins = results is { Count: > 0 } ? ConvertToBitfinexCoins(results) : null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            await ReplyAsync(down);
+            return;
+        }
+
+        (string Label, string Symbol)[] wanted =
+        [
+            ("BTC", "tBTCUSD"),
+            ("ETH", "tETHUSD"),
+            ("SOL", "tSOLUSD"),
+            ("TON", "tTONUSD")
+        ];
+
+        var fields = new List<EmbedFieldSpec>();
+
+        foreach (var (label, symbol) in wanted)
+        {
+            var coin = coins?.Find(item => item.Symbol == symbol);
+
+            if (coin is null)
+            {
+                await ReplyAsync(down);
+                return;
+            }
+
+            fields.Add(new EmbedFieldSpec($"*{label}*", $"{coin.LastPrice:0.00#}$", true));
+            fields.Add(new EmbedFieldSpec("прирост", $"{coin.DailyChange:0.00#}$", true));
+            fields.Add(new EmbedFieldSpec("в процентах", $"({coin.DailyChangePercentage:0.00#}%)", true));
+        }
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            AuthorName = "sbln крипта💰📈",
+            Color = Color.LightOrange,
+            Fields = fields,
+            Footer = "powered by bitfinex💸"
+        }));
+    }
+
+    [FrontierAsImage]
+    [Command("курс")]
+    [Alias("кс")]
+    public async Task Exchange()
+    {
+        Converter converter;
+
+        try
+        {
+            using var response = await _http.GetAsync(CurrencyApiUrl);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await FailAsync("курс валют", "сервис недоступен");
+                return;
+            }
+
+            var content = await response.Content.ReadAsStringAsync();
+            converter = JsonSerializer.Deserialize(content, AppJsonContext.Default.Converter);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            await FailAsync("курс валют", ex.Message);
+            return;
+        }
+
+        if (converter?.rates is not { } rates)
+        {
+            await FailAsync("курс валют", "ответ без курсов");
+            return;
+        }
+
+        (string Name, double Rate, bool Invert)[] values =
+        [
+            ("USD", rates.USD, true),
+            ("EUR", rates.EUR, true),
+            ("TRY", rates.TRY, true),
+            ("PLN", rates.PLN, true),
+            ("CNY", rates.CNY, true),
+            ("BYN", rates.BYN, true),
+            ("JPY", rates.JPY, true),
+            ("HKD", rates.HKD, true),
+            ("KZT", rates.KZT, false)
+        ];
+
+        var fields = values
+            .Where(item => item.Rate > 0)
+            .Select(item => new EmbedFieldSpec(
+                item.Name,
+                $"{Math.Round(item.Invert ? 1 / item.Rate : item.Rate, 2)}₽",
+                true))
+            .ToList();
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            AuthorName = "sbln курс валют💱💵",
+            Color = Color.DarkTeal,
+            Fields = fields,
+            Footer = "powered by CENTROBANK OF RUSSIA🏦🇷🇺"
+        }));
+    }
+
+    [Frontier]
+    [Command("шутка")]
+    [Alias("анек")]
+    public async Task JokeTask([Optional] string category)
+    {
+        const string author = "sbln шутки 😂";
+        const string footer = "powered by rzhunemogu.ru";
+
+        (string Id, int Category, string Name)[] categories =
+        [
+            ("1", 11, "Анекдоты"),
+            ("2", 12, "Рассказы"),
+            ("3", 13, "Стишки")
+        ];
+
+        var picked = categories.FirstOrDefault(item => item.Id == category);
+
+        if (picked.Id is null)
+        {
+            var menu = string.Join("\n", categories.Select(item => $" {item.Id} - {item.Name}"));
+            var header = category is null ? "Выберите категорию" : "Выберите категорию (ТОЛЬКО ИЗ СПИСКА!)";
+
+            await ReplyAsync(embed: EmbedHandler.Authored(author, $"{header}\n{menu}", Color.Orange, footer));
+            return;
+        }
+
+        var joke = await FetchJokeAsync(picked.Category);
+
+        if (joke is null)
+        {
+            await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed("шутки", "ржаки не будет, сервис не отвечает"));
+            return;
+        }
+
+        var message = await ReplyAsync(embed: EmbedHandler.Authored(author, joke, Color.Orange, footer));
+        await ReactAsync(message, "<:slyr4head:816639053008338944>");
+    }
+
+    [Frontier]
+    [Command("карты")]
+    [Alias("ротация")]
+    public async Task ApexMaps()
+    {
+        const string source = "апекс";
+
+        if (string.IsNullOrWhiteSpace(Global.Vars.Cfg.apexKey))
+        {
+            await FailAsync(source, "не задан Api:ApexKey");
+            return;
+        }
+
+        JsonNode rotation;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, ApexMapsUrl);
+            request.Headers.TryAddWithoutValidation("Authorization", Global.Vars.Cfg.apexKey);
+
+            using var response = await _http.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                await FailAsync(source, $"апи ответило {(int)response.StatusCode}");
+                return;
+            }
+
+            rotation = JsonNode.Parse(await response.Content.ReadAsStringAsync());
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
+        {
+            await FailAsync(source, ex.Message);
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        string Rotation(string mode)
+        {
+            var current = rotation?[mode]?["current"];
+            var next = rotation?[mode]?["next"];
+
+            if (current?["map"] is not JsonValue mapValue || !mapValue.TryGetValue<string>(out var map))
+                return null;
+
+            if (current["eventName"] is JsonValue eventValue && eventValue.TryGetValue<string>(out var eventName))
+                map = $"{eventName}: {map}";
+
+            var line = $"**{map}**";
+
+            if (current["end"] is JsonValue endValue && endValue.TryGetValue<long>(out var end) && end > now)
+                line += $", ещё {CommonUtils.Time.FormatAge(TimeSpan.FromSeconds(end - now))}";
+
+            if (next?["map"] is JsonValue nextValue && nextValue.TryGetValue<string>(out var nextMap))
+                line += $"\nдальше: {(next["eventName"] is JsonValue nextEvent && nextEvent.TryGetValue<string>(out var nextName) ? $"{nextName}: {nextMap}" : nextMap)}";
+
+            return line;
+        }
+
+        (string Name, string Mode)[] modes =
+        [
+            ("🎯 Паблики", "battle_royale"),
+            ("🏆 Ранкед", "ranked"),
+            ("🎪 Режим дня", "ltm")
+        ];
+
+        var fields = modes
+            .Select(mode => (mode.Name, Value: Rotation(mode.Mode)))
+            .Where(mode => mode.Value is not null)
+            .Select(mode => new EmbedFieldSpec(mode.Name, mode.Value))
+            .ToArray();
+
+        if (fields.Length == 0)
+        {
+            await FailAsync(source, "апи не отдало ротацию");
+            return;
+        }
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            Title = "sbln апекс🔫",
+            Fields = fields,
+            Color = Color.Red,
+            Footer = "powered by apexlegendsstatus.com"
+        }));
+    }
+
+    private async Task<string> FetchJokeAsync(int categoryId)
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                using var response = await _http.GetAsync($"http://rzhunemogu.ru/RandJSON.aspx?CType={categoryId}");
+                response.EnsureSuccessStatusCode();
+
+                var bytes = await response.Content.ReadAsByteArrayAsync();
+                var body = Encoding.GetEncoding(1251).GetString(bytes);
+
+                var start = body.IndexOf('{', StringComparison.Ordinal);
+                var end = body.LastIndexOf('}');
+
+                if (start == -1 || end <= start)
+                    throw new InvalidOperationException("ответ без json");
+
+                var payload = body[start..(end + 1)];
+                string joke;
+
+                try { joke = JsonNode.Parse(payload)?["content"]?.ToString(); }
+                catch (JsonException) { joke = JokeRegex.Match(payload) is { Success: true } hit ? hit.Groups["joke"].Value : null; }
+
+                if (!string.IsNullOrWhiteSpace(joke))
+                    return joke;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException)
+            {
+                await LoggingService.LogWarningAsync("JOKES", $"шутка не пришла: {ex.Message}");
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(400));
+        }
+
+        return null;
+    }
+
+    private static List<BitfinexCoin> ConvertToBitfinexCoins(List<List<JsonElement>> rows)
+    {
+        var coins = new List<BitfinexCoin>();
+
+        foreach (var row in rows)
+        {
+            if (row is null || row.Count < 11)
+                continue;
+
+            try
+            {
+                coins.Add(new BitfinexCoin
+                {
+                    Symbol = Str(row[0]),
+                    Bid = Dec(row[1]),
+                    BidSize = Dec(row[2]),
+                    Ask = Dec(row[3]),
+                    AskSize = Dec(row[4]),
+                    DailyChange = Dec(row[5]),
+                    DailyChangePercentage = Dec(row[6]) * 100,
+                    LastPrice = Dec(row[7]),
+                    Volume = Dec(row[8]),
+                    High = Dec(row[9]),
+                    Low = Dec(row[10])
+                });
+            }
+            catch (Exception ex) when (ex is FormatException or InvalidOperationException)
+            {
+            }
+        }
+
+        return coins;
+    }
+
+    private static string Str(JsonElement element) =>
+        element.ValueKind == JsonValueKind.String ? element.GetString() ?? string.Empty : element.GetRawText();
+
+    private static decimal Dec(JsonElement element) =>
+        element.ValueKind == JsonValueKind.Number
+            ? element.GetDecimal()
+            : decimal.Parse(element.GetString() ?? "0", CultureInfo.InvariantCulture);
+
+    private async Task FailAsync(string source, string reason) =>
+        await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(source, reason));
+}

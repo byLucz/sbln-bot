@@ -1,42 +1,224 @@
+﻿using Discord;
 using Discord.Commands;
-using sblngavnav5X.Data;
-using sblngavnav5X.GVR;
-using sblngavnav5X.Services;
+using Discord.Net;
+using DiscordTelegramFrontier;
+using sblngavnav6.Common;
+using sblngavnav6.Images;
+using sblngavnav6.Services;
 using System.Text;
 using System.Text.RegularExpressions;
+using static sblngavnav6.Common.CommonUtils.Text;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.GVR
 {
-    public sealed class GVRMessagesHandler
+    public sealed class GVRMessagesHandler : IDisposable
     {
-        private readonly GovorConfig _govorilka;
+        private const int DemotivatorChance = 50;
+
+        private readonly GVRConfig _config;
+        private readonly GVRDb _db;
+        private readonly IHttpClientFactory _httpClientFactory;
 
         private static readonly Regex SplitRegex = new(@"\s+", RegexOptions.Compiled);
-        private static readonly Regex UrlRegex = new(@"https?://", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex PunctRegex = new(@"^[!?.,:;()\[\]/]+$", RegexOptions.Compiled);
+        private static readonly Regex PunctRegex = new(@"^[!?.,;]+$", RegexOptions.Compiled);
+        private static readonly Regex WordRegex = new(@"\p{L}[\p{L}-]*", RegexOptions.Compiled);
 
         private static readonly string[] FunnyInterjections =
         {
             "лол", "лейм", "YZL", ")", "(((", "соси", "шефчик", "йоу", "чел"
         };
 
-        public GVRMessagesHandler(GovorConfig govorilka)
+        private readonly SemaphoreSlim _modelGate = new(1, 1);
+        private Model _model;
+        private int _modelStep;
+        private int _modelCount;
+        private long _modelMaxId;
+        private long _modelRevision;
+
+        public GVRMessagesHandler(GVRConfig config, GVRDb db, IHttpClientFactory httpClientFactory)
         {
-            _govorilka = govorilka;
+            _config = config;
+            _db = db;
+            _httpClientFactory = httpClientFactory;
+        }
+
+        public event Func<Task> Collected;
+
+        public void Dispose() => _modelGate.Dispose();
+
+        public async Task<(int Added, int Images, int Scanned, int Removed, int Total)> CollectAsync(
+            IMessageChannel channel, int count, CancellationToken cancellationToken = default)
+        {
+            var lines = new List<string>();
+            var images = new List<GVRImage>();
+            var scanned = 0;
+
+            if (count > 0)
+            {
+                var options = new RequestOptions { CancelToken = cancellationToken };
+
+                await foreach (var message in channel.GetMessagesAsync(count, options: options).Flatten().ConfigureAwait(false))
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    if (message is null)
+                        continue;
+
+                    scanned++;
+                    images.AddRange(GVRText.Images(message));
+
+                    if (!message.Author.IsBot && !message.Attachments.Any() && !message.Embeds.Any()
+                        && GVRText.Sanitize(message.Content) is { } content)
+                        lines.Add(content);
+                }
+            }
+
+            var added = await _db.AddAsync((channel as IGuildChannel)?.GuildId ?? 0, lines, cancellationToken).ConfigureAwait(false);
+            var addedImages = await _db.AddImagesAsync(images, cancellationToken).ConfigureAwait(false);
+            var removed = await _db.PruneAsync(cancellationToken).ConfigureAwait(false);
+            var (total, _) = await _db.StampAsync(cancellationToken).ConfigureAwait(false);
+
+            _ = Collected?.Invoke();
+            return (added, addedImages, scanned, removed, total);
+        }
+
+        public async Task<(List<(string Word, int Count)> Words, List<(int A, int B, int Weight)> Links)> CoreAsync(int top, int linksPerWord)
+        {
+            var counts = new Dictionary<string, int>();
+            var messages = new List<string[]>();
+
+            foreach (var raw in await _db.LoadAsync().ConfigureAwait(false))
+            {
+                var words = WordRegex.Matches(GVRText.Plain(raw).ToLowerInvariant().Replace('ё', 'е'))
+                    .Select(match => match.Value)
+                    .Where(word => word.Length >= 3)
+                    .Distinct()
+                    .ToArray();
+
+                if (words.Length == 0)
+                    continue;
+
+                messages.Add(words);
+                foreach (var word in words)
+                    counts[word] = counts.GetValueOrDefault(word) + 1;
+            }
+
+            var ranked = counts.OrderByDescending(pair => pair.Value).Take(top).Select(pair => (pair.Key, pair.Value)).ToList();
+            var index = ranked.Select((word, i) => (word.Key, i)).ToDictionary(item => item.Key, item => item.i);
+            var pairs = new Dictionary<(int, int), int>();
+
+            foreach (var words in messages)
+            {
+                var ids = words.Where(index.ContainsKey).Select(word => index[word]).Order().ToArray();
+                for (var i = 0; i < ids.Length; i++)
+                    for (var j = i + 1; j < ids.Length; j++)
+                        pairs[(ids[i], ids[j])] = pairs.GetValueOrDefault((ids[i], ids[j])) + 1;
+            }
+
+            var links = Enumerable.Range(0, ranked.Count)
+                .SelectMany(i => pairs.Where(pair => pair.Key.Item1 == i || pair.Key.Item2 == i).OrderByDescending(pair => pair.Value).Take(linksPerWord))
+                .DistinctBy(pair => pair.Key)
+                .Select(pair => (pair.Key.Item1, pair.Key.Item2, pair.Value))
+                .ToList();
+
+            return (ranked, links);
         }
 
         public async Task TrySendGeneratedMessageAsync(SocketCommandContext context)
         {
-            if (_govorilka.Rand)
-                _govorilka.Count = Utils.RandomNumber(3, 20);
-
-            if (Utils.RandomNumber(1, 101) > _govorilka.Chance)
+            if (CommonUtils.RandomNumber(1, 100) > _config.Chance)
                 return;
+
+            var words = _config.Rand
+                ? CommonUtils.RandomNumber(3, 20)
+                : _config.Count;
 
             using (context.Channel.EnterTypingState())
             {
-                await SendGeneratedMessageAsync(context, (int)_govorilka.Step, (int)_govorilka.Count);
+                if (CommonUtils.RandomNumber(1, 100) <= DemotivatorChance
+                    && context.Channel is not FrontierProxyChannel
+                    && await SendDemotivatorAsync(context, (int)_config.Step))
+                    return;
+
+                await SendGeneratedMessageAsync(context, (int)_config.Step, words);
             }
+        }
+
+        public Task<bool> SendDemotivatorAsync(SocketCommandContext context) => SendDemotivatorAsync(context, (int)_config.Step);
+
+        private async Task<bool> SendDemotivatorAsync(SocketCommandContext context, int step)
+        {
+            if (step <= 0)
+                return false;
+
+            var model = await GetModelAsync(step).ConfigureAwait(false);
+            if (model is null)
+                return false;
+
+            using var http = _httpClientFactory.CreateClient(CommonUtils.Web.PublicClient);
+            http.Timeout = TimeSpan.FromSeconds(15);
+
+            for (var attempt = 0; attempt < 3; attempt++)
+            {
+                var image = await _db.RandomImageAsync().ConfigureAwait(false);
+                if (image is null)
+                    return false;
+
+                string url;
+
+                try
+                {
+                    var message = context.Client.GetChannel(image.ChannelId) is IMessageChannel channel
+                        ? await channel.GetMessageAsync(image.MessageId).ConfigureAwait(false)
+                        : null;
+
+                    url = message is null ? null
+                        : image.IsEmbed ? message.Embeds.ElementAtOrDefault((int)image.ItemId) is { } embed ? ImageTools.EmbedImage(embed) : null
+                        : message.Attachments.FirstOrDefault(item => item.Id == image.ItemId)?.Url;
+                }
+                catch (HttpException)
+                {
+                    continue;
+                }
+
+                var bytes = url is null ? null : await CommonUtils.Web.DownloadAsync(http, url, ImageTools.MaxSourceBytes).ConfigureAwait(false);
+
+                if (url is not null && bytes is null)
+                    continue;
+
+                using var source = ImageTools.Decode(bytes);
+
+                if (source is null)
+                {
+                    await _db.RemoveImageAsync(image.Id).ConfigureAwait(false);
+                    continue;
+                }
+
+                var title = GVRText.Plain(GenerateSentence(model, step, CommonUtils.RandomNumber(3, 6)));
+                if (title.Length == 0)
+                    return false;
+
+                var caption = CommonUtils.RandomNumber(0, 1) == 0
+                    ? null
+                    : GVRText.Plain(GenerateSentence(model, step, CommonUtils.RandomNumber(4, 10)));
+
+                byte[] rendered;
+                await ImageTools.RenderGate.WaitAsync().ConfigureAwait(false);
+                try
+                {
+                    rendered = ImageEffects.Demotivator(source, Truncate(title, 120), Truncate(caption, 240));
+                }
+                finally
+                {
+                    ImageTools.RenderGate.Release();
+                }
+
+                using var stream = new MemoryStream(rendered);
+                await context.Channel.SendFileAsync(stream, "demotivator.jpg", allowedMentions: AllowedMentions.None).ConfigureAwait(false);
+                return true;
+            }
+
+            return false;
         }
 
         public async Task SendGeneratedMessageAsync(SocketCommandContext context, int step, int wordCount)
@@ -44,42 +226,85 @@ namespace sblngavnav5X.Core
             if (step <= 0 || wordCount <= 0)
                 return;
 
-            if (!File.Exists(Utils.messagesFilePath))
-            {
-                await LoggingService.LogInformationAsync("GOVOR", $"Файл {Utils.messagesFilePath} не найден, генерация ответа пропущена");
-                return;
-            }
-
-            var rawLines = await File.ReadAllLinesAsync(Utils.messagesFilePath);
-            if (rawLines.Length == 0)
+            var model = await GetModelAsync(step).ConfigureAwait(false);
+            if (model is null)
                 return;
 
-            var sentences = ParseSentences(rawLines);
-            if (sentences.Count == 0)
-                return;
-
-            var (chain, sentenceStarts) = MakeChain(sentences, step);
-            if (chain.Count == 0)
-                return;
-
-            var generated = GenerateMessage(chain, sentenceStarts, step, wordCount);
+            var generated = GenerateMessage(model, step, wordCount);
             if (string.IsNullOrWhiteSpace(generated))
                 return;
 
             if (generated.Length > 2000)
                 generated = generated[..2000];
 
-            await context.Channel.SendMessageAsync(generated);
+            await context.Channel.SendMessageAsync(generated, allowedMentions: AllowedMentions.None);
         }
+
+        private async Task<Model> GetModelAsync(int step)
+        {
+            var (count, maxId) = await _db.StampAsync().ConfigureAwait(false);
+
+            if (count == 0)
+                return null;
+
+            var revision = _db.Revision;
+
+            if (IsFresh(step, count, maxId, revision))
+                return _model;
+
+            await _modelGate.WaitAsync().ConfigureAwait(false);
+
+            try
+            {
+                if (IsFresh(step, count, maxId, revision))
+                    return _model;
+
+                var rawLines = await _db.LoadAsync().ConfigureAwait(false);
+
+                if (rawLines.Count == 0)
+                    return null;
+
+                var sentences = ParseSentences(rawLines);
+
+                if (sentences.Count == 0)
+                    return null;
+
+                var built = MakeChain(sentences, step);
+
+                if (built is null)
+                    return null;
+
+                _model = built;
+                _modelStep = step;
+                _modelCount = count;
+                _modelMaxId = maxId;
+                _modelRevision = revision;
+
+                await LoggingService.LogDebugAsync(
+                    "GOVOR",
+                    $"Цепь пересобрана: строк {rawLines.Count}, ключей {built.Keys.Length}, шаг {step}");
+
+                return _model;
+            }
+            finally
+            {
+                _modelGate.Release();
+            }
+        }
+
+        private bool IsFresh(int step, int count, long maxId, long revision) =>
+            _model is not null && _modelStep == step && _modelCount == count && _modelMaxId == maxId && _modelRevision == revision;
 
         private static List<List<string>> ParseSentences(IEnumerable<string> rawLines)
         {
             var result = new List<List<string>>();
 
-            foreach (var line in rawLines)
+            foreach (var raw in rawLines)
             {
-                if (string.IsNullOrWhiteSpace(line)) continue;
-                if (UrlRegex.IsMatch(line)) continue;
+                var line = GVRText.Sanitize(raw);
+
+                if (line is null)
+                    continue;
 
                 var sb = new StringBuilder();
                 foreach (var ch in line)
@@ -100,18 +325,17 @@ namespace sblngavnav5X.Core
             return result;
         }
 
-        private static (Dictionary<string, List<string>> chain, List<string> sentenceStarts)
-            MakeChain(List<List<string>> sentences, int step)
+        private static Model MakeChain(List<List<string>> sentences, int step)
         {
             var chain = new Dictionary<string, List<string>>();
-            var sentenceStarts = new List<string>();
+            var starts = new List<string>();
 
             foreach (var words in sentences)
             {
                 if (words.Count <= step) continue;
 
-                var startKey = string.Join(" ", words.Take(step));
-                sentenceStarts.Add(startKey);
+                if (!PunctRegex.IsMatch(words[0]))
+                    starts.Add(string.Join(" ", words.Take(step)));
 
                 for (int i = 0; i < words.Count - step; i++)
                 {
@@ -127,23 +351,19 @@ namespace sblngavnav5X.Core
                 }
             }
 
-            return (chain, sentenceStarts);
+            return chain.Count == 0 ? null : new Model(chain, starts, chain.Keys.ToArray());
         }
 
-        private string GenerateMessage(
-            Dictionary<string, List<string>> chain,
-            List<string> sentenceStarts,
-            int step,
-            int wordCount)
+        private string GenerateMessage(Model model, int step, int wordCount)
         {
-            int sentenceCount = wordCount <= 5 ? 1 : wordCount <= 12 ? Random.Shared.Next(1, 3) : Random.Shared.Next(1, 4);
+            int sentenceCount = wordCount <= 5 ? 1 : wordCount <= 12 ? CommonUtils.RandomNumber(1, 2) : CommonUtils.RandomNumber(1, 3);
             int baseWords = wordCount / sentenceCount;
 
             var parts = new List<string>();
             for (int s = 0; s < sentenceCount; s++)
             {
                 int w = s == sentenceCount - 1 ? wordCount - baseWords * s : baseWords;
-                var sentence = GenerateSentence(chain, sentenceStarts, step, Math.Max(w, 3));
+                var sentence = GenerateSentence(model, step, Math.Max(w, 3));
                 if (!string.IsNullOrWhiteSpace(sentence))
                     parts.Add(sentence);
             }
@@ -153,25 +373,23 @@ namespace sblngavnav5X.Core
 
             if (parts.Count > 1 && Random.Shared.NextDouble() < 0.25)
             {
-                var funny = FunnyInterjections[Random.Shared.Next(FunnyInterjections.Length)];
-                parts.Insert(Random.Shared.Next(1, parts.Count), funny);
+                var funny = FunnyInterjections.RandomList();
+                parts.Insert(CommonUtils.RandomNumber(1, parts.Count - 1), funny);
             }
 
-            return string.Join(" ", parts);
+            return Polish(string.Join(" ", parts));
         }
 
-        private string GenerateSentence(
-            Dictionary<string, List<string>> chain,
-            List<string> sentenceStarts,
-            int step,
-            int wordCount)
+        private string GenerateSentence(Model model, int step, int wordCount)
         {
-            var startKey = sentenceStarts.Count > 0
-                ? sentenceStarts[Random.Shared.Next(sentenceStarts.Count)]
-                : chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
+            var chain = model.Chain;
+
+            var startKey = model.Starts.Count > 0
+                ? model.Starts.RandomList()
+                : model.RandomKey();
 
             if (!chain.ContainsKey(startKey))
-                startKey = chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
+                startKey = model.RandomKey();
 
             var temp = new List<string>(startKey.Split(' '));
             var result = new StringBuilder();
@@ -194,16 +412,19 @@ namespace sblngavnav5X.Core
                         if (chain.ContainsKey(shorter)) { key = shorter; found = true; break; }
                     }
                     if (!found)
-                        key = chain.ElementAt(Random.Shared.Next(chain.Count)).Key;
+                        key = model.RandomKey();
                 }
 
-                var values = chain[key];
-                var value = values[Random.Shared.Next(values.Count)];
+                var value = Choose(chain[key], temp);
+
+                if (value is null)
+                    break;
+
                 temp.Add(value);
 
                 if (PunctRegex.IsMatch(value))
                     result.Append(value);
-                else if (_govorilka.VerbalAbuseBySheff)
+                else if (_config.VerbalAbuseBySheff)
                     result.Append($" {value} бля");
                 else
                     result.Append($" {value}");
@@ -212,7 +433,55 @@ namespace sblngavnav5X.Core
                     break;
             }
 
-            return result.ToString().Trim();
+            return Polish(result.ToString());
+        }
+
+        private static string Choose(List<string> values, List<string> history)
+        {
+            var previous = history.Count > 0 ? history[^1] : null;
+            var beforeThat = history.Count > 1 ? history[^2] : null;
+
+            List<string> distinct = null;
+
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                string value;
+
+                if (Surprise())
+                {
+                    distinct ??= values.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                    value = distinct.RandomList();
+                }
+                else
+                {
+                    value = values.RandomList();
+                }
+
+                if (string.Equals(value, previous, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (beforeThat is not null && string.Equals(value, beforeThat, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                return value;
+            }
+
+            return values.FirstOrDefault(value => !string.Equals(value, previous, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool Surprise() => Random.Shared.NextDouble() < 0.2;
+
+        private static string Polish(string sentence)
+        {
+            sentence = sentence.Trim().TrimStart('.', ',', ';', '!', '?', ' ');
+            sentence = sentence.TrimEnd(' ', ',', ';', '-', '–', '—');
+
+            return sentence;
+        }
+
+        private sealed record Model(Dictionary<string, List<string>> Chain, List<string> Starts, string[] Keys)
+        {
+            public string RandomKey() => Keys.RandomList();
         }
     }
 }

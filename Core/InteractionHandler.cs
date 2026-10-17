@@ -1,16 +1,20 @@
-﻿using Discord.Interactions;
+using Discord;
+using Discord.Interactions;
 using Discord.WebSocket;
-using sblngavnav5X.Services;
+using sblngavnav6.Data;
+using sblngavnav6.Services;
 using System.Reflection;
 
-namespace sblngavnav5X.Core
+namespace sblngavnav6.Core
 {
-    public class InteractionHandler
+    public sealed class InteractionHandler : IDisposable
     {
         private readonly DiscordSocketClient _client;
         private readonly InteractionService _interactions;
         private readonly IServiceProvider _services;
-        private bool _commandsRegistered;
+        private int _commandsRegistered;
+        private bool _hooked;
+        private bool _disposed;
 
         public InteractionHandler(DiscordSocketClient client,
                                   InteractionService interactions,
@@ -23,25 +27,58 @@ namespace sblngavnav5X.Core
 
         public async Task InitializeAsync()
         {
-            _client.InteractionCreated += HandleInteractionAsync;
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_hooked) return;
+
             await _interactions.AddModulesAsync(Assembly.GetEntryAssembly(), _services);
+
+            _client.InteractionCreated += HandleInteractionAsync;
             _client.Ready += RegisterCommandsAsync;
+            _interactions.InteractionExecuted += OnInteractionExecutedAsync;
+            _interactions.Log += LogAsync;
+            _hooked = true;
+        }
+
+        public Task StopAsync()
+        {
+            Unhook();
+            return Task.CompletedTask;
         }
 
         private async Task RegisterCommandsAsync()
         {
-            if (_commandsRegistered)
+            if (Interlocked.Exchange(ref _commandsRegistered, 1) != 0)
                 return;
 
             try
             {
+                if (Global.Vars.Cfg.slashScopeGuild != 0)
+                {
+                    await _interactions.RegisterCommandsToGuildAsync(Global.Vars.Cfg.slashScopeGuild);
+
+                    if ((await _client.GetGlobalApplicationCommandsAsync()).Count > 0)
+                    {
+                        await _client.Rest.DeleteAllGlobalCommandsAsync();
+                        await LoggingService.LogInformationAsync("INTRS", "Убраны глобальные слэш-команды, бот работает только на своём сервере");
+                    }
+                    return;
+                }
+
                 await _interactions.RegisterCommandsGloballyAsync();
-                await _interactions.RegisterCommandsToGuildAsync(500673210463813632);
-                _commandsRegistered = true;
+
+                foreach (var guild in _client.Guilds)
+                {
+                    if ((await guild.GetApplicationCommandsAsync()).Count == 0)
+                        continue;
+
+                    await guild.DeleteApplicationCommandsAsync();
+                    await LoggingService.LogInformationAsync("INTRS", $"Убраны серверные копии слэш-команд: {guild.Name}");
+                }
             }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("Interactions", $"Ошибка регистрации команд: {ex.Message}");
+                Interlocked.Exchange(ref _commandsRegistered, 0);
+                await LoggingService.LogCriticalAsync("INTRS", "Ошибка регистрации команд", ex);
             }
         }
 
@@ -54,8 +91,88 @@ namespace sblngavnav5X.Core
             }
             catch (Exception ex)
             {
-                await LoggingService.LogCriticalAsync("Interactions", $"Ошибка обработки interaction: {ex.Message}");
+                await LoggingService.LogCriticalAsync("INTRS", "Ошибка обработки interaction", ex);
+                await RespondSafeAsync(socketInteraction, "🔴 Внутренняя ошибка, попробуй позже");
             }
+        }
+
+        private async Task OnInteractionExecutedAsync(ICommandInfo command, IInteractionContext context, IResult result)
+        {
+            if (result.IsSuccess || result.Error == InteractionCommandError.UnknownCommand)
+                return;
+
+            if ((result as ExecuteResult?)?.Exception?.GetBaseException() is DiscordTelegramFrontier.FrontierStaleCallbackException)
+                return;
+
+            var interaction = context.Interaction;
+            var name = command?.Name ?? "?";
+            var exception = (result as ExecuteResult?)?.Exception;
+
+            if (exception is not null)
+            {
+                await LoggingService.LogErrorAsync(
+                    "INTRS",
+                    $"Interaction упал. Command={name}, Type={interaction.Type}, User={interaction.User?.Id}",
+                    exception);
+            }
+            else
+            {
+                await LoggingService.LogWarningAsync(
+                    "INTRS",
+                    $"Interaction не выполнен. Command={name}, Type={interaction.Type}, User={interaction.User?.Id}, Error={result.Error}, Reason={result.ErrorReason}");
+            }
+
+            var reply = result.Error switch
+            {
+                InteractionCommandError.UnmetPrecondition => $"🔴 {result.ErrorReason}",
+                InteractionCommandError.ConvertFailed => "🔴 Не удалось разобрать аргументы",
+                InteractionCommandError.BadArgs => "🔴 Неверные аргументы",
+                InteractionCommandError.Exception => "🔴 Внутренняя ошибка, попробуй позже",
+                _ => $"🔴 Не выполнено: {result.ErrorReason}"
+            };
+
+            await RespondSafeAsync(interaction, reply);
+        }
+
+        private static Task LogAsync(LogMessage log)
+        {
+            if (log.Exception is InteractionException)
+                return Task.CompletedTask;
+
+            return LoggingService.LogAsync("INTRS", log.Severity, log.Message, log.Exception);
+        }
+
+        private static async Task RespondSafeAsync(IDiscordInteraction interaction, string message)
+        {
+            try
+            {
+                if (interaction.HasResponded)
+                    await interaction.FollowupAsync(message, ephemeral: true);
+                else
+                    await interaction.RespondAsync(message, ephemeral: true);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync("INTRS", $"Не удалось ответить на interaction: {ex.Message}");
+            }
+        }
+
+        private void Unhook()
+        {
+            if (!_hooked) return;
+
+            _client.InteractionCreated -= HandleInteractionAsync;
+            _client.Ready -= RegisterCommandsAsync;
+            _interactions.InteractionExecuted -= OnInteractionExecutedAsync;
+            _interactions.Log -= LogAsync;
+            _hooked = false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            Unhook();
         }
     }
 }

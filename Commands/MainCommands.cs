@@ -1,534 +1,624 @@
 ﻿using Discord;
 using Discord.Commands;
 using Discord.WebSocket;
-using sblngavnav5X.Core;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
+using DiscordTelegramFrontier;
+using sblngavnav6.Audio8;
+using sblngavnav6.Common;
+using sblngavnav6.Core;
+using sblngavnav6.Data;
+using sblngavnav6.GVR;
+using sblngavnav6.Services;
+using System.Data;
 using System.Diagnostics;
-using System.Globalization;
+using System.Runtime;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using static sblngavnav6.Common.CommonUtils.Chat;
+using static sblngavnav6.Common.CommonUtils.Text;
+using static sblngavnav6.Common.CommonUtils.Time;
 
-namespace sblngavnav5X.Commands;
+namespace sblngavnav6.Commands;
 
 public class MainCommands : ModuleBase<SocketCommandContext>
 {
-    private DiscordSocketClient _client;
+    private const string ReleaseFeed = "https://lois.media/sbln/rss.xml";
 
-    public IGuildUser User { get; private set; }
+    private readonly DiscordSocketClient _client;
+    private readonly CommandHandler _commandHandler;
+    private readonly Audio8Service _audio;
+    private readonly GVRDb _gvr;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public MainCommands(DiscordSocketClient client, CommandService commands)
+    public MainCommands(DiscordSocketClient client, CommandHandler commandHandler, Audio8Service audio, GVRDb gvr, IHttpClientFactory httpClientFactory)
     {
         _client = client;
+        _commandHandler = commandHandler;
+        _audio = audio;
+        _gvr = gvr;
+        _httpClientFactory = httpClientFactory;
     }
 
-    [Command("111")]
-    [RequireOwner]
-    public async Task ChangeLog()
-    {
-        var embed = new EmbedBuilder()
-            .WithDescription(
-                $"{Format.Bold($"devlog ver {Utils.sblnver}")} — Финальный кумулятивный патч перед переездом на .NET 10\n" +
-                $"• AudioSeven: починка плейлистов/миксов, поиск по всем источникам + умные варианты, реакция шафл → команда {Format.Bold("перемешай")}\n" +
-                $"• Ограничение голосования до 50 вариантов, фикс-таймер, появилась возможность скипнуть перечисления\n" +
-                $"• Фикс флажка онлайна (без повторного спама) и кэша предпросмотра\n" +
-                $"• Говорилка обновлена до версии 1.7, фиксы core/edge-кейсов\n" +
-                $"• [Полный чендж-лог на сайте 🌀](https://lois.media/sbln/v5.6.1)")
-            .WithFooter(footer => footer
-                .WithText("part of Lois Media Group😋 · dev by lucz@lois.media🏃")
-                .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x"))
-            .Build();
-        await ReplyAsync(embed: embed);
-    }
+    private static readonly Regex MathSafeRegex = new(@"^[\d\s\+\-\*\/\(\)\.]+$", RegexOptions.Compiled);
 
-    [Command("ава")]
-    public async Task Avatar([Optional] string size, [Optional] IGuildUser User)
+    [Command("рсс")]
+    [RequireOwner(ErrorMessage = "недостаточно прав")]
+    public async Task ReleaseAsync(string version = null)
     {
-        ushort sizen = 128;
+        try { await Context.Message.DeleteAsync(); }
+        catch (Exception ex) when (ex is Discord.Net.HttpException or TimeoutException) { }
+
+        version = (version ?? Versioning.Version).TrimStart('v', 'V');
+
+        using var http = _httpClientFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(15);
+
+        System.Xml.Linq.XElement item;
         try
         {
-            var sizer = size switch
-            {
-                null => sizen,
-                "1" => sizen = 64,
-                "2" => sizen = 256,
-                "3" => sizen = 512,
-                _ => sizen,
-            };
+            var feed = System.Xml.Linq.XDocument.Parse(await http.GetStringAsync(ReleaseFeed));
+            item = feed.Descendants("item").FirstOrDefault(entry =>
+                ((string)entry.Element("link") ?? "").TrimEnd('/').EndsWith($"/v{version}", StringComparison.OrdinalIgnoreCase));
         }
-        catch
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Xml.XmlException)
         {
-            await ReplyAsync("такого размера нет, используй значение от 1 до 3😤");
+            await FailAsync("рсс", $"не смог прочитать ленту сайта: {ex.Message}");
+            return;
         }
 
-        if (User == null)
-            User = (IGuildUser)Context.User;
-        var eb = new EmbedBuilder();
-        eb.WithColor(Color.Red);
-        eb.WithImageUrl(User.GetAvatarUrl(ImageFormat.Auto, sizen));
-        eb.WithAuthor("sbln аватарки👨‍🦲");
-        await Context.Channel.SendMessageAsync("", false, eb.Build());
-    }
-
-    public static string GetAvatarForUser(IGuildUser user, string defaultAvatarURL = "https://cdn-icons-png.flaticon.com/512/3670/3670157.png")
-    {
-        if (user != null)
+        if (item is null)
         {
-            string avatarUrl = user.GetGuildAvatarUrl();
-            if (avatarUrl != null)
-            {
-                return avatarUrl;
-            }
-            avatarUrl = user.GetAvatarUrl();
-            if (avatarUrl != null)
-            {
-                return avatarUrl;
-            }
+            await FailAsync("рсс", $"поста v{version} на сайте нет, проверь что он опубликован");
+            return;
         }
-        return defaultAvatarURL;
-    }
 
-    [Command("апт")]
-    public async Task BotUptime()
-    {
-        await ReplyAsync(embed: EmbedHandler.Simple(
-            "Время работы бота⌛",
-            $"🦾 - {DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()}",
-            Color.Blue,
-            "sbln статистикс🔭"));
-    }
+        var title = ((string)item.Element("title") ?? "").Split(": ", 2) is [_, var rest] ? rest : (string)item.Element("title");
+        var points = ((string)item.Element("description") ?? "")
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.StartsWith('•') ? line : $"• {line}");
 
-    [Command("ст", RunMode = RunMode.Async)]
-    [RequireOwner]
-    public async Task SetStatus(string status, [Remainder] string args = null)
-    {
-        var statustype = status switch
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            "днд" => UserStatus.DoNotDisturb,
-            "спит" => UserStatus.Idle,
-            "инвиз" => UserStatus.Invisible,
-            "онлайн" => UserStatus.Online,
-            _ => UserStatus.Online
+            Description =
+                $"{Format.Bold($"devlog ver {version}")} — {title}\n" +
+                string.Join("\n", points) +
+                $"\n• [Полный чендж-лог доступен на сайте 🌀]({(string)item.Element("link")})",
+            Footer = EmbedHandler.DevFooter,
+            FooterIconUrl = EmbedHandler.DevIcon
+        }));
+    }
+
+    [RequireGuild]
+    [Command("ава")]
+    public async Task ShowAvatar([Optional] string size, [Optional] IGuildUser user)
+    {
+        var resolved = size switch
+        {
+            null or "" => (ushort)128,
+            "1" => (ushort)64,
+            "2" => (ushort)256,
+            "3" => (ushort)512,
+            _ => (ushort)0
         };
-    
-        DataBase.AddStatus(args,status,"","");
 
-        await _client.SetStatusAsync(statustype);
-        await _client.SetGameAsync(args);
+        if (resolved == 0)
+        {
+            await FailAsync("аватарки", "такого размера нет, используй значение от 1 до 3😤");
+            return;
+        }
 
-        await ReplyAsync(embed: EmbedHandler.Simple(
-            string.Empty,
-            $"Игра изменена на **{args}** со статусом **{status}** ✅",
-            Color.Green,
-            "sbln статус🎫"));
+        user ??= (IGuildUser)Context.User;
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            AuthorName = "sbln аватарки👨‍🦲",
+            ImageUrl = GuildAvatar(user),
+            Color = Color.Red
+        }));
     }
 
-    [Command("актив")]
-    [RequireOwner]
-    public async Task SetActivityAsync(string type, string linkOrText = null, [Remainder] string extra = null)
-    {
-        var actType = type switch
-        {
-            "стрим" => ActivityType.Streaming,
-            "смотрит" => ActivityType.Watching,
-            "слушает" => ActivityType.Listening,
-            "соревнуется" => ActivityType.Competing,
-            _ => ActivityType.Playing
-        };
-        string finalLink = null;
-        string finalText = null;
-        if (actType == ActivityType.Streaming)
-        {
-            finalLink = linkOrText;
-            finalText = extra;
-        }
-        else
-        {
-            finalText = linkOrText;
-            if (!string.IsNullOrWhiteSpace(extra)) finalText += " " + extra;
-        }
-        DataBase.AddStatus(finalText ?? "","", finalLink ?? "", actType.ToString());
-        await _client.SetGameAsync(finalText, finalLink, actType);
-
-        await ReplyAsync(embed: EmbedHandler.Simple(
-            string.Empty,
-            $"Активность установлена: **{actType}** - **{finalText}** ✅",
-            Color.Green,
-            "sbln статус🎫"));
-    }
-
+    [RequireSuperuser]
     [Command("инфа разрабов")]
     [Alias("ир")]
     public async Task InfoDev()
     {
-        var EmbedBuilder = new EmbedBuilder()
-         .WithTitle("DEVS INFO")
-         .WithDescription(
-         $"🔹Бот успешно подключен к **{Context.Client.Guilds.Count}** серверам\n" +
-         $"🔹Активность: **{Context.Client.Activity}**\n" +
-         $"🔹Cостояние: **{Context.Client.ConnectionState}**\n" +
-         $"🔹Состояние токена: **{Context.Client.TokenType} {Context.Client.LoginState}**\n" +
-         $"🔹Задержка выполнения: **{Math.Max(0, Context.Client.Latency - 37)}ms **\n" +
-         $"🔹Время процесса **{DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()}**\n" +
-         $"🔹Идентификатор процесса: **{Environment.CurrentManagedThreadId}**\n" +
-         $"🔹Директория процесса: **{Environment.CurrentDirectory}**\n" +
-         $"🔹Имя системы: **{Environment.MachineName}**\n" +
-         $"🔹OS: **{Environment.OSVersion}**\n" +
-         $"🔹ОЗУ: **{Environment.SystemPageSize}mb**\n" +
-         $"🔹Ядер процессора: **{Environment.ProcessorCount}**\n" +
-         $"🔹Версия .NET Core: **{Environment.Version}**\n" 
-         )
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText("sbln статистикс🔭");
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+        using var process = Process.GetCurrentProcess();
+        var collector = GCSettings.IsServerGC ? "server" : "workstation";
 
+        var watch = Stopwatch.StartNew();
+        var alive = await DataBase.CanConnect();
+        watch.Stop();
+
+        var (corpus, _) = await _gvr.StampAsync();
+        var pictures = await _gvr.ImageCountAsync();
+
+        var database = alive ? $"жива, {watch.ElapsedMilliseconds}ms" : "недоступна";
+        var twitch = Global.Vars.Cfg.streamsEnabled ? "вкл" : "выкл";
+        var ppm = Global.Vars.Cfg.ppmEnabled ? "вкл" : "выкл";
+        var remna = Global.Vars.Cfg.remnaEnabled ? "вкл" : "выкл";
+        var telegram = string.IsNullOrWhiteSpace(Global.Vars.Cfg.telegramToken) ? "выкл" : "вкл";
+        var members = _client.Guilds.Sum(guild => guild.MemberCount);
+        var players = _audio.GetActiveGuildIds().Count();
+        var next = _commandHandler.NextCollection;
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            Title = $"🤖 sblngavna {Versioning.Full}",
+            Description =
+                $"Аптайм: **{FormatAge(Uptime)}**, запущен {Stamp(Started)}\n" +
+                $".NET **{Environment.Version}**, GC **{collector}**, PID **{Environment.ProcessId}**",
+            Color = Color.Blue,
+            ThumbnailUrl = Avatar(_client.CurrentUser),
+            Footer = "sbln статистикс🔭",
+            Fields =
+            [
+                new EmbedFieldSpec("🌐 Гейтвей",
+                    $"Пинг: **{_client.Latency}ms**\n" +
+                    $"Состояние: **{_client.ConnectionState}**\n" +
+                    $"Серверов: **{_client.Guilds.Count}**\n" +
+                    $"Людей: **{members}**", true),
+                new EmbedFieldSpec("🧠 Процесс",
+                    $"Память: **{process.WorkingSet64 / 1024 / 1024}mb**\n" +
+                    $"Куча GC: **{GC.GetTotalMemory(false) / 1024 / 1024}mb**\n" +
+                    $"Сборки: **{GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}**\n" +
+                    $"Ядер: **{Environment.ProcessorCount}**", true),
+                new EmbedFieldSpec("⚙️ Пул потоков",
+                    $"Потоков: **{ThreadPool.ThreadCount}**\n" +
+                    $"В очереди: **{ThreadPool.PendingWorkItemCount}**\n" +
+                    $"Выполнено: **{ThreadPool.CompletedWorkItemCount}**", true),
+                new EmbedFieldSpec("🗄️ Данные",
+                    $"База: **{database}**\n" +
+                    $"Корпус GVR: **{corpus}**, картинок **{pictures}**\n" +
+                    $"Подзагрузка GVR: {(next is { } at ? Stamp(at) : "**выкл**")}", true),
+                new EmbedFieldSpec("🎧 Звук",
+                    $"Плееров: **{players}**\n" +
+                    $"Нода: **{Global.Vars.Cfg.lavaHost}:{Global.Vars.Cfg.lavaPort}**\n" +
+                    $"Движок: **{EmbedHandler.AudioEngine}**", true),
+                new EmbedFieldSpec("🧩 Модули",
+                    $"Twitch: **{twitch}**\n" +
+                    $"PPM: **{ppm}**\n" +
+                    $"Remnawave: **{remna}**\n" +
+                    $"Telegram: **{telegram}**", true)
+            ]
+        }));
     }
 
-
+    [RequireGuild]
     [Command("инфа")]
     public async Task Info()
     {
-        string dopchik;
-        if (Context.Guild.Description == "")
+        var guild = Context.Guild;
+
+        var embed = EmbedHandler.Build(new EmbedSpec
         {
-            dopchik = "описания нет =(";
-        }
-        else
-        {
-            dopchik = (Context.Guild.Description);
-        }
-        static string GetHeapSize() => Math.Round(GC.GetTotalMemory(true) / (1024.0 * 1024.0), 2).ToString(CultureInfo.CurrentCulture);
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("Основная информация о сервере 🤖")
-            .WithDescription(
-            $"🔹Название: ***`{Context.Guild.Name}`***\n" +
-            $"🔹Описание: {dopchik} \n" +
-            $"🔹Имя Бати: {Context.Guild.Owner.Username}#{Context.Guild.Owner.Discriminator} \n" +
-            $"🔹ДР сервера: {Context.Guild.CreatedAt.UtcDateTime} \n" +
-            $"🔹2FA: {Context.Guild.MfaLevel} \n" +
-            $"🔹Размер кучки: {GetHeapSize()} мб\n" +
-            $"🔹Уровень NSFW: {Context.Guild.NsfwLevel} \n" +
-            $"🔹Скики ролей: {Context.Guild.Roles.Count} \n" +
-            $"🔹Скики cмайликов: {Context.Guild.Emotes.Count} \n" +
-            $"🔹Афк таймаут: {Context.Guild.AFKTimeout} сек \n" +
-            $"🔹Бустеры: {Context.Guild.PremiumSubscriptionCount} \n" +
-            $"🔹ГС каналы: {Context.Guild.VoiceChannels.Count}\n" +
-            $"🔹Техтовые каналы: {Context.Guild.TextChannels.Count} \n" +
-            $"🔹Челибасики: {Context.Guild.MemberCount}\n" +
-            $"")
-            .WithThumbnailUrl(Context.Guild.IconUrl)
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText("sbln статистикс🔭");
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
+            Title = $"ℹ️ {guild.Name}",
+            Description = string.IsNullOrWhiteSpace(guild.Description) ? "-" : guild.Description,
+            Color = Color.Blue,
+            ThumbnailUrl = guild.IconUrl,
+            Footer = "sbln инфа🔭",
+            Fields =
+            [
+                new EmbedFieldSpec("📅 Основное",
+                    $"Владелец: {guild.Owner.Mention}\n" +
+                    $"Создан: {Stamp(guild.CreatedAt, 'D')}\n" +
+                    $"Участников: **{guild.MemberCount}**", true),
+                new EmbedFieldSpec("💬 Структура",
+                    $"Текстовых: **{guild.TextChannels.Count}**\n" +
+                    $"Голосовых: **{guild.VoiceChannels.Count}**\n" +
+                    $"Ролей: **{guild.Roles.Count}**\n" +
+                    $"Эмодзи: **{guild.Emotes.Count}**", true),
+                new EmbedFieldSpec("🛡️ Прочее",
+                    $"Бустов: **{guild.PremiumSubscriptionCount}**\n" +
+                    $"2FA: {guild.MfaLevel}\n" +
+                    $"NSFW: {guild.NsfwLevel}\n" +
+                    $"AFK: {guild.AFKTimeout}с", true)
+            ]
+        });
+
+        var components = new ComponentBuilder()
+            .WithButton("⚙️ Настройки сервера", "setopen", ButtonStyle.Secondary)
+            .Build();
+
+        await Context.Channel.SendMessageAsync(embed: embed, components: components);
     }
 
-    [Command("анонс", RunMode = RunMode.Async)]
+    [RequireSuperuser]
+    [Command("анонс")]
     [Cooldown(10)]
     public async Task AnnounceMessage([Remainder] string message)
     {
-        string user = Context.User.Username;
-        var guilds = _client.Guilds.ToList();
-        foreach (var guild in guilds)
+        var channel = Context.Guild.PublicUpdatesChannel as ISocketMessageChannel ?? Context.Channel;
+
+        await channel.SendMessageAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            var messageChannel = guild.PublicUpdatesChannel as ISocketMessageChannel;
-            if (messageChannel != null)
-            {
-                var e = new EmbedBuilder()
-                {
-
-                    Title = "анонс сына гавна",
-                    Description = message,
-                    ThumbnailUrl = Context.User.GetAvatarUrl(),
-                    Footer = new EmbedFooterBuilder()
-                    {
-                        Text = $@"@{user}"
-                    }
-
-                };
-                e.WithCurrentTimestamp();
-                await messageChannel.SendMessageAsync(embed: e.Build());
-                System.Threading.Thread.Sleep(5000);
-            }
-        }
+            Title = "анонс сына гавна",
+            Description = message,
+            ThumbnailUrl = Avatar(Context.User),
+            Footer = $"@{Context.User.Username}"
+        }));
     }
 
+    [RequireGuild]
     [Command("удоли")]
+    [RequireUserPermission(GuildPermission.ManageMessages, ErrorMessage = "нужны права на управление сообщениями")]
+    [RequireBotPermission(GuildPermission.ManageMessages)]
     public async Task Clean(int max)
     {
-        if(max < 1)
+        if (max is < 1 or > 100)
         {
-            await ReplyAsync("ага, ага, нужно положительное число");
+            await FailAsync("чистка", "от 1 до 100 сообщений за раз");
             return;
-        }    
-        await ReplyAsync("легчайшее");
-        var messages = Context.Channel.GetMessagesAsync(max + 2).Flatten();
-        foreach (var h in await messages.ToArrayAsync())
-        {
-            await this.Context.Channel.DeleteMessageAsync(h);
         }
+
+        var notice = await ReplyAsync("легчайшее");
+        var removed = await PurgeAsync(Context.Channel, max + 2, notice.Id);
+
+        await notice.ModifyAsync(properties => properties.Content = $"снесено {removed} сообщений");
     }
 
     [Command("зал славы")]
     public async Task HallOfGlory()
     {
-        var versions = DataBase.GetAllVersions();
-        String verText = "";   
-        foreach (var v in versions)
-        {
-            verText += ($"\n{v.Version} — *{v.Date:yyyy-MM-dd}*");
-        }
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("все версии сыночка")
-            .WithDescription(verText)
-            .WithImageUrl("https://sun9-15.userapi.com/impg/c857332/v857332436/15bc51/aBM7tGgnmY0.jpg?size=640x640&quality=96&sign=4ea7c6c8b39104be3a21ae7033cc0283&type=album")
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
-                .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
-    }
+        var versions = await DataBase.GetAllVersions();
+        var last = versions.LastOrDefault();
 
+        var fields = versions
+            .Select(version => (Entry: version, Line: version.Stage?.Contains('X', StringComparison.OrdinalIgnoreCase) == true ? version.Stage.Trim() : null))
+            .GroupBy(item => item.Line ?? item.Entry.Version.Split('.')[0])
+            .Select(line =>
+            {
+                var from = line.Min(item => item.Entry.Date.Year);
+                var to = line.Max(item => item.Entry.Date.Year);
+
+                return new EmbedFieldSpec(
+                    $"v{line.Key} ({(from == to ? $"{from}" : $"{from}-{to}")})",
+                    string.Join("\n", line.Select(item =>
+                        $"`{item.Entry.Version}` {item.Entry.Date:dd.MM.yy}{(item.Line is not null || string.IsNullOrWhiteSpace(item.Entry.Stage) ? "" : $" {item.Entry.Stage}")}")),
+                    true);
+            })
+            .ToList();
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            Title = "🏆 все версии сыночка",
+            Description = last is null
+                ? "пока пусто"
+                : $"Выпущено версий: **{versions.Count}**\nПоследняя **v{last.Version}** ({Stamp(last.Date, 'R')})",
+            Fields = fields,
+            ThumbnailUrl = "https://sun9-15.userapi.com/impg/c857332/v857332436/15bc51/aBM7tGgnmY0.jpg?size=640x640&quality=96&sign=4ea7c6c8b39104be3a21ae7033cc0283&type=album",
+            Footer = EmbedHandler.DevFooter,
+            FooterIconUrl = EmbedHandler.DevIcon
+        }));
+    }
 
     [Command("эхо")]
     [Cooldown(5)]
-    public Task EchoAsync([Remainder] string text)
-             => ReplyAsync('\u200B' + text, true);
+    public Task EchoAsync([Remainder] string text) => ReplyAsync('​' + text, true);
 
-
-    [Command("почта")]
-    public async Task SendMailAsync(SocketGuildUser user = null, [Remainder] string message = null)
+    [Frontier]
+    [Command("версия")]
+    public async Task BotVersionInfo()
     {
-        var hasAttachments = Context.Message.Attachments.Any();
+        var external = await DataBase.GetAllPackageVersions();
 
-        if (user == null)
+        var fields = new List<EmbedFieldSpec>
         {
-            await ReplyAsync("Укажи пользователя через @упоминание");
-            return;
+            new("🧩 Внутренние модули", CodeTable(
+                Versioning.Modules.Select(module => (module.Name, module.Version)),
+                "`нет данных`")),
+            new("📦 Пакеты", CodeTable(
+                Versioning.Packages.Select(package => (package.Name, package.Version)),
+                "`нет данных`"))
+        };
+
+        if (external.Count > 0)
+        {
+            fields.Add(new EmbedFieldSpec("🛠️ Внешние сервисы", CodeTable(
+                external.Select(item => (item.PackageName, item.PackageVersion)),
+                "`нет данных`")));
         }
 
-        if (string.IsNullOrWhiteSpace(message) && !hasAttachments)
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            await ReplyAsync("Укажи сообщение или приложи вложение, которое нужно отправить");
-            return;
+            Title = $"🤖 sblngavna {Versioning.Full}",
+            Color = Color.LighterGrey,
+            Fields = fields,
+            Footer = EmbedHandler.DevFooter,
+            FooterIconUrl = EmbedHandler.DevIcon
+        }));
+    }
+
+    [RequireGuild]
+    [Command("позови")]
+    [Cooldown(10)]
+    public Task CallUser(SocketGuildUser user) =>
+        ReplyAsync(string.Join(" ", Enumerable.Repeat($"{user.Mention} ЗАЙДИ В ДС", 8)));
+
+    [Frontier]
+    [Command("пинг")]
+    public async Task Ping()
+    {
+        var restWatch = Stopwatch.StartNew();
+        var message = await ReplyAsync("🏓 понг...");
+        restWatch.Stop();
+
+        var dbWatch = Stopwatch.StartNew();
+        var dbAlive = await DataBase.CanConnect();
+        dbWatch.Stop();
+
+        var database = dbAlive ? $"{dbWatch.ElapsedMilliseconds}ms" : "лежит";
+
+        await message.ModifyAsync(properties => properties.Content =
+            $"🏓 понг\n" +
+            $"гейтвей `{_client.Latency}ms`, ответ `{restWatch.ElapsedMilliseconds}ms`, база `{database}`\n" +
+            $"состояние `{_client.ConnectionState}`, аптайм `{FormatAge(Uptime)}`");
+    }
+
+    [RequireGuild]
+    [Command("чел")]
+    public async Task UserInfo(SocketGuildUser user = null)
+    {
+        user ??= (SocketGuildUser)Context.User;
+
+        IUser profile = null;
+        try { profile = await _client.Rest.GetUserAsync(user.Id); }
+        catch (Exception ex) when (ex is Discord.Net.HttpException or TimeoutException) { }
+
+        var roles = user.Roles.Where(role => !role.IsEveryone).OrderByDescending(role => role.Position).ToList();
+        var colored = roles.FirstOrDefault(role => role.Colors.PrimaryColor != Color.Default);
+
+        var identity = new List<string>
+        {
+            $"Ник: **{user.Username}**",
+            $"Имя: **{user.GlobalName ?? user.Username}**"
+        };
+
+        if (!string.IsNullOrEmpty(user.Nickname))
+            identity.Add($"На сервере: **{user.Nickname}**");
+
+        identity.Add($"ID: `{user.Id}`");
+
+        if (user.Id == Context.Guild.OwnerId)
+            identity.Add("👑 владелец сервера");
+        else if (user.GuildPermissions.Administrator)
+            identity.Add("🛡️ администратор");
+
+        if (user.IsBot)
+            identity.Add("🤖 бот");
+
+        var devices = user.ActiveClients.Select(client => client switch
+        {
+            ClientType.Desktop => "🖥️ пк",
+            ClientType.Mobile => "📱 телефон",
+            ClientType.Web => "🌐 браузер",
+            _ => null
+        }).Where(device => device is not null).ToList();
+
+        if (devices.Count > 0)
+            identity.Add($"Сидит с: {string.Join(", ", devices)}");
+
+        var fields = new List<EmbedFieldSpec>
+        {
+            new("🪪 Профиль", string.Join("\n", identity), true)
+        };
+
+        var dates = $"Аккаунт: {DateAndAgo(user.CreatedAt)}";
+
+        if (user.JoinedAt is { } joined)
+        {
+            dates += $"\nНа сервере: {DateAndAgo(joined)}";
+
+            if (Context.Guild.HasAllMembers)
+            {
+                var position = Context.Guild.Users.Count(member => member.JoinedAt < joined) + 1;
+                dates += $"\nЗашёл **#{position}** из {Context.Guild.MemberCount}";
+            }
         }
 
-        var (isAnonymous, preparedMessage) = ParseMailMode(message);
-        if (string.IsNullOrWhiteSpace(preparedMessage) && !hasAttachments)
+        fields.Add(new EmbedFieldSpec("📅 Даты", dates));
+
+        if (user.PremiumSince is { } boosting)
+            fields.Add(new EmbedFieldSpec("💎 Бустит", $"с {Stamp(boosting, 'D')}", true));
+
+        if (user.TimedOutUntil is { } timeout && timeout > DateTimeOffset.UtcNow)
+            fields.Add(new EmbedFieldSpec("🔇 В муте", $"до {Stamp(timeout)}", true));
+
+        if (user.VoiceChannel is { } voice)
         {
-            await ReplyAsync("После флага анонимности нужно указать текст или приложить вложение");
+            var flags = new List<string>();
+            if (user.IsSelfMuted || user.IsMuted) flags.Add("🔇");
+            if (user.IsSelfDeafened || user.IsDeafened) flags.Add("🎧");
+            if (user.IsStreaming) flags.Add("📺");
+            if (user.IsVideoing) flags.Add("📷");
+
+            fields.Add(new EmbedFieldSpec("🎙️ В войсе", $"{voice.Mention} {string.Join(" ", flags)}".TrimEnd(), true));
+        }
+
+        fields.Add(new EmbedFieldSpec(
+            $"🎭 Роли ({roles.Count})",
+            roles.Count > 0 ? string.Join(" ", roles.Select(role => role.Mention)) : "нет"));
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            Title = user.DisplayName,
+            ThumbnailUrl = GuildAvatar(user),
+            ImageUrl = (profile as Discord.Rest.RestUser)?.GetBannerUrl(size: 1024),
+            Color = colored?.Colors.PrimaryColor ?? (profile as Discord.Rest.RestUser)?.AccentColor ?? Color.Default,
+            Fields = fields,
+            Footer = "sbln статистикс🔭"
+        }));
+    }
+
+    [RequireGuild]
+    [Command("кик")]
+    [RequireUserPermission(GuildPermission.KickMembers, ErrorMessage = "тебе нельзя ты додик")]
+    [RequireBotPermission(GuildPermission.KickMembers)]
+    public async Task KickMember(SocketGuildUser user = null, [Remainder] string reason = null)
+    {
+        if (!await CanModerateAsync(user, "кикать"))
+            return;
+
+        reason ??= "воля администратора";
+        await user.KickAsync(reason);
+
+        await ReplyAsync(embed: EmbedHandler.Moderation(
+            "sbln кик <:roflanPominki:552795319516135424>",
+            $"✅ {user.Mention} был кикнут с сервера **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
+            Avatar(user),
+            Context.User.Username,
+            Avatar(Context.User)));
+    }
+
+    [RequireGuild]
+    [Command("бан")]
+    [RequireUserPermission(GuildPermission.BanMembers, ErrorMessage = "тебе нельзя ты додик")]
+    [RequireBotPermission(GuildPermission.BanMembers)]
+    public async Task BanMember(SocketGuildUser user = null, [Remainder] string reason = null)
+    {
+        if (!await CanModerateAsync(user, "банить"))
+            return;
+
+        reason ??= "воля администратора";
+        await user.BanAsync(reason: reason);
+
+        await ReplyAsync(embed: EmbedHandler.Moderation(
+            "sbln бан <:roflanPominki:552795319516135424>",
+            $"✅ {user.Mention} был забанен на сервере **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
+            Avatar(user),
+            Context.User.Username,
+            Avatar(Context.User)));
+    }
+    private async Task<bool> CanModerateAsync(SocketGuildUser target, string action)
+    {
+        if (target is null)
+        {
+            await FailAsync("модерация", "выбери кентошарика");
+            return false;
+        }
+
+        if (target.Id == Context.User.Id)
+        {
+            await FailAsync("модерация", "себя трогать не надо");
+            return false;
+        }
+
+        if (target.Id == Context.Client.CurrentUser.Id)
+        {
+            await FailAsync("модерация", "меня трогать тем более не надо");
+            return false;
+        }
+
+        if (target.IsBot && !await SuperuserGate.IsBotOwnerAsync(Context.Client, Context.User))
+        {
+            await FailAsync("модерация", $"{target.Mention} это бот, {action} его может только владелец");
+            return false;
+        }
+
+        if (Context.Guild.CurrentUser is { } bot && target.Hierarchy >= bot.Hierarchy)
+        {
+            await FailAsync("модерация", $"{target.Mention} выше меня по ролям, {action} его я не могу");
+            return false;
+        }
+
+        return true;
+    }
+
+    [Frontier]
+    [Command("кал")]
+    public async Task MathAsync([Remainder] string math)
+    {
+        if (!MathSafeRegex.IsMatch(math))
+        {
+            await FailAsync("калькулятор", "недопустимые символы в выражении");
             return;
         }
 
         try
         {
-            var outgoingEmbed = new EmbedBuilder()
-                .WithColor(isAnonymous ? Color.DarkGrey : Color.Blue)
-                .WithTitle("📩 Вам письмо // sbln почта📧")
-                .WithDescription(string.IsNullOrWhiteSpace(preparedMessage) ? "*пустое сообщение*" : preparedMessage)
-                .WithFooter("↩️ Для ответа отправителю сделай реплай на это сообщение");
+            using var table = new DataTable();
+            var result = table.Compute(math, null);
 
-            if (isAnonymous)
-            {
-                outgoingEmbed.AddField("Отправитель", "Анонимно", true);
-            }
-            else
-            {
-                outgoingEmbed
-                    .AddField("Отправитель:", $"{Context.User.Username}", true)
-                    .AddField("Получатель:", $"{user.Username}", true);
-            }
+            if (result is double value && !double.IsFinite(value))
+                throw new DivideByZeroException();
 
-            if (hasAttachments)
-            {
-                var attachmentLinks = string.Join('\n', Context.Message.Attachments.Select(a => a.Url));
-                outgoingEmbed.AddField("Вложения:", attachmentLinks);
-            }
-
-            var sentMessage = await user.SendMessageAsync(embed: outgoingEmbed.Build());
-            CommandHandler.RegisterMailReplyRoute(sentMessage.Id, Context.User.Id, user.Id, isAnonymous);
-
-            await LoggingService.LogInformationAsync(
-                "XMAIL",
-                $"SEND anonymous={isAnonymous} sender={Context.User.Id} recipient={user.Id} content={preparedMessage}");
-
-            var embed = new EmbedBuilder()
-                .WithColor(Color.Green)
-                .WithDescription($"Сообщение отправлено в ЛС: {user.Mention}")
-                .AddField("Режим:", isAnonymous ? "Анон" : "Обычный", true)
-                .AddField("Вложения:", Context.Message.Attachments.Count, true)
-                .WithThumbnailUrl(user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl())
-                .WithFooter("sbln почта📧")
-                .Build();
-
-            await ReplyAsync(embed: embed);
+            await ReplyAsync(embed: EmbedHandler.Authored(
+                "sbln калькулятор📚📐",
+                $"{math} = {result}",
+                Color.DarkerGrey,
+                null));
         }
-        catch
+        catch (DivideByZeroException)
         {
-            var embed = new EmbedBuilder()
-                .WithColor(Color.Red)
-                .WithDescription($"Не удалось отправить сообщение {user.Mention} =(")
-                .WithFooter("sbln почта📧")
-                .Build();
-
-            await ReplyAsync(embed: embed);
+            await FailAsync("калькулятор", "на ноль делить нельзя");
+        }
+        catch (Exception ex) when (ex is EvaluateException or SyntaxErrorException or OverflowException)
+        {
+            await FailAsync("калькулятор", ex.Message);
         }
     }
 
-    [Command("версия")]
-    public async Task BotVersionInfo()
+    [Command("напомни")]
+    [Alias("н")]
+    public async Task Remind(int seconds, [Remainder] string remindMsg)
     {
-        var packages = DataBase.GetAllPackageVersions();
+        const int maxSeconds = 24 * 60 * 60;
 
-        var botzname = new EmbedAuthorBuilder()
-            .WithName($"sblngavna ver {Utils.sblnver}");
-
-        var copy = new EmbedFooterBuilder()
-            .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
-            .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
-
-        const int maxFieldsPerEmbed = 15;
-
-        for (int i = 0; i < packages.Count; i += maxFieldsPerEmbed)
+        if (seconds is < 1 or > maxSeconds)
         {
-            var chunk = packages.Skip(i).Take(maxFieldsPerEmbed);
-
-            var embedBuilder = new EmbedBuilder()
-                .WithAuthor(botzname)
-                .WithFooter(copy)
-                .WithColor(Color.LighterGrey);
-
-            foreach (var item in chunk)
-            {
-                embedBuilder.AddField(item.PackageName, $"***{item.PackageVersion}***", false);
-            }
-
-            await ReplyAsync(embed: embedBuilder.Build());
-        }
-    }
-
-    [Command("позови")]
-    [Cooldown(10)]
-    public async Task CallUser(SocketGuildUser user)
-    {
-        int repeats = 8;
-        string text = $"{user.Mention} ЗАЙДИ В ДС";
-        var message = string.Join(" ", Enumerable.Repeat(text, repeats));
-        await Context.Channel.SendMessageAsync(message);
-    }
-
-    [Command("пинг")]
-    public async Task Ping()
-    {
-        await ReplyAsync($"🏓 понг ``{(Context.Client as DiscordSocketClient).Latency}ms`");
-    }
-
-    [Command("чел")]
-    public async Task UserInfo(SocketGuildUser u = null)
-    {
-        SocketGuildUser user = (SocketGuildUser)u;
-        EmbedBuilder output = new EmbedBuilder();
-
-        DateTimeOffset createdAt = user.CreatedAt;
-        DateTimeOffset joinedAt = (DateTimeOffset)user.JoinedAt;
-        string nickname = string.IsNullOrEmpty(user.Nickname) ? "" : $"({user.Nickname})";
-        string dopchik;
-        if (user.VoiceState.ToString() == "")
-        {
-            dopchik = "***нет***";
-        }
-        else
-        {
-            dopchik = (user.VoiceState.ToString());
-        }
-
-
-        output.WithTitle($"{user.Username} {nickname}")
-            .AddField("Состояние:", $"{user.Status}")
-            .AddField("Появился в Дискорде:", $"{createdAt} ({(DateTime.UtcNow - createdAt).Days} дней назад)")
-            .AddField("Появился на этом сервере:", $"{joinedAt} ({(DateTime.UtcNow - joinedAt).Days} дней назад)")
-            .AddField("Роли:", $"{string.Join(", ", user.Roles.ToList())}")
-            .AddField("В войсе:", $"{dopchik}")
-            .WithThumbnailUrl(user.GetAvatarUrl())
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText("sbln статистикс🔭");
-            });
-
-        await ReplyAsync("", embed: output.Build());
-    }
-
-    [Command("кик")]
-    [RequireUserPermission(GuildPermission.KickMembers, ErrorMessage = "тебе нельзя ты додик")]
-    public async Task KickMember(SocketGuildUser user = null, [Remainder] string reason = null)
-    {
-        if (user == null)
-        {
-            await ReplyAsync("'выбери кентошарика'");
+            await FailAsync("напоминалка", $"от 1 секунды до {maxSeconds} секунд (сутки)");
             return;
         }
-        if (reason == null) reason = "воля администратора";
 
-        await user.KickAsync();
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            Title = "sbln напоминалка⏰",
+            Description = $"😎 ок, я отправлю тебе вот это --- **{remindMsg}**\n⌚ через **{seconds}** сек.",
+            Color = Color.DarkGreen
+        }));
 
-        await ReplyAsync(embed: EmbedHandler.Moderation(
-            "sbln кик <:roflanPominki:552795319516135424>",
-            $":white_check_mark: {user.Mention} был кикнут с сервера **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
-            user.GetAvatarUrl(),
-            Context.User.Username,
-            Context.User.GetAvatarUrl()));
+        await ReminderService.RemindAsyncSeconds(Context.User, Context.Channel, seconds, remindMsg);
     }
 
-    [Command("бан")]
-    [RequireUserPermission(GuildPermission.KickMembers, ErrorMessage = "тебе нельзя ты додик")]
-    public async Task BanMember(SocketGuildUser user = null, [Remainder] string reason = null)
+    [Command("ембед")]
+    public async Task CmdEmbedMessage([Remainder] string msg = "")
     {
-        if (user == null)
+        msg = (msg ?? string.Empty).Trim();
+
+        var color = 0;
+        var space = msg.IndexOf(' ');
+        var head = space < 0 ? msg : msg[..space];
+
+        if (head.Length == 1 && head[0] is >= '1' and <= '4')
         {
-            await ReplyAsync("'выбери кентошарика'");
+            color = head[0] - '0';
+            msg = space < 0 ? string.Empty : msg[(space + 1)..];
+        }
+
+        var input = msg.Split('|');
+        var title = input.Length > 0 ? input[0].Trim() : string.Empty;
+        var description = input.Length > 1 ? input[1].Trim() : string.Empty;
+
+        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(description))
+        {
+            await FailAsync("ембед", "нужен текст: `ембед [1-4] заголовок | описание`");
             return;
         }
-        if (reason == null) reason = "воля администратора";
 
-        await user.BanAsync();
-
-        await ReplyAsync(embed: EmbedHandler.Moderation(
-            "sbln бан <:roflanPominki:552795319516135424>",
-            $":white_check_mark: {user.Mention} был забанен на сервере **{Context.Guild.Name}** \n❓Причина: ***{reason}***",
-            user.GetAvatarUrl(),
-            Context.User.Username,
-            Context.User.GetAvatarUrl()));
-    }
-
-    private static (bool isAnonymous, string preparedMessage) ParseMailMode(string rawMessage)
-    {
-        if (string.IsNullOrWhiteSpace(rawMessage))
-            return (false, string.Empty);
-
-        var text = rawMessage.Trim();
-        string[] anonymousPrefixes = new[] { "анонимно", "анон", "anon" };
-
-        foreach (var prefix in anonymousPrefixes)
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
-            if (text.Equals(prefix, StringComparison.OrdinalIgnoreCase))
-                return (true, string.Empty);
-
-            if (text.StartsWith($"{prefix} ", StringComparison.OrdinalIgnoreCase))
-                return (true, text[(prefix.Length + 1)..].Trim());
-        }
-
-        return (false, text);
+            Title = title,
+            Description = description,
+            Color = color switch
+            {
+                1 => Color.Red,
+                2 => Color.Green,
+                3 => Color.Blue,
+                4 => Color.Gold,
+                _ => Color.Default
+            }
+        }));
     }
+
+    private async Task FailAsync(string source, string reason) =>
+        await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(source, reason));
 
 }
-

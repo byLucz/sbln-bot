@@ -1,0 +1,71 @@
+﻿using sblngavnav6.Data;
+using sblngavnav6.TwitchService;
+
+namespace sblngavnav6.Services.Twitch
+{
+    public enum StreamerChange
+    {
+        Done,
+        AlreadyThere,
+        Missing,
+        NotFound
+    }
+
+    public sealed class StreamerRegistry
+    {
+        private readonly StreamMonoService _lsms;
+
+        public StreamerRegistry(StreamMonoService lsms)
+        {
+            _lsms = lsms;
+        }
+
+        public async Task<StreamerChange> TryAddStreamerAsync(string name)
+        {
+            var streamer = name.Trim().ToLowerInvariant();
+
+            if (_lsms.Streamers.ContainsKey(streamer))
+                return StreamerChange.AlreadyThere;
+
+            var streamerId = await TryVerifyStreamerAsync(streamer).ConfigureAwait(false);
+
+            if (streamerId is null)
+                return StreamerChange.NotFound;
+
+            await DataBase.AddStreamer(streamer, streamerId);
+            await DataBase.DownloadStreamers();
+
+            return StreamerChange.Done;
+        }
+
+        public async Task<StreamerChange> TryRemoveStreamerAsync(string name)
+        {
+            var streamer = name.Trim().ToLowerInvariant();
+
+            if (!_lsms.Streamers.TryGetValue(streamer, out var streamerId))
+                return StreamerChange.Missing;
+
+            await DataBase.DeleteStreamer(streamerId);
+            await DataBase.DownloadStreamers();
+
+            return StreamerChange.Done;
+        }
+
+        public async Task<string> TryVerifyStreamerAsync(string streamer)
+        {
+            try
+            {
+                var result = await _lsms.TwitchApi.Helix.Users
+                    .GetUsersAsync(logins: [streamer], accessToken: _lsms.TwitchApi.Settings.AccessToken)
+                    .ConfigureAwait(false);
+
+                return result?.Users is { Length: > 0 } users ? users[0].Id : null;
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync("TTVLK", $"Проверка стримера {streamer} не удалась: {ex.Message}").ConfigureAwait(false);
+                return null;
+            }
+        }
+    }
+}

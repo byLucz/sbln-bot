@@ -1,0 +1,39 @@
+services:
+  bot:
+    image: ${SBLN_IMAGE:?Run install.sh first}
+    build:
+      context: ${SBLN_SOURCE:?Run install.sh first}
+      args:
+        SBLN_VERSION: ${SBLN_VERSION:?Version is required}
+        SBLN_CHANNEL: ${SBLN_CHANNEL-}
+        SBLN_COMMIT: ${SBLN_COMMIT:?Commit is required}
+    container_name: ${SBLN_CONTAINER:-sbln-bot}
+    network_mode: ${SBLN_NETWORK_MODE:-bridge}
+    restart: ${SBLN_RESTART:-unless-stopped}
+    init: true
+    stop_grace_period: 30s
+    environment:
+      TZ: ${SBLN_TZ:-Europe/Moscow}
+      SBLN_CONFIG: /opt/sbln/config.json
+      SBLN_READY_FILE: /tmp/sbln-ready
+      SBLN_AUDIO_DIR: /opt/sbln/audio/${SBLN_INSTANCE:-stable}
+      SBLN_LOG_DIR: /opt/sbln/logs
+      SBLN_DATA_DIR: /opt/sbln/data
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ${SBLN_CONFIG_FILE:?Config file is required}
+        target: /opt/sbln/config.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${SBLN_DATA_DIR:?Data directory is required}:/opt/sbln/data
+      - ${SBLN_LOG_DIR:?Log directory is required}:/opt/sbln/logs
+      - ${SBLN_AUDIO_ROOT:?Audio directory is required}:/opt/sbln/audio
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

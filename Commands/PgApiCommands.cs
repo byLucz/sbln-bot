@@ -1,50 +1,21 @@
-using Discord;
+﻿using Discord;
 using Discord.Commands;
 using Discord.Interactions;
 using Discord.WebSocket;
-using sblngavnav5X.Core;
-using sblngavnav5X.Data;
-using sblngavnav5X.Services;
+using sblngavnav6.Common;
+using sblngavnav6.Core;
+using sblngavnav6.Services;
 
-namespace sblngavnav5X.Commands;
-
-public class RequirePgRoleAttribute : Discord.Commands.PreconditionAttribute
-{
-    public override Task<Discord.Commands.PreconditionResult> CheckPermissionsAsync(
-        ICommandContext context, CommandInfo command, IServiceProvider services)
-    {
-        if (Utils.pgApiRoleId == 0)
-            return Task.FromResult(Discord.Commands.PreconditionResult.FromError("pgApiRoleId не задан в Utils"));
-
-        if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.pgApiRoleId))
-            return Task.FromResult(Discord.Commands.PreconditionResult.FromError("Нет доступа к pgAPI"));
-
-        return Task.FromResult(Discord.Commands.PreconditionResult.FromSuccess());
-    }
-}
-
-public class RequirePgRoleInteractionAttribute : Discord.Interactions.PreconditionAttribute
-{
-    public override Task<Discord.Interactions.PreconditionResult> CheckRequirementsAsync(
-        IInteractionContext context, ICommandInfo commandInfo, IServiceProvider services)
-    {
-        if (Utils.pgApiRoleId == 0)
-            return Task.FromResult(Discord.Interactions.PreconditionResult.FromError("pgApiRoleId не задан в Utils"));
-
-        if (context.User is not IGuildUser gu || !gu.RoleIds.Contains(Utils.pgApiRoleId))
-            return Task.FromResult(Discord.Interactions.PreconditionResult.FromError("Нет доступа к pgAPI"));
-
-        return Task.FromResult(Discord.Interactions.PreconditionResult.FromSuccess());
-    }
-}
+namespace sblngavnav6.Commands;
 
 public static class PgApiPanelBuilder
 {
     public const string DefaultProject = "pg";
+    public const string Source = "pgAPI";
 
+    private const int PageSize = 5;
     public static readonly (string Label, string Key)[] Actions =
     [
-        ("Health-check", "health"),
         ("Проекты",      "projects"),
         ("Статус pg",    "status"),
         ("Сервисы pg",   "services"),
@@ -56,131 +27,149 @@ public static class PgApiPanelBuilder
         ("Старт pg",     "start")
     ];
 
-    public static MessageComponent BuildPageComponents(int page)
+    public static string Scope(ulong channelId, ulong userId) => $"pgapi:{channelId}:{userId}";
+
+    public static async Task<string> CheckAsync(PgApiService pgApi)
     {
-        const int pageSize = 5;
-        var totalPages = (int)Math.Ceiling(Actions.Length / (double)pageSize);
-        page = Math.Clamp(page, 0, totalPages - 1);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var health = await pgApi.HealthAsync();
+        sw.Stop();
 
-        var builder = new ComponentBuilder();
-        var items = Actions.Skip(page * pageSize).Take(pageSize).ToArray();
+        if (health.Ok)
+            return $"✅ ок, {sw.ElapsedMilliseconds} мс";
 
-        foreach (var item in items)
+        return health.Status is null
+            ? "❌ недоступен"
+            : $"❌ {health.Error}, {sw.ElapsedMilliseconds} мс";
+    }
+
+    public static List<Embed> BuildPages(string health)
+    {
+        var total = Pagination.TotalPages(Actions.Length, PageSize);
+        var pages = new List<Embed>(total);
+
+        for (var page = 0; page < total; page++)
+            pages.Add(BuildPanelEmbed(health));
+
+        return pages;
+    }
+
+    public static readonly string[] Destructive = ["restart", "restart_bot", "stop", "start"];
+
+    public static Action<ComponentBuilder, int> BuildControls() => (builder, page) =>
+    {
+        foreach (var (label, key) in Actions.Skip(page * PageSize).Take(PageSize))
         {
-            var style = item.Key.Contains("stop")    ? ButtonStyle.Danger
-                      : item.Key.Contains("restart") ? ButtonStyle.Secondary
+            var style = key.Contains("stop") ? ButtonStyle.Danger
+                      : key.Contains("restart") ? ButtonStyle.Secondary
                       : ButtonStyle.Primary;
-            builder.WithButton(item.Label, $"pgapi_action:{item.Key}", style, row: 0);
+
+            builder.WithButton(label, $"pgapi_action:{key}", style, row: 1);
         }
 
-        builder.WithButton("◀️", $"pgapi_page:{Math.Max(page - 1, 0)}",          ButtonStyle.Secondary, disabled: page == 0,              row: 1);
-        builder.WithButton($"Стр. {page + 1}/{totalPages}", "pgapi_page:noop",   ButtonStyle.Secondary, disabled: true,                   row: 1);
-        builder.WithButton("▶️", $"pgapi_page:{Math.Min(page + 1, totalPages - 1)}", ButtonStyle.Secondary, disabled: page >= totalPages - 1, row: 1);
+        builder.WithButton("Health-check", "pgapi_health", ButtonStyle.Primary, row: 2);
+    };
 
-        return builder.Build();
-    }
-
-    private static string? _cachedPing;
-
-    public static Embed BuildPanelEmbed(int page, string? pingInfo = null)
+    private static Embed BuildPanelEmbed(string health) => EmbedHandler.Build(new EmbedSpec
     {
-        if (pingInfo is not null) _cachedPing = pingInfo;
-
-        var eb = EmbedHandler.FieldsEmbed("Панель управления pgAPI", Color.Teal, "sbln x lois.media")
-            .WithDescription("[PG Container v0.2](https://github.com/loismedia/pg)");
-
-        if (_cachedPing is not null)
-            eb.AddField("⏱️ Время отклика", _cachedPing, inline: true);
-
-        return eb.Build();
-    }
+        AuthorName = "Панель управления pgAPI",
+        Description = "[PG Container v0.2](https://github.com/loismedia/pg)",
+        Color = Color.Teal,
+        Fields = string.IsNullOrWhiteSpace(health)
+            ? null
+            : [new EmbedFieldSpec("🩺 Health-check", health, true)],
+        Footer = EmbedHandler.LoisFooter
+    });
 }
 
-[RequirePgRole]
+[RequireDevAccess]
 public class PgApiCommands : ModuleBase<SocketCommandContext>
 {
     private readonly PgApiService _pgApi;
+    private readonly PaginatorService _pager;
 
-    public PgApiCommands(PgApiService pgApi)
+    public PgApiCommands(PgApiService pgApi, PaginatorService pager)
     {
         _pgApi = pgApi;
+        _pager = pager;
     }
 
     [Command("пг")]
     public async Task PgApiPanel()
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        string health = await _pgApi.HealthAsync();
-        sw.Stop();
+        var health = await PgApiPanelBuilder.CheckAsync(_pgApi);
 
-        string pingInfo = health.StartsWith("❌")
-            ? "недоступен"
-            : $"{sw.ElapsedMilliseconds} мс";
-
-        await Context.Channel.SendMessageAsync(
-            embed: PgApiPanelBuilder.BuildPanelEmbed(0, pingInfo),
-            components: PgApiPanelBuilder.BuildPageComponents(0));
+        await _pager.SendAsync(
+            Context.Channel,
+            PgApiPanelBuilder.BuildPages(health),
+            decorate: PgApiPanelBuilder.BuildControls(),
+            scope: PgApiPanelBuilder.Scope(Context.Channel.Id, Context.User.Id));
     }
 }
 
 public class PgApiInteractions : InteractionModuleBase<SocketInteractionContext>
 {
     private readonly PgApiService _pgApi;
+    private readonly PaginatorService _pager;
 
-    public PgApiInteractions(PgApiService pgApi)
+    public PgApiInteractions(PgApiService pgApi, PaginatorService pager)
     {
         _pgApi = pgApi;
+        _pager = pager;
     }
 
-    [RequirePgRoleInteraction]
-    [ComponentInteraction("pgapi_page:*")]
-    public async Task ChangePage(string pageRaw)
+    [RequireDevAccessInteraction]
+    [ComponentInteraction("pgapi_health")]
+    public async Task Health()
     {
-        if (!int.TryParse(pageRaw, out var page))
-            page = 0;
-
         if (Context.Interaction is not SocketMessageComponent component)
             return;
 
-        await component.UpdateAsync(msg =>
-        {
-            msg.Embed = PgApiPanelBuilder.BuildPanelEmbed(page);
-            msg.Components = PgApiPanelBuilder.BuildPageComponents(page);
-        });
+        await DeferAsync();
+
+        var health = await PgApiPanelBuilder.CheckAsync(_pgApi);
+
+        await _pager.ReplaceAsync(
+            component.Message,
+            PgApiPanelBuilder.BuildPages(health),
+            decorate: PgApiPanelBuilder.BuildControls());
     }
 
-    [RequirePgRoleInteraction]
+    [RequireDevAccessInteraction]
     [ComponentInteraction("pgapi_action:*")]
     public async Task ExecuteAction(string action)
     {
         await DeferAsync(ephemeral: true);
 
-        string result;
+        if (PgApiPanelBuilder.Destructive.Contains(action))
+            await LoggingService.LogWarningAsync("PGAPI", $"{Context.User.Username} ({Context.User.Id}) жмёт {action}");
+
+        PgApiResult result;
         try
         {
             result = action switch
             {
-                "health"      => await _pgApi.HealthAsync(),
-                "projects"    => await _pgApi.ProjectsAsync(),
-                "status"      => await _pgApi.ProjectStatusAsync(PgApiPanelBuilder.DefaultProject),
-                "services"    => await _pgApi.ServicesAsync(PgApiPanelBuilder.DefaultProject),
-                "logs"        => await _pgApi.LogsAsync(PgApiPanelBuilder.DefaultProject),
-                "logs_bot"    => await _pgApi.LogsAsync(PgApiPanelBuilder.DefaultProject, "bot"),
-                "restart"     => await _pgApi.RestartProjectAsync(PgApiPanelBuilder.DefaultProject),
+                "projects" => await _pgApi.ProjectsAsync(),
+                "status" => await _pgApi.ProjectStatusAsync(PgApiPanelBuilder.DefaultProject),
+                "services" => await _pgApi.ServicesAsync(PgApiPanelBuilder.DefaultProject),
+                "logs" => await _pgApi.LogsAsync(PgApiPanelBuilder.DefaultProject),
+                "logs_bot" => await _pgApi.LogsAsync(PgApiPanelBuilder.DefaultProject, "bot"),
+                "restart" => await _pgApi.RestartProjectAsync(PgApiPanelBuilder.DefaultProject),
                 "restart_bot" => await _pgApi.RestartServiceAsync(PgApiPanelBuilder.DefaultProject, "bot"),
-                "stop"        => await _pgApi.StopProjectAsync(PgApiPanelBuilder.DefaultProject),
-                "start"       => await _pgApi.StartProjectAsync(PgApiPanelBuilder.DefaultProject),
-                _             => "❌ Неизвестное действие"
+                "stop" => await _pgApi.StopProjectAsync(PgApiPanelBuilder.DefaultProject),
+                "start" => await _pgApi.StartProjectAsync(PgApiPanelBuilder.DefaultProject),
+                _ => PgApiResult.Fail("неизвестное действие")
             };
         }
         catch (Exception ex)
         {
-            result = $"❌ Ошибка запроса: {ex.Message}";
+            await LoggingService.LogErrorAsync("PGAPI", $"Ошибка действия {action}", ex);
+            result = PgApiResult.Fail($"запрос не удался: {ex.Message}");
         }
 
-        bool success = !result.StartsWith("❌");
-        await FollowupAsync(
-            embed: EmbedHandler.Simple($"pgAPI/{action}", result, success ? Color.DarkBlue : Color.DarkRed, "sbln x lois.media"),
+        await FollowupAsync(embed: result.Ok
+            ? EmbedHandler.Simple($"{PgApiPanelBuilder.Source}/{action}", result.ToDisplay(), Color.DarkBlue, EmbedHandler.LoisFooter)
+            : await EmbedHandler.CreateErrorEmbed($"{PgApiPanelBuilder.Source}/{action}", result.ToDisplay()),
             ephemeral: true);
     }
 }

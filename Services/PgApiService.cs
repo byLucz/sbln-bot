@@ -1,11 +1,35 @@
-﻿using System.Net.Http.Headers;
+﻿using sblngavnav6.Common;
+using sblngavnav6.Data;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
-using sblngavnav5X.Data;
 
-namespace sblngavnav5X.Services;
+namespace sblngavnav6.Services;
+
+public sealed record PgApiResult(bool Ok, HttpStatusCode? Status, string Body, string Error)
+{
+    public static PgApiResult Fail(string error) => new(false, null, null, error);
+
+    public string ToDisplay()
+    {
+        if (!Ok && Status is null)
+            return $"❌ {Error}";
+
+        var sb = new StringBuilder();
+        sb.AppendLine($"Status: {(int)Status.Value} {Status.Value}");
+        sb.AppendLine("```json");
+        sb.AppendLine(Body?.Replace("```", "`‌``", StringComparison.Ordinal));
+        sb.AppendLine("```");
+        return sb.ToString();
+    }
+}
 
 public sealed class PgApiService
 {
+    private const int MaxBodyLength = 1600;
+
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+
     private readonly IHttpClientFactory _httpClientFactory;
 
     public PgApiService(IHttpClientFactory httpClientFactory)
@@ -13,72 +37,65 @@ public sealed class PgApiService
         _httpClientFactory = httpClientFactory;
     }
 
-    public async Task<string> HealthAsync()
-        => await SendAsync(HttpMethod.Get, "/health", authRequired: false);
+    public Task<PgApiResult> HealthAsync(CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Get, "/health", authRequired: false, cancellationToken);
 
-    public async Task<string> ProjectsAsync()
-        => await SendAsync(HttpMethod.Get, "/api/projects");
+    public Task<PgApiResult> ProjectsAsync(CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Get, "/api/projects", cancellationToken: cancellationToken);
 
-    public async Task<string> ProjectStatusAsync(string project)
-        => await SendAsync(HttpMethod.Get, $"/api/projects/{project}/status");
+    public Task<PgApiResult> ProjectStatusAsync(string project, CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Get, $"/api/projects/{Uri.EscapeDataString(project)}/status", cancellationToken: cancellationToken);
 
-    public async Task<string> ServicesAsync(string project)
-        => await SendAsync(HttpMethod.Get, $"/api/projects/{project}/services");
+    public Task<PgApiResult> ServicesAsync(string project, CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Get, $"/api/projects/{Uri.EscapeDataString(project)}/services", cancellationToken: cancellationToken);
 
-    public async Task<string> LogsAsync(string project, string service = null, int tail = 100)
+    public Task<PgApiResult> LogsAsync(string project, string service = null, int tail = 100, CancellationToken cancellationToken = default)
     {
+        var encodedProject = Uri.EscapeDataString(project);
         var suffix = service is null
-            ? $"/api/projects/{project}/logs?tail={tail}"
-            : $"/api/projects/{project}/logs?service={Uri.EscapeDataString(service)}&tail={tail}";
+            ? $"/api/projects/{encodedProject}/logs?tail={tail}"
+            : $"/api/projects/{encodedProject}/logs?service={Uri.EscapeDataString(service)}&tail={tail}";
 
-        return await SendAsync(HttpMethod.Get, suffix);
+        return SendAsync(HttpMethod.Get, suffix, cancellationToken: cancellationToken);
     }
 
-    public async Task<string> RestartProjectAsync(string project)
-        => await SendAsync(HttpMethod.Post, $"/api/projects/{project}/restart");
+    public Task<PgApiResult> RestartProjectAsync(string project, CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(project)}/restart", cancellationToken: cancellationToken);
 
-    public async Task<string> RestartServiceAsync(string project, string service)
-        => await SendAsync(HttpMethod.Post, $"/api/projects/{project}/restart/{Uri.EscapeDataString(service)}");
+    public Task<PgApiResult> RestartServiceAsync(string project, string service, CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(project)}/restart/{Uri.EscapeDataString(service)}", cancellationToken: cancellationToken);
 
-    public async Task<string> StopProjectAsync(string project)
-        => await SendAsync(HttpMethod.Post, $"/api/projects/{project}/stop");
+    public Task<PgApiResult> StopProjectAsync(string project, CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(project)}/stop", cancellationToken: cancellationToken);
 
-    public async Task<string> StartProjectAsync(string project)
-        => await SendAsync(HttpMethod.Post, $"/api/projects/{project}/start");
+    public Task<PgApiResult> StartProjectAsync(string project, CancellationToken cancellationToken = default)
+        => SendAsync(HttpMethod.Post, $"/api/projects/{Uri.EscapeDataString(project)}/start", cancellationToken: cancellationToken);
 
-    private async Task<string> SendAsync(HttpMethod method, string route, bool authRequired = true)
+    private async Task<PgApiResult> SendAsync(
+        HttpMethod method,
+        string route,
+        bool authRequired = true,
+        CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(Utils.pgApiBaseUrl))
-            return "❌ PG API URL не задан";
+        if (authRequired && string.IsNullOrWhiteSpace(Global.Vars.Cfg.pgApiToken))
+            return PgApiResult.Fail("Токен не задан или протух");
 
-        if (!Uri.TryCreate(Utils.pgApiBaseUrl, UriKind.Absolute, out var baseUri))
-            return $"❌ PG API URL невалидный: {Utils.pgApiBaseUrl}";
+        var response = await CommonUtils.Web.SendAsync(
+            _httpClientFactory, "PG API", Global.Vars.Cfg.pgApiBaseUrl, method, route, Timeout,
+            request =>
+            {
+                if (authRequired)
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Global.Vars.Cfg.pgApiToken);
+            },
+            cancellationToken);
 
-        var client = _httpClientFactory.CreateClient(nameof(PgApiService));
-        client.BaseAddress = baseUri;
+        if (response.Status is null)
+            return PgApiResult.Fail(response.Error);
 
-        using var request = new HttpRequestMessage(method, route);
-
-        if (authRequired)
-        {
-            if (string.IsNullOrWhiteSpace(Utils.pgApiToken))
-                return "❌ Токен не задан или протух";
-
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", Utils.pgApiToken);
-        }
-
-        using var response = await client.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
-
-        if (string.IsNullOrWhiteSpace(body))
-            body = "(пустой ответ)";
-
-        var normalized = body.Length > 1600 ? body[..1600] + "\n... (обрезано)" : body;
-        var sb = new StringBuilder();
-        sb.AppendLine($"Status: {(int)response.StatusCode} {response.StatusCode}");
-        sb.AppendLine("```json");
-        sb.AppendLine(normalized);
-        sb.AppendLine("```");
-        return sb.ToString();
+        return new PgApiResult(
+            response.Ok,
+            response.Status,
+            string.IsNullOrWhiteSpace(response.Body) ? "(пустой ответ)" : CommonUtils.Text.Truncate(response.Body, MaxBodyLength),
+            response.Error);
     }
 }

@@ -1,17 +1,21 @@
 ﻿using Discord;
 using Discord.Commands;
+using DiscordTelegramFrontier;
+using sblngavnav6.Common;
+using sblngavnav6.Data;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using static sblngavnav5X.Data.DataRoots;
+using static sblngavnav6.Common.CommonUtils.Text;
+using static sblngavnav6.Data.DataRoots;
 
-namespace sblngavnav5X.Commands
+namespace sblngavnav6.Commands
 {
     public class MealCommands : ModuleBase<SocketCommandContext>
     {
         private readonly HttpClient _http;
+
+        private const string Source = "рецепты";
 
         private const string RandomMealUrl = "https://www.themealdb.com/api/json/v1/1/random.php";
         private const string MyMemoryTranslateUrl = "https://api.mymemory.translated.net/get";
@@ -23,6 +27,7 @@ namespace sblngavnav5X.Commands
             _http.Timeout = TimeSpan.FromSeconds(10);
         }
 
+        [FrontierAsImage]
         [Command("рецепт")]
         public async Task RandomRecipeAsync()
         {
@@ -39,7 +44,7 @@ namespace sblngavnav5X.Commands
 
             if (meal is null)
             {
-                await ReplyAsync("Не удалось получить рецепт 🙈");
+                await ReplyAsync(embed: await EmbedHandler.CreateErrorEmbed(Source, "кухня не отвечает, рецепт не приехал"));
                 return;
             }
 
@@ -47,40 +52,47 @@ namespace sblngavnav5X.Commands
 
             var ruName = await TranslateAsync(meal.strMeal ?? string.Empty);
             var ruInstr = await TranslateAsync(meal.strInstructions ?? string.Empty);
-            var ruCat = await TranslateAsync(meal.strCategory ?? "—");
-            var ruKitchen = await TranslateAsync(meal.strArea ?? "—");
+            var ruCat = await TranslateAsync(meal.strCategory ?? string.Empty);
+            var ruKitchen = await TranslateAsync(meal.strArea ?? string.Empty);
 
-            var ingredients = BuildIngredients(meal).ToList();
-            var ruIngredients = await TranslateManyAsync(ingredients);
-            var ingredientsStr = string.Join("\n", ruIngredients.Take(25));
+            var ingredients = BuildIngredients(meal).Take(25).ToList();
+            var ruIngredients = await TranslateListAsync(ingredients);
+            var ingredientsStr = string.Join("\n", ruIngredients);
 
-            var eb = new EmbedBuilder()
-                .WithTitle(string.IsNullOrWhiteSpace(ruName) ? meal.strMeal : ruName)
-                .WithUrl(meal.strSource ?? meal.strYoutube ?? "https://www.themealdb.com")
-                .WithImageUrl(meal.strMealThumb)
-                .WithThumbnailUrl("https://media.discordapp.net/attachments/500682551296393231/1405588340836794439/slyrChef.png?ex=689f5fa7&is=689e0e27&hm=132f3dd57fd685bea30cd4b8dc1e3ba235447f5798243dd96acbc0542269cb33&=&format=webp&quality=lossless&width=230&height=230")
-                .WithColor(new Color(139, 92, 246))
-                .WithDescription(Trunc(string.IsNullOrWhiteSpace(ruInstr) ? meal.strInstructions : ruInstr, 2000))
-                .WithFooter("sbln рецепты от шефчика👨‍🍳")
-                .AddField("Категория", string.IsNullOrWhiteSpace(ruCat) ? "—" : ruCat, true)
-                .AddField("Кухня", string.IsNullOrWhiteSpace(ruKitchen) ? "—" : ruKitchen, true);
+            var fields = new List<EmbedFieldSpec>
+            {
+                new("Категория", string.IsNullOrWhiteSpace(ruCat) ? "-" : ruCat, true),
+                new("Кухня", string.IsNullOrWhiteSpace(ruKitchen) ? "-" : ruKitchen, true)
+            };
 
             if (!string.IsNullOrWhiteSpace(ingredientsStr))
-                eb.AddField("Ингредиенты", Trunc(ingredientsStr, 1024), false);
+                fields.Add(new EmbedFieldSpec("Ингредиенты", Truncate(ingredientsStr, EmbedHandler.MaxFieldValue)));
 
             if (!string.IsNullOrWhiteSpace(meal.strYoutube))
-                eb.AddField("YouTube", meal.strYoutube, false);
+                fields.Add(new EmbedFieldSpec("YouTube", meal.strYoutube));
+
+            var embed = EmbedHandler.Build(new EmbedSpec
+            {
+                Title = string.IsNullOrWhiteSpace(ruName) ? meal.strMeal : ruName,
+                Url = meal.strSource ?? meal.strYoutube ?? "https://www.themealdb.com",
+                Description = Truncate(string.IsNullOrWhiteSpace(ruInstr) ? meal.strInstructions : ruInstr, 2000),
+                ImageUrl = meal.strMealThumb,
+                ThumbnailUrl = "https://media.discordapp.net/attachments/500682551296393231/1405588340836794439/slyrChef.png?ex=689f5fa7&is=689e0e27&hm=132f3dd57fd685bea30cd4b8dc1e3ba235447f5798243dd96acbc0542269cb33&=&format=webp&quality=lossless&width=230&height=230",
+                Color = new Color(139, 92, 246),
+                Fields = fields,
+                Footer = "sbln рецепты от шефчика👨‍🍳"
+            });
 
             await msg.ModifyAsync(m =>
             {
                 m.Content = "";
-                m.Embed = eb.Build();
+                m.Embed = embed;
             });
         }
 
         private async Task<Meal?> GetRandomMealAsync()
         {
-            var resp = await _http.GetFromJsonAsync<MealResponse>(RandomMealUrl);
+            var resp = await _http.GetFromJsonAsync(RandomMealUrl, AppJsonContext.Default.MealResponse);
             return resp?.Meals?.FirstOrDefault();
         }
 
@@ -143,7 +155,7 @@ namespace sblngavnav5X.Commands
                         continue;
                     }
 
-                    var mm = await res.Content.ReadFromJsonAsync<MyMemoryResult>();
+                    var mm = await res.Content.ReadFromJsonAsync(AppJsonContext.Default.MyMemoryResult);
                     var translated = WebUtility.HtmlDecode(mm?.responseData?.translatedText ?? "");
 
                     translatedChunks.Add(string.IsNullOrWhiteSpace(translated) ? chunk : translated);
@@ -151,7 +163,7 @@ namespace sblngavnav5X.Commands
                     await Task.Delay(250);
                 }
 
-                var joined = string.Join("", translatedChunks);
+                var joined = string.Join(" ", translatedChunks);
                 return string.IsNullOrWhiteSpace(joined) ? text : joined;
             }
             catch
@@ -160,19 +172,18 @@ namespace sblngavnav5X.Commands
             }
         }
 
-        private async Task<List<string>> TranslateManyAsync(IEnumerable<string> items)
+        private async Task<List<string>> TranslateListAsync(List<string> items)
         {
-            var source = items?.ToList() ?? new List<string>();
-            var result = new List<string>(source.Count);
+            if (items.Count == 0)
+                return items;
 
-            foreach (var item in source)
-            {
-                var ru = await TranslateAsync(item ?? string.Empty);
-                result.Add(string.IsNullOrWhiteSpace(ru) ? item ?? string.Empty : ru);
-                await Task.Delay(200);
-            }
+            var translated = await TranslateAsync(string.Join(" | ", items));
 
-            return result;
+            var parts = translated
+                .Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .ToList();
+
+            return parts.Count == items.Count ? parts : items;
         }
 
         private static List<string> ChunkForMyMemory(string text, int hardLimit = 500, int safety = 80)
@@ -246,12 +257,6 @@ namespace sblngavnav5X.Commands
 
             FlushCurrent();
             return chunks;
-        }
-
-        private static string Trunc(string? s, int max)
-        {
-            s ??= string.Empty;
-            return s.Length <= max ? s : s[..max] + "…";
         }
     }
 }
