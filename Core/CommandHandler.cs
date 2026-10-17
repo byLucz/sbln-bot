@@ -9,7 +9,9 @@ using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.Services;
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using static sblngavnav6.Common.CommonUtils.Text;
 using Timer = System.Timers.Timer;
 
@@ -18,6 +20,9 @@ namespace sblngavnav6.Core
     public sealed class CommandHandler : IDisposable, IAsyncDisposable
     {
         private readonly DiscordSocketClient _client;
+        private static readonly Regex ArgLabelRegex = new(@"[<\[][^>\]]+[>\]]", RegexOptions.Compiled);
+        private static string[] _commandNames = [];
+
         private readonly CommandService _commands;
         private readonly IServiceProvider _services;
         private readonly GVRConfig _govorilka;
@@ -105,6 +110,12 @@ namespace sblngavnav6.Core
             await _commands.AddModulesAsync(
                 assembly: Assembly.GetEntryAssembly(),
                 services: _services);
+
+            _commandNames = _commands.Commands
+                .SelectMany(command => command.Aliases)
+                .Select(alias => alias.ToLowerInvariant())
+                .Distinct()
+                .ToArray();
         }
 
         private void HookEvents()
@@ -260,26 +271,31 @@ namespace sblngavnav6.Core
 
         public static async Task ReportFailureAsync(Optional<CommandInfo> command, ICommandContext context, IResult result)
         {
-            if (!command.IsSpecified || result.IsSuccess)
+            if (result.IsSuccess)
                 return;
 
-            var cmd = command.Value;
-            string reason = result.Error switch
+            var prefix = UsedPrefix(context);
+
+            if (!command.IsSpecified)
             {
-                CommandError.BadArgCount =>
-                    $"неверное число аргументов{BuildUsageHint(cmd)}",
+                if (result.Error == CommandError.UnknownCommand && Suggest(context.Message?.Content, prefix) is { } guess)
+                    await context.Channel.SendMessageAsync($"🤔 такой команды нет, может `{prefix}{guess}`?", allowedMentions: AllowedMentions.None);
+                return;
+            }
 
-                CommandError.ParseFailed =>
-                    $"неверный тип аргумента{BuildUsageHint(cmd)}",
+            var cmd = command.Value;
+            var help = HelpEmbedService.Find(cmd);
 
-                CommandError.ObjectNotFound =>
-                    $"не найден объект: {result.ErrorReason}{BuildUsageHint(cmd)}",
+            var reason = result.Error switch
+            {
+                CommandError.BadArgCount or CommandError.ParseFailed or CommandError.ObjectNotFound =>
+                    ArgumentProblem(cmd, help, context, result) + UsageHint(cmd, help, prefix),
 
                 CommandError.UnmetPrecondition when !string.IsNullOrWhiteSpace(result.ErrorReason) =>
                     result.ErrorReason,
 
                 CommandError.Exception =>
-                    "внутренняя ошибка, детали в логах",
+                    await ExceptionReasonAsync(cmd, result),
 
                 CommandError.Unsuccessful =>
                     "команда не выполнилась",
@@ -292,31 +308,147 @@ namespace sblngavnav6.Core
             await context.Channel.SendMessageAsync(embed: await EmbedHandler.CreateErrorEmbed(cmd.Name, reason));
         }
 
-        private static string BuildUsageHint(CommandInfo cmd)
+        private static string UsedPrefix(ICommandContext context)
         {
+            if (context.Channel is FrontierProxyChannel)
+                return "/";
+
+            var content = context.Message?.Content ?? "";
+            return new[] { Global.Vars.Cfg.pref1, Global.Vars.Cfg.pref2 }
+                .FirstOrDefault(prefix => !string.IsNullOrEmpty(prefix) && content.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                ?? Global.Vars.Cfg.pref2;
+        }
+
+        private static string Suggest(string content, string prefix)
+        {
+            if (string.IsNullOrWhiteSpace(content) || !content.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                return null;
+
+            var words = content[prefix.Length..].ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0)
+                return null;
+
+            string best = null;
+            var bestDistance = int.MaxValue;
+
+            foreach (var name in _commandNames)
+            {
+                var size = name.Count(symbol => symbol == ' ') + 1;
+                if (size > words.Length)
+                    continue;
+
+                var head = string.Join(' ', words.Take(size));
+                var distance = ToRuLayout(head) == name ? 0 : Distance(head, name);
+                var allowed = name.Length <= 3 ? 0 : name.Length <= 5 ? 1 : 2;
+
+                if (distance <= allowed && distance < bestDistance)
+                {
+                    best = name;
+                    bestDistance = distance;
+                }
+            }
+
+            return best;
+        }
+
+        private static string ArgumentProblem(CommandInfo cmd, HelpCommand help, ICommandContext context, IResult result)
+        {
+            var parameters = cmd.Parameters;
+            var labels = ArgLabels(help, parameters);
+            var tokens = Arguments(cmd, context.Message?.Content);
+
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                var parameter = parameters[i];
+                if (parameter.IsRemainder || parameter.IsMultiple)
+                    break;
+
+                if (i >= tokens.Length)
+                {
+                    if (parameter.IsOptional)
+                        continue;
+                    return $"не хватает: {labels[i]}";
+                }
+
+                var type = Nullable.GetUnderlyingType(parameter.Type) ?? parameter.Type;
+                if (IsNumber(type) && !double.TryParse(tokens[i].Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out _))
+                    return $"ожидал число вместо `{tokens[i]}`";
+
+                if (result.Error == CommandError.ObjectNotFound && typeof(IUser).IsAssignableFrom(type))
+                    return $"не нашёл участника `{tokens[i]}`";
+            }
+
+            return result.Error switch
+            {
+                CommandError.BadArgCount when tokens.Length > parameters.Count && !parameters.Any(p => p.IsRemainder || p.IsMultiple) => "лишние аргументы",
+                CommandError.BadArgCount => "не хватает аргументов",
+                CommandError.ObjectNotFound => "не нашёл, кого ты имел в виду",
+                _ => "не смог разобрать аргументы"
+            };
+        }
+
+        private static string[] Arguments(CommandInfo cmd, string content)
+        {
+            if (string.IsNullOrWhiteSpace(content))
+                return [];
+
+            var text = content.TrimStart();
+            var prefix = new[] { Global.Vars.Cfg.pref1, Global.Vars.Cfg.pref2 }
+                .FirstOrDefault(value => !string.IsNullOrEmpty(value) && text.StartsWith(value, StringComparison.OrdinalIgnoreCase));
+            if (prefix is not null)
+                text = text[prefix.Length..];
+
+            var alias = cmd.Aliases.Prepend(cmd.Name)
+                .OrderByDescending(value => value.Length)
+                .FirstOrDefault(value => text.StartsWith(value, StringComparison.OrdinalIgnoreCase));
+            if (alias is not null)
+                text = text[alias.Length..];
+
+            return text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        }
+
+        private static string[] ArgLabels(HelpCommand help, IReadOnlyList<Discord.Commands.ParameterInfo> parameters)
+        {
+            var fromHelp = help?.Args is { } args
+                ? ArgLabelRegex.Matches(args).Select(match => match.Value).ToArray()
+                : [];
+
+            return parameters
+                .Select((parameter, i) => fromHelp.Length == parameters.Count ? fromHelp[i] : $"<{FriendlyTypeName(parameter.Type)}>")
+                .ToArray();
+        }
+
+        private static string UsageHint(CommandInfo cmd, HelpCommand help, string prefix)
+        {
+            if (help is not null)
+                return $"\nкак надо: `{prefix}{help.Usage}`" + (help.Example is null ? "" : $"\nпример: `{help.Example}`");
+
             if (!cmd.Parameters.Any())
                 return string.Empty;
 
-            var paramStr = string.Join(" ", cmd.Parameters.Select(p =>
-            {
-                var typeName = FriendlyTypeName(p.Type);
-                var label = string.IsNullOrWhiteSpace(p.Summary) ? $"{p.Name}:{typeName}" : p.Summary;
-                return p.IsOptional ? $"[{label}]" : $"<{label}>";
-            }));
-
-            var prefix = Global.Vars.Cfg.pref1;
-            var aliases = cmd.Aliases.Count > 0 ? $" ({string.Join("/", cmd.Aliases)})" : "";
-            return $"\nИспользование: `{prefix} {cmd.Name}{aliases} {paramStr}`";
+            var args = string.Join(" ", cmd.Parameters.Select(p => p.IsOptional ? $"[{FriendlyTypeName(p.Type)}]" : $"<{FriendlyTypeName(p.Type)}>"));
+            return $"\nкак надо: `{prefix}{cmd.Name} {args}`";
         }
+
+        private static async Task<string> ExceptionReasonAsync(CommandInfo cmd, IResult result)
+        {
+            var code = Guid.NewGuid().ToString("N")[..4].ToUpperInvariant();
+            var exception = result is ExecuteResult execute ? execute.Exception : null;
+            await LoggingService.LogErrorAsync("COMND", $"[{code}] команда {cmd.Name} упала", exception);
+            return $"внутренняя ошибка, код `{code}`";
+        }
+
+        private static bool IsNumber(Type type) =>
+            type == typeof(int) || type == typeof(long) || type == typeof(uint) || type == typeof(ulong) ||
+            type == typeof(float) || type == typeof(double) || type == typeof(decimal);
 
         private static string FriendlyTypeName(Type t)
         {
             var u = Nullable.GetUnderlyingType(t) ?? t;
-            if (u == typeof(int) || u == typeof(long) || u == typeof(uint)) return "число";
-            if (u == typeof(float) || u == typeof(double) || u == typeof(decimal)) return "число";
+            if (IsNumber(u)) return "число";
             if (u == typeof(string)) return "текст";
             if (u == typeof(bool)) return "да/нет";
-            if (u.Name.Contains("GuildUser") || u.Name.Contains("SocketUser")) return "@пользователь";
+            if (typeof(IUser).IsAssignableFrom(u)) return "@юзер";
             if (u.Name.Contains("Role")) return "@роль";
             if (u.Name.Contains("Channel")) return "#канал";
             return u.Name.ToLower();
@@ -324,7 +456,7 @@ namespace sblngavnav6.Core
 
         private Task LogAsync(LogMessage log)
         {
-            if (log.Exception is CommandException { Context.Channel: FrontierProxyChannel })
+            if (log.Exception is CommandException)
                 return Task.CompletedTask;
 
             return LoggingService.LogAsync("COMND", log.Severity, log.Message, log.Exception);

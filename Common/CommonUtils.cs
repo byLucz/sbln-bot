@@ -115,6 +115,82 @@ namespace sblngavnav6.Common
 
         public static class Text
         {
+            private static readonly Dictionary<char, char> RuToEn = new()
+            {
+                ['й'] = 'q',
+                ['ц'] = 'w',
+                ['у'] = 'e',
+                ['к'] = 'r',
+                ['е'] = 't',
+                ['н'] = 'y',
+                ['г'] = 'u',
+                ['ш'] = 'i',
+                ['щ'] = 'o',
+                ['з'] = 'p',
+                ['х'] = '[',
+                ['ъ'] = ']',
+                ['ф'] = 'a',
+                ['ы'] = 's',
+                ['в'] = 'd',
+                ['а'] = 'f',
+                ['п'] = 'g',
+                ['р'] = 'h',
+                ['о'] = 'j',
+                ['л'] = 'k',
+                ['д'] = 'l',
+                ['ж'] = ';',
+                ['э'] = '\'',
+                ['я'] = 'z',
+                ['ч'] = 'x',
+                ['с'] = 'c',
+                ['м'] = 'v',
+                ['и'] = 'b',
+                ['т'] = 'n',
+                ['ь'] = 'm',
+                ['б'] = ',',
+                ['ю'] = '.'
+            };
+
+            private static readonly Dictionary<char, char> EnToRu =
+                RuToEn.ToDictionary(pair => pair.Value, pair => pair.Key);
+
+            public static int Distance(string a, string b)
+            {
+                var d = new int[a.Length + 1, b.Length + 1];
+                for (var i = 0; i <= a.Length; i++) d[i, 0] = i;
+                for (var j = 0; j <= b.Length; j++) d[0, j] = j;
+
+                for (var i = 1; i <= a.Length; i++)
+                    for (var j = 1; j <= b.Length; j++)
+                    {
+                        var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                        d[i, j] = Math.Min(Math.Min(d[i - 1, j] + 1, d[i, j - 1] + 1), d[i - 1, j - 1] + cost);
+                        if (i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1])
+                            d[i, j] = Math.Min(d[i, j], d[i - 2, j - 2] + 1);
+                    }
+
+                return d[a.Length, b.Length];
+            }
+
+            public static string ToEnLayout(string source) => MapLayout(source, RuToEn);
+
+            public static string ToRuLayout(string source) => MapLayout(source, EnToRu);
+
+            private static string MapLayout(string source, Dictionary<char, char> map)
+            {
+                var builder = new System.Text.StringBuilder(source.Length);
+
+                foreach (var symbol in source)
+                {
+                    if (map.TryGetValue(char.ToLowerInvariant(symbol), out var replacement))
+                        builder.Append(char.IsUpper(symbol) ? char.ToUpperInvariant(replacement) : replacement);
+                    else
+                        builder.Append(symbol);
+                }
+
+                return builder.ToString();
+            }
+
             public static string Truncate(string s, int max)
             {
                 if (string.IsNullOrEmpty(s)) return s ?? "";

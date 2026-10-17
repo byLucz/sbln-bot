@@ -81,52 +81,13 @@ namespace sblngavnav6.Audio8
         private const int MinPrefixLength = 4;
         private const int MaxPrefixLength = 10;
 
-        private static readonly Dictionary<char, char> RuToEn = new()
-        {
-            ['й'] = 'q',
-            ['ц'] = 'w',
-            ['у'] = 'e',
-            ['к'] = 'r',
-            ['е'] = 't',
-            ['н'] = 'y',
-            ['г'] = 'u',
-            ['ш'] = 'i',
-            ['щ'] = 'o',
-            ['з'] = 'p',
-            ['х'] = '[',
-            ['ъ'] = ']',
-            ['ф'] = 'a',
-            ['ы'] = 's',
-            ['в'] = 'd',
-            ['а'] = 'f',
-            ['п'] = 'g',
-            ['р'] = 'h',
-            ['о'] = 'j',
-            ['л'] = 'k',
-            ['д'] = 'l',
-            ['ж'] = ';',
-            ['э'] = '\'',
-            ['я'] = 'z',
-            ['ч'] = 'x',
-            ['с'] = 'c',
-            ['м'] = 'v',
-            ['и'] = 'b',
-            ['т'] = 'n',
-            ['ь'] = 'm',
-            ['б'] = ',',
-            ['ю'] = '.'
-        };
-
-        private static readonly Dictionary<char, char> EnToRu =
-            RuToEn.ToDictionary(pair => pair.Value, pair => pair.Key);
-
         public static List<string> Variants(string input)
         {
             var source = CollapseSpaces(input?.Trim() ?? string.Empty);
             var variants = new List<string>();
 
-            Add(variants, MapChars(source, RuToEn));
-            Add(variants, MapChars(source, EnToRu));
+            Add(variants, ToEnLayout(source));
+            Add(variants, ToRuLayout(source));
             Add(variants, Transliterate(source));
 
             foreach (var prefix in PrefixCuts(source))
@@ -155,21 +116,6 @@ namespace sblngavnav6.Audio8
 
             if (!target.Contains(value, StringComparer.OrdinalIgnoreCase))
                 target.Add(value);
-        }
-
-        private static string MapChars(string source, Dictionary<char, char> map)
-        {
-            var builder = new StringBuilder(source.Length);
-
-            foreach (var symbol in source)
-            {
-                if (map.TryGetValue(char.ToLowerInvariant(symbol), out var replacement))
-                    builder.Append(char.IsUpper(symbol) ? char.ToUpperInvariant(replacement) : replacement);
-                else
-                    builder.Append(symbol);
-            }
-
-            return builder.ToString();
         }
 
         private static string Transliterate(string source)

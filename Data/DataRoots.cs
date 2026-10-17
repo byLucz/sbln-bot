@@ -143,6 +143,8 @@ namespace sblngavnav6.Data
             public string[] names { get; set; } = [];
             public string about { get; set; } = "";
             public bool telegram { get; set; }
+            public string args { get; set; } = "";
+            public string example { get; set; } = "";
         }
 
 

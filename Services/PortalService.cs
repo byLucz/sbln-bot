@@ -116,9 +116,11 @@ namespace sblngavnav6.Services
                     commands = section.Commands
                         .Select(command => new PortalCommandDto
                         {
-                            names = command.Command.Split('|', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries),
+                            names = command.Aliases,
                             about = command.About,
-                            telegram = command.Telegram
+                            telegram = command.Telegram,
+                            args = command.Args ?? "",
+                            example = command.Example ?? ""
                         })
                         .ToList()
                 })
