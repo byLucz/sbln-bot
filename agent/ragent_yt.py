@@ -125,6 +125,9 @@ def resolve(query):
     else:
         target = query if re.match(r"^https?://", query) else f"ytsearch1:{query}"
     info, stderr = fetch(target, "yt-dlp не нашёл трек")
+    if not info.get("id") and target.startswith("ytsearch1:"):
+        target = f"scsearch1:{query}"
+        info, stderr = fetch(target, "yt-dlp не нашёл трек")
     video = (f"sc{info.get('id')}" if SC_TARGET.match(target) and info.get("id") else info.get("id")) or ""
     if not VIDEO_ID.match(video):
         raise RuntimeError(last_line(stderr) or "yt-dlp ничего не нашёл по запросу")
