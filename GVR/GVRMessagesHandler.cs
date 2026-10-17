@@ -155,7 +155,7 @@ namespace sblngavnav6.GVR
             if (model is null)
                 return false;
 
-            using var http = _httpClientFactory.CreateClient();
+            using var http = _httpClientFactory.CreateClient(CommonUtils.Web.PublicClient);
             http.Timeout = TimeSpan.FromSeconds(15);
 
             for (var attempt = 0; attempt < 3; attempt++)

@@ -21,34 +21,72 @@ namespace sblngavnav6.Commands;
 
 public class MainCommands : ModuleBase<SocketCommandContext>
 {
+    private const string ReleaseFeed = "https://lois.media/sbln/rss.xml";
+
     private readonly DiscordSocketClient _client;
     private readonly CommandHandler _commandHandler;
     private readonly Audio8Service _audio;
     private readonly GVRDb _gvr;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public MainCommands(DiscordSocketClient client, CommandHandler commandHandler, Audio8Service audio, GVRDb gvr)
+    public MainCommands(DiscordSocketClient client, CommandHandler commandHandler, Audio8Service audio, GVRDb gvr, IHttpClientFactory httpClientFactory)
     {
         _client = client;
         _commandHandler = commandHandler;
         _audio = audio;
         _gvr = gvr;
+        _httpClientFactory = httpClientFactory;
     }
 
     private static readonly Regex MathSafeRegex = new(@"^[\d\s\+\-\*\/\(\)\.]+$", RegexOptions.Compiled);
 
-    [Command("111")]
+    [Command("рсс")]
     [RequireOwner(ErrorMessage = "недостаточно прав")]
-    public Task ChangeLog() => ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+    public async Task ReleaseAsync(string version = null)
     {
-        Description =
-            $"{Format.Bold($"devlog {Versioning.Full}")}: Финальный кумулятивный патч перед переездом на .NET 10\n" +
-            $"• AudioSeven: починка плейлистов/миксов, поиск по всем источникам + умные варианты, реакция шафл → команда {Format.Bold("перемешай")}\n" +
-            $"• Ограничение голосования до 50 вариантов, фикс-таймер, появилась возможность скипнуть перечисления\n" +
-            $"• Говорилка обновлена до версии 1.7, фиксы core/edge-кейсов\n" +
-            $"• [Полный чендж-лог доступен на сайте 🌀](https://lois.media/sbln/v{Versioning.Version})",
-        Footer = EmbedHandler.DevFooter,
-        FooterIconUrl = EmbedHandler.DevIcon
-    }));
+        try { await Context.Message.DeleteAsync(); }
+        catch (Exception ex) when (ex is Discord.Net.HttpException or TimeoutException) { }
+
+        version = (version ?? Versioning.Version).TrimStart('v', 'V');
+
+        using var http = _httpClientFactory.CreateClient();
+        http.Timeout = TimeSpan.FromSeconds(15);
+
+        System.Xml.Linq.XElement item;
+        try
+        {
+            var feed = System.Xml.Linq.XDocument.Parse(await http.GetStringAsync(ReleaseFeed));
+            item = feed.Descendants("item").FirstOrDefault(entry =>
+                ((string)entry.Element("link") ?? "").TrimEnd('/').EndsWith($"/v{version}", StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Xml.XmlException)
+        {
+            await FailAsync("рсс", $"не смог прочитать ленту сайта: {ex.Message}");
+            return;
+        }
+
+        if (item is null)
+        {
+            await FailAsync("рсс", $"поста v{version} на сайте нет, проверь что он опубликован");
+            return;
+        }
+
+        var title = ((string)item.Element("title") ?? "").Split(": ", 2) is [_, var rest] ? rest : (string)item.Element("title");
+        var points = ((string)item.Element("description") ?? "")
+            .Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.StartsWith('•') ? line : $"• {line}");
+
+        await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+        {
+            Title = (string)item.Element(System.Xml.Linq.XName.Get("core", "https://lois.media/sbln")),
+            Description =
+                $"{Format.Bold($"devlog ver {version}: {title}")}\n" +
+                string.Join("\n", points) +
+                $"\n• [Полный чендж-лог доступен на сайте 🌀]({(string)item.Element("link")})",
+            Footer = EmbedHandler.DevFooter,
+            FooterIconUrl = EmbedHandler.DevIcon
+        }));
+    }
 
     [RequireGuild]
     [Command("ава")]

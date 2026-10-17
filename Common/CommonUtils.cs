@@ -416,6 +416,52 @@ namespace sblngavnav6.Common
                 }
             }
 
+            public const string PublicClient = "Public";
+
+            public static SocketsHttpHandler PublicHandler() => new()
+            {
+                UseProxy = false,
+                ConnectCallback = async (context, cancellationToken) =>
+                {
+                    var addresses = await System.Net.Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken).ConfigureAwait(false);
+                    if (addresses.Length == 0 || !addresses.All(IsPublicAddress))
+                        throw new HttpRequestException($"{context.DnsEndPoint.Host} ведёт во внутреннюю сеть");
+
+                    var socket = new System.Net.Sockets.Socket(addresses[0].AddressFamily, System.Net.Sockets.SocketType.Stream, System.Net.Sockets.ProtocolType.Tcp) { NoDelay = true };
+                    try
+                    {
+                        await socket.ConnectAsync(new System.Net.IPEndPoint(addresses[0], context.DnsEndPoint.Port), cancellationToken).ConfigureAwait(false);
+                        return new System.Net.Sockets.NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                }
+            };
+
+            public static bool IsPublicAddress(System.Net.IPAddress address)
+            {
+                if (address.IsIPv4MappedToIPv6)
+                    address = address.MapToIPv4();
+
+                if (System.Net.IPAddress.IsLoopback(address))
+                    return false;
+
+                var bytes = address.GetAddressBytes();
+
+                if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                    return !(bytes[0] is 0 or 10 or 127 || bytes[0] >= 224
+                        || bytes[0] == 100 && bytes[1] is >= 64 and <= 127
+                        || bytes[0] == 169 && bytes[1] == 254
+                        || bytes[0] == 172 && bytes[1] is >= 16 and <= 31
+                        || bytes[0] == 192 && bytes[1] == 168);
+
+                return !(address.Equals(System.Net.IPAddress.IPv6Any) || address.IsIPv6LinkLocal || address.IsIPv6SiteLocal
+                    || address.IsIPv6Multicast || (bytes[0] & 0xFE) == 0xFC);
+            }
+
             public static async Task<byte[]> DownloadAsync(HttpClient http, string url, int maxBytes, CancellationToken cancellationToken = default)
             {
                 if (!Uri.TryCreate(url?.Trim(), UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))

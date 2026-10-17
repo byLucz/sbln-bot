@@ -5,6 +5,7 @@ using DiscordTelegramFrontier;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav6.Audio8;
 using sblngavnav6.Commands;
+using sblngavnav6.Common;
 using sblngavnav6.Data;
 using sblngavnav6.GVR;
 using sblngavnav6.PPM;
@@ -87,7 +88,10 @@ namespace sblngavnav6.Core
                         o.User(left, right);
                 })
                 .AddAudio8()
-                .AddHttpClient();
+                .AddHttpClient()
+                .AddHttpClient(CommonUtils.Web.PublicClient)
+                    .ConfigurePrimaryHttpMessageHandler(CommonUtils.Web.PublicHandler)
+                    .Services;
         }
 
         private static Task ReportTelegramAsync(Exception ex)

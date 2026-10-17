@@ -24,7 +24,7 @@ namespace sblngavnav6.Images
         public ImageCommands(IHttpClientFactory httpClientFactory, GVRMessagesHandler gvr)
         {
             _gvr = gvr;
-            _http = httpClientFactory.CreateClient();
+            _http = httpClientFactory.CreateClient(CommonUtils.Web.PublicClient);
             _http.Timeout = TimeSpan.FromSeconds(15);
         }
 

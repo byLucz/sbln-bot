@@ -55,13 +55,25 @@ namespace sblngavnav6.Core
                 if (Global.Vars.Cfg.slashScopeGuild != 0)
                 {
                     await _interactions.RegisterCommandsToGuildAsync(Global.Vars.Cfg.slashScopeGuild);
+
+                    if ((await _client.GetGlobalApplicationCommandsAsync()).Count > 0)
+                    {
+                        await _client.Rest.DeleteAllGlobalCommandsAsync();
+                        await LoggingService.LogInformationAsync("INTRS", "Убраны глобальные слэш-команды, бот работает только на своём сервере");
+                    }
                     return;
                 }
 
                 await _interactions.RegisterCommandsGloballyAsync();
 
-                if (Global.Vars.Cfg.slashDevGuild != 0)
-                    await _interactions.RegisterCommandsToGuildAsync(Global.Vars.Cfg.slashDevGuild);
+                foreach (var guild in _client.Guilds)
+                {
+                    if ((await guild.GetApplicationCommandsAsync()).Count == 0)
+                        continue;
+
+                    await guild.DeleteApplicationCommandsAsync();
+                    await LoggingService.LogInformationAsync("INTRS", $"Убраны серверные копии слэш-команд: {guild.Name}");
+                }
             }
             catch (Exception ex)
             {
