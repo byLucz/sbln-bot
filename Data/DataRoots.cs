@@ -7,22 +7,8 @@ namespace sblngavnav5X.Data
     {
         public static class States
         {
-            public static int RealId { get; set; }
-            public static List<string> YaicaList { get; } = new();
-            public static List<string> VolkList { get; } = new();
-            public static List<string> PatList { get; } = new();
-            public static List<string> FffList { get; } = new();
-            public static List<string> HugList { get; } = new();
-            public static List<string> KissList { get; } = new();
-            public static List<string> KusList { get; } = new();
-            public static List<string> BuhatList { get; } = new();
-            public static List<string> EbaloList { get; } = new();
             public static List<string> Streamers { get; } = new();
             public static List<string> StreamerIds { get; } = new();
-            public static List<string> StatusText { get; } = new();
-            public static List<string> StatusPos { get; } = new();
-            public static List<string> StatusLink { get; } = new();
-            public static List<string> StatusType { get; } = new();
         }
 
         public class Rates
@@ -78,41 +64,12 @@ namespace sblngavnav5X.Data
             public string Image { get; set; }
         }
 
-        public class VersionEntry
-        {
-            public string Version { get; set; }
-            public DateTime Date { get; set; }
-        }
-
-        public class PackageVersionEntry
-        {
-            public string PackageName { get; set; }
-            public string PackageVersion { get; set; }
-            public DateTime CreatedAt { get; set; }
-        }
-
         public class RatingEntry
         {
             public string UserId { get; set; }
             public int BookId { get; set; }
             public int[] Scores { get; set; }
             public double FinalScore { get; set; }
-        }
-
-        public sealed class BookExportDto
-        {
-            public int id { get; set; }
-            public string title { get; set; } = "";
-            public string authors { get; set; } = "";
-            public string suggestedBy { get; set; } = "";
-            public int season { get; set; }
-            public Dictionary<string, RatingExportDto> ratings { get; set; } = new();
-        }
-
-        public sealed class RatingExportDto
-        {
-            public int[] scores { get; set; } = [];
-            public double final { get; set; }
         }
 
         public class MealResponse

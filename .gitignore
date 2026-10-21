@@ -9,3 +9,8 @@ obj/
 appsettings.*.local.json
 
 messages.csv
+config/config-v5x.json
+docs/
+logs/
+data/
+*.tmp

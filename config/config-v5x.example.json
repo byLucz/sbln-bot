@@ -1,0 +1,47 @@
+{
+  "System": {
+    "BotToken": "",
+    "DbConnectionString": "Server=host.docker.internal;Port=3306;Database=sbln;Uid=USER;Pwd=PASS;",
+    "Prefix1": "x ",
+    "Prefix2": "х "
+  },
+  "Modules": {
+    "Music": "true",
+    "Govor": "true",
+    "Streams": "true",
+    "Books": "true",
+    "Weather": "true",
+    "Welcome": "true",
+    "Meal": "true",
+    "Fun": "true",
+    "Games": "true"
+  },
+  "Api": {
+    "WeatherApiKey": "",
+    "StreamCid": "",
+    "StreamAuth": "",
+    "GBooksApi": ""
+  },
+  "Lava": {
+    "LavaHost": "host.docker.internal",
+    "LavaPort": "2333",
+    "LavaPass": "youshallnotpass",
+    "AudioPath": ""
+  },
+  "Govor": {
+    "MessageSourceChannelId": "0",
+    "MessagesFile": "",
+    "IntervalMs": "86400000"
+  },
+  "Streams": {
+    "NotifChannel": "twitch",
+    "UpdateSeconds": "600"
+  },
+  "Welcome": {
+    "Channel": "mainlobby",
+    "Role": "Челик"
+  },
+  "Books": {
+    "BooksSeason": "2"
+  }
+}

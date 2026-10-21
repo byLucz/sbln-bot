@@ -2,7 +2,6 @@
 using Discord.WebSocket;
 using TwitchLib.Api;
 using TwitchLib.Api.Helix.Models.Games;
-using TwitchLib.Api.Helix.Models.Streams.GetStreams;
 using TwitchLib.Api.Helix.Models.Users.GetUsers;
 using TwitchLib.Api.Services;
 using TwitchLib.Api.Services.Events;
@@ -19,9 +18,11 @@ namespace sblngavnav5X.TwitchService
 
         private void LoadStreamOnlineState()
         {
-            foreach (var id in DataBase.LoadStreamsOnline())
-                if (!StreamsOnline.Contains(id))
-                    StreamsOnline.Add(id);
+            var online = DataBase.LoadStreamsOnline();
+            lock (StreamsOnline)
+                foreach (var id in online)
+                    if (!StreamsOnline.Contains(id))
+                        StreamsOnline.Add(id);
         }
 
         public StreamMonoService(DiscordSocketClient discord)
@@ -80,7 +81,6 @@ namespace sblngavnav5X.TwitchService
                 }
 
                 await LoggingService.LogCriticalAsync("TTVLK", $"{ex.GetType().Name} - Попытка {CreationAttempts}: Ошибка в загрузке профилей, повторная попытка...");
-                await VerifyAndGetStreamIdAsync();
                 CreationAttempts++;
                 await CreateStreamMonoAsync();
                 return;
@@ -89,7 +89,6 @@ namespace sblngavnav5X.TwitchService
             try
             {
                 _liveStreamMonitor = new LiveStreamMonitorService(TwitchApi, UpdInt, 100);
-                _liveStreamMonitor.OnServiceTick += OnServiceTickEvent;
                 _liveStreamMonitor.OnChannelsSet += OnChannelsSetEvent;
                 _liveStreamMonitor.OnServiceStarted += OnServiceStartedEvent;
                 _liveStreamMonitor.OnServiceStopped += OnServiceStoppedEvent;
@@ -115,10 +114,6 @@ namespace sblngavnav5X.TwitchService
             await LoggingService.LogInformationAsync("TTVLK", $"Статус мониторинга - {_liveStreamMonitor?.Enabled ?? false}");
         }
 
-        private void OnServiceTickEvent(object sender, OnServiceTickArgs e)
-        {
-        }
-
         private static async void OnServiceStartedEvent(object sender, OnServiceStartedArgs e)
         {
             await LoggingService.LogInformationAsync("TTVLK", "Мониторинг успешно запущен!");
@@ -131,8 +126,24 @@ namespace sblngavnav5X.TwitchService
 
         private async void OnStreamOnlineEventAsync(object sender, OnStreamOnlineArgs e)
         {
-            if (StreamsOnline.Contains(e.Stream.UserId))
-                return;
+            try
+            {
+                await HandleStreamOnlineAsync(e);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogErrorAsync("TTVLK", $"Ошибка уведомления о стриме {e.Stream?.UserName}", ex);
+            }
+        }
+
+        private async Task HandleStreamOnlineAsync(OnStreamOnlineArgs e)
+        {
+            lock (StreamsOnline)
+            {
+                if (StreamsOnline.Contains(e.Stream.UserId))
+                    return;
+                StreamsOnline.Add(e.Stream.UserId);
+            }
 
             var gameTemp = new List<string> { e.Stream.GameId };
 
@@ -143,6 +154,7 @@ namespace sblngavnav5X.TwitchService
             }
             catch (Exception ex)
             {
+                lock (StreamsOnline) StreamsOnline.Remove(e.Stream.UserId);
                 await LoggingService.LogCriticalAsync("TTVLK", $"GameResponse: {ex.Message}");
                 return;
             }
@@ -153,6 +165,7 @@ namespace sblngavnav5X.TwitchService
             }
             catch (Exception ex)
             {
+                lock (StreamsOnline) StreamsOnline.Remove(e.Stream.UserId);
                 await LoggingService.LogCriticalAsync("TTVLK", $"UpdateLiveStreams: {ex.Message}");
                 return;
             }
@@ -160,9 +173,11 @@ namespace sblngavnav5X.TwitchService
             EmbedBuilder eb = CreateStreamerEmbed(StreamModels[e.Stream.UserId], e.Stream.ThumbnailUrl);
 
             foreach (var x in StreamNotifChannels)
-                await x.SendMessageAsync($"@everyone, {e.Stream.UserName} сейчас стримит!", false, eb.Build());
+            {
+                try { await x.SendMessageAsync($"@everyone, {e.Stream.UserName} сейчас стримит!", false, eb.Build()); }
+                catch (Exception ex) { await LoggingService.LogWarningAsync("TTVLK", $"Не отправлено в {x.Guild.Name}/#{x.Name}: {ex.Message}"); }
+            }
 
-            StreamsOnline.Add(e.Stream.UserId);
             DataBase.AddStreamOnline(e.Stream.UserId);
 
             await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} добавлен в лист отслеживания");
@@ -170,14 +185,21 @@ namespace sblngavnav5X.TwitchService
 
         private async void OnStreamOfflineEvent(object sender, OnStreamOfflineArgs e)
         {
-            StreamsOnline.Remove(e.Stream.UserId);
-            DataBase.RemoveStreamOnline(e.Stream.UserId);
-            await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} оффлайн, убран из листа");
+            try
+            {
+                lock (StreamsOnline) StreamsOnline.Remove(e.Stream.UserId);
+                DataBase.RemoveStreamOnline(e.Stream.UserId);
+                await LoggingService.LogInformationAsync("TTVLK", $"{e.Stream.UserName} оффлайн, убран из листа");
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogErrorAsync("TTVLK", $"Ошибка offline-события {e.Stream?.UserName}", ex);
+            }
         }
 
         private async void OnChannelsSetEvent(object sender, OnChannelsSetArgs e)
         {
-            if (_liveStreamMonitor.ChannelsToMonitor != null)
+            if (_liveStreamMonitor?.ChannelsToMonitor != null)
             {
                 await LoggingService.LogInformationAsync("TTVLK", "Каналы загружены");
                 return;
@@ -188,18 +210,21 @@ namespace sblngavnav5X.TwitchService
 
         private void GetStreamerList()
         {
-            List<string> tmp = DataRoots.States.Streamers;
-            StreamList = tmp ?? new List<string>();
+            lock (DataRoots.States.Streamers)
+                StreamList = DataRoots.States.Streamers.ToList();
         }
 
         private async Task GetStreamerIdDictAsync()
         {
-            var tmp = DataRoots.States.StreamerIds
-                .Select(part => part.Split(':'))
-                .Where(part => part.Length == 2)
-                .ToDictionary(sp => sp[0], sp => sp[1]);
+            Dictionary<string, string> tmp;
+            lock (DataRoots.States.Streamers)
+                tmp = DataRoots.States.StreamerIds
+                    .Select(part => part.Split(':'))
+                    .Where(part => part.Length == 2)
+                    .GroupBy(sp => sp[0])
+                    .ToDictionary(g => g.Key, g => g.First()[1]);
 
-            StreamIds = tmp ?? new Dictionary<string, string>();
+            StreamIds = tmp;
             StreamIdList = StreamIds.Values.ToList();
 
             await LoggingService.LogInformationAsync("TTVLK", "ТвичМонитор включен");
@@ -214,7 +239,7 @@ namespace sblngavnav5X.TwitchService
                 Stream = twitchStream.UserName,
                 Thumb = twitchStream.ThumbnailUrl,
                 Id = twitchStream.UserId,
-                Avatar = StreamProfileImages[twitchStream.UserId],
+                Avatar = StreamProfileImages.TryGetValue(twitchStream.UserId, out var avatar) ? avatar : null,
                 Title = twitchStream.Title,
                 Game = gameName,
                 Viewers = twitchStream.ViewerCount,
@@ -283,45 +308,25 @@ namespace sblngavnav5X.TwitchService
             return eb;
         }
 
-        public async Task VerifyAndGetStreamIdAsync()
-        {
-            Dictionary<string, string> streamsidsDict = new();
-            List<string> verifiedStreams = new();
-            List<string> tmp = new() { " " };
-
-            foreach (string s in StreamList)
-            {
-                tmp[0] = s;
-
-                try
-                {
-                    GetUsersResponse response =
-                        await TwitchApi.Helix.Users.GetUsersAsync(logins: tmp, accessToken: TwitchApi.Settings.AccessToken);
-
-                    if (response.Users.Length > 0)
-                    {
-                        streamsidsDict.Add(response.Users[0].Login, response.Users[0].Id);
-                        verifiedStreams.Add(s);
-                    }
-
-                    await Task.Delay(5000);
-                }
-                catch (TwitchLib.Api.Core.Exceptions.InternalServerErrorException ex)
-                {
-                    await LoggingService.LogCriticalAsync("TTVLK", $"InternalService: {ex.Message}");
-                }
-            }
-
-            await UpdateChannelsToMonitor();
-        }
-
         public async Task UpdateChannelsToMonitor()
         {
+            if (_liveStreamMonitor == null)
+            {
+                GetStreamerList();
+                await GetStreamerIdDictAsync();
+                return;
+            }
+
             await GetStreamerIdDictAsync();
 
             try
             {
                 _liveStreamMonitor.SetChannelsById(StreamIdList);
+                if (!_liveStreamMonitor.Enabled && StreamIdList.Count > 0)
+                {
+                    LoadStreamOnlineState();
+                    _liveStreamMonitor.Start();
+                }
             }
             catch (ArgumentException ex)
             {
@@ -333,29 +338,6 @@ namespace sblngavnav5X.TwitchService
 
             StreamProfileImages = await GetProfImgUrlsAsync(StreamIdList);
             GetStreamerList();
-        }
-
-        public bool StopLsm()
-        {
-            if (!_liveStreamMonitor.Enabled)
-                return false;
-
-            _liveStreamMonitor.Stop();
-            return true;
-        }
-
-        public bool StartLsm()
-        {
-            if (_liveStreamMonitor.Enabled)
-                return false;
-
-            _liveStreamMonitor.Start();
-            return true;
-        }
-
-        public string StatusLsm()
-        {
-            return _liveStreamMonitor.Enabled ? "Онлайн" : "Oффлайн";
         }
     }
 }

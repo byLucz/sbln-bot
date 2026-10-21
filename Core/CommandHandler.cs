@@ -88,6 +88,12 @@ namespace sblngavnav5X.Core
             await _commands.AddModulesAsync(
                 assembly: Assembly.GetEntryAssembly(),
                 services: _services);
+
+            foreach (var module in _commands.Modules.Where(m => m.Parent == null && !ModuleToggle.IsEnabled(m.Name)).ToArray())
+            {
+                await _commands.RemoveModuleAsync(module);
+                await LoggingService.LogInformationAsync("COMND", $"Модуль {module.Name} отключен в конфиге");
+            }
         }
 
         private void HookEvents()
@@ -131,6 +137,9 @@ namespace sblngavnav5X.Core
             if (await TryHandleMailReplyAsync(message))
                 return;
 
+            if (message.Channel is IPrivateChannel)
+                return;
+
             var context = new SocketCommandContext(_client, message);
 
             int characterPos = 0;
@@ -152,7 +161,8 @@ namespace sblngavnav5X.Core
                 return;
             }
 
-            await _GVRMessagesHandler.TrySendGeneratedMessageAsync(context);
+            if (Utils.Modules.Govor)
+                await _GVRMessagesHandler.TrySendGeneratedMessageAsync(context);
         }
 
         private async Task<bool> TryHandleMailReplyAsync(SocketUserMessage message)
@@ -199,7 +209,20 @@ namespace sblngavnav5X.Core
             if (!string.IsNullOrWhiteSpace(attachmentLinks))
                 forwardedEmbed.AddField("Вложения", attachmentLinks);
 
-            await sender.SendMessageAsync(embed: forwardedEmbed.Build());
+            try
+            {
+                await sender.SendMessageAsync(embed: forwardedEmbed.Build());
+            }
+            catch (Discord.Net.HttpException ex) when (ex.DiscordCode == DiscordErrorCode.CannotSendMessageToUser)
+            {
+                await message.Channel.SendMessageAsync(embed: new EmbedBuilder()
+                    .WithColor(Color.Red)
+                    .WithDescription("❌ Не доставлено, у отправителя закрыты ЛС")
+                    .WithFooter("sbln почта📧")
+                    .Build());
+                return true;
+            }
+
             await message.Channel.SendMessageAsync(embed: new EmbedBuilder()
                 .WithColor(Color.Green)
                 .WithDescription("✅ Ответ отправлен")
@@ -219,6 +242,10 @@ namespace sblngavnav5X.Core
                 return;
 
             var cmd = command.Value;
+
+            if (result.Error == CommandError.Exception && result is ExecuteResult { Exception: { } exception })
+                await LoggingService.LogErrorAsync("COMND", $"Ошибка команды {cmd.Name}", exception);
+
             string reply = result.Error switch
             {
                 CommandError.BadArgCount =>
@@ -276,7 +303,8 @@ namespace sblngavnav5X.Core
 
         private async Task OnClientReadyAsync()
         {
-            await StartTimerAsync();
+            if (Utils.Modules.Govor)
+                await StartTimerAsync();
             await EnsureLavaNodeConnectedAsync("ready");
         }
 
@@ -298,6 +326,9 @@ namespace sblngavnav5X.Core
 
         private async Task EnsureLavaNodeConnectedAsync(string reason)
         {
+            if (!Utils.Modules.Music)
+                return;
+
             if (_lavaNode.IsConnected)
             {
                 await LoggingService.LogInformationAsync("VI-KA", $"Lavalink подключен / State=({reason})");
@@ -365,15 +396,10 @@ namespace sblngavnav5X.Core
 
                 var cursorPath = Utils.messagesFilePath + ".cursor";
                 ulong? oldestId = null;
-                if (File.Exists(cursorPath) && ulong.TryParse(await File.ReadAllTextAsync(cursorPath), out var parsed))
+                if (File.Exists(cursorPath) && ulong.TryParse((await File.ReadAllTextAsync(cursorPath)).Trim(), out var parsed))
                     oldestId = parsed;
 
-                var existingLines = File.Exists(Utils.messagesFilePath)
-                    ? new HashSet<string>((await File.ReadAllLinesAsync(Utils.messagesFilePath))
-                        .Select(l => l.Trim()).Where(l => l.Length > 0))
-                    : new HashSet<string>();
-
-                var newLines = new List<string>();
+                var contents = new List<string>();
                 ulong? newOldestId = null;
 
                 var query = oldestId.HasValue
@@ -382,38 +408,24 @@ namespace sblngavnav5X.Core
 
                 await foreach (var message in query)
                 {
-                    if (message == null ||
-                        string.IsNullOrWhiteSpace(message.Content) ||
-                        message.Author.IsBot ||
-                        message.Attachments.Any() ||
-                        message.Embeds.Any())
-                    {
-                        continue;
-                    }
-
-                    var content = message.Content.Trim();
-
-                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase) ||
-                        content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase) ||
-                        content.Contains("https://", StringComparison.OrdinalIgnoreCase))
+                    if (message == null)
                         continue;
 
                     if (newOldestId == null || message.Id < newOldestId.Value)
                         newOldestId = message.Id;
 
-                    if (existingLines.Add(content))
-                        newLines.Add(content);
+                    if (message.Author.IsBot || message.Attachments.Any() || message.Embeds.Any())
+                        continue;
+
+                    contents.Add(message.Content);
                 }
 
-                if (newLines.Count > 0)
-                {
-                    await File.AppendAllLinesAsync(Utils.messagesFilePath, newLines);
-                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений: {newLines.Count}, всего в датасете: {existingLines.Count}");
-                }
+                var (added, total) = await GVRStore.AppendAsync(contents);
+
+                if (added > 0)
+                    await LoggingService.LogInformationAsync("GOVOR", $"Добавлено новых сообщений: {added}, всего в датасете: {total}");
                 else
-                {
-                    await LoggingService.LogInformationAsync("GOVOR", "Новых сообщений нет — история исчерпана или канал пуст");
-                }
+                    await LoggingService.LogInformationAsync("GOVOR", "Новых сообщений нет, история исчерпана или канал пуст");
 
                 if (newOldestId.HasValue)
                     await File.WriteAllTextAsync(cursorPath, newOldestId.Value.ToString());

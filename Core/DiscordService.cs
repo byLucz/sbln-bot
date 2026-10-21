@@ -1,5 +1,4 @@
 ﻿using Discord;
-using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.Extensions.DependencyInjection;
 using sblngavnav5X.Audio;
@@ -8,59 +7,89 @@ using sblngavnav5X.Data;
 using sblngavnav5X.GVR;
 using sblngavnav5X.Services;
 using sblngavnav5X.TwitchService;
+using System.Runtime.InteropServices;
 using Victoria;
 using CommandService = Discord.Commands.CommandService;
+using CommandServiceConfig = Discord.Commands.CommandServiceConfig;
 
 namespace sblngavnav5X.Core
 {
     public class DiscordService
     {
-        public readonly DiscordSocketClient _client;
-        private readonly CommandHandler _commandHandler;
-        private readonly InteractionHandler _interHandler;
-        private readonly ServiceProvider _services;
-        private readonly AudioSevenService _audioService;
-        private readonly StreamMonoService _streams;
-        private readonly WelcomeService _welcomeService;
+        public static readonly string ReadyFile = Environment.GetEnvironmentVariable("SBLN_READY_FILE");
 
-        public DiscordService()
-        {
-            _services = ConfigureServices();
-
-            _client = _services.GetRequiredService<DiscordSocketClient>();
-            _commandHandler = _services.GetRequiredService<CommandHandler>();
-            _audioService = _services.GetRequiredService<AudioSevenService>();
-            _streams = _services.GetRequiredService<StreamMonoService>();
-            _interHandler = _services.GetRequiredService<InteractionHandler>();
-            _welcomeService = _services.GetRequiredService<WelcomeService>();
-
-            SubscribeDiscordEvents();
-        }
+        private ServiceProvider _services;
+        private DiscordSocketClient _client;
+        private AudioSevenService _audioService;
 
         public async Task InitializeAsync()
         {
-            string token = Utils.token;
+            SetReady(false);
 
-            _client.Ready += _streams.CreateStreamMonoAsync;
+            try
+            {
+                _ = Utils.token;
+            }
+            catch (TypeInitializationException ex)
+            {
+                await LoggingService.LogCriticalAsync("EXSRV", $"Конфиг не загружен: {ex.InnerException?.Message}");
+                Environment.ExitCode = 1;
+                return;
+            }
 
-            await _client.LoginAsync(TokenType.Bot, token);
-            await _client.StartAsync();
+            if (!DataBase.CanConnect())
+            {
+                await LoggingService.LogCriticalAsync("EXSRV", "Старт без БД невозможен");
+                Environment.ExitCode = 1;
+                return;
+            }
 
-            await _commandHandler.InitializeAsync();
-            await _interHandler.InitializeAsync();
+            _services = ConfigureServices();
+            _client = _services.GetRequiredService<DiscordSocketClient>();
+            _audioService = _services.GetRequiredService<AudioSevenService>();
+            var commandHandler = _services.GetRequiredService<CommandHandler>();
 
-            await DataBase.ApplyLastStatusAsync(_client);
-            DataBase.DownloadStreamers();
+            if (Utils.Modules.Welcome)
+                _services.GetRequiredService<WelcomeService>();
+
+            if (Utils.Modules.Streams)
+            {
+                var streams = _services.GetRequiredService<StreamMonoService>();
+                _client.Ready += streams.CreateStreamMonoAsync;
+            }
+
+            _client.Log += LogAsync;
+            _client.Ready += () => { SetReady(true); return Task.CompletedTask; };
+            _client.Disconnected += _ => { SetReady(false); return Task.CompletedTask; };
+
+            await commandHandler.InitializeAsync();
+
+            if (Utils.Modules.Streams)
+                DataBase.DownloadStreamers();
 
             using var cts = new CancellationTokenSource();
+            void Cancel()
+            {
+                try { cts.Cancel(); } catch (ObjectDisposedException) { }
+            }
 
             Console.CancelKeyPress += (_, e) =>
             {
                 e.Cancel = true;
-                cts.Cancel();
+                Cancel();
             };
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => Cancel();
+            using var sigterm = OperatingSystem.IsWindows() ? null : PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+            {
+                context.Cancel = true;
+                Cancel();
+            });
 
-            AppDomain.CurrentDomain.ProcessExit += (_, _) => { try { cts.Cancel(); } catch { } };
+            await _client.LoginAsync(TokenType.Bot, Utils.token);
+            await _client.StartAsync();
+
+            try { await DataBase.ApplyLastStatusAsync(_client); }
+            catch (Exception ex) { await LoggingService.LogErrorAsync("EXSRV", "Не удалось восстановить статус", ex); }
 
             try
             {
@@ -73,6 +102,7 @@ namespace sblngavnav5X.Core
 
         private async Task ShutdownAsync()
         {
+            SetReady(false);
             await LoggingService.LogInformationAsync("EXSRV", "Завершение работы...");
 
             foreach (var guildId in _audioService.GetActiveGuildIds().ToArray())
@@ -85,9 +115,15 @@ namespace sblngavnav5X.Core
             try { await _services.DisposeAsync(); } catch { }
         }
 
-        private void SubscribeDiscordEvents()
+        private static void SetReady(bool value)
         {
-            _client.Log += LogAsync;
+            if (string.IsNullOrWhiteSpace(ReadyFile)) return;
+            try
+            {
+                if (value) File.WriteAllText(ReadyFile, "ready");
+                else File.Delete(ReadyFile);
+            }
+            catch { }
         }
 
         private Task LogAsync(LogMessage log)
@@ -98,39 +134,41 @@ namespace sblngavnav5X.Core
             return LoggingService.LogDiscordAsync(log);
         }
 
-        private ServiceProvider ConfigureServices()
+        private static ServiceProvider ConfigureServices()
         {
             var config = new DiscordSocketConfig
             {
-                GatewayIntents = GatewayIntents.All
+                GatewayIntents = GatewayIntents.Guilds
+                    | GatewayIntents.GuildMembers
+                    | GatewayIntents.GuildMessages
+                    | GatewayIntents.GuildMessageReactions
+                    | GatewayIntents.MessageContent
+                    | GatewayIntents.GuildVoiceStates
+                    | GatewayIntents.GuildEmojis
+                    | GatewayIntents.DirectMessages
             };
 
             return new ServiceCollection()
                 .AddLogging()
                 .AddSingleton(new DiscordSocketClient(config))
-                .AddSingleton<CommandService>()
-                .AddSingleton<CommandHandler>()
-                .AddSingleton<InteractionService>(provider =>
+                .AddSingleton(new CommandService(new CommandServiceConfig
                 {
-                    var client = provider.GetRequiredService<DiscordSocketClient>();
-                    var interactionConfig = new InteractionServiceConfig
-                    {
-                        DefaultRunMode = RunMode.Async,
-                        LogLevel = LogSeverity.Info
-                    };
-                    return new InteractionService(client, interactionConfig);
-                })
-                .AddSingleton<InteractionHandler>()
+                    DefaultRunMode = Discord.Commands.RunMode.Async,
+                    LogLevel = LogSeverity.Info
+                }))
+                .AddSingleton<CommandHandler>()
                 .AddSingleton<AudioSevenService>()
                 .AddSingleton<GVRMessagesHandler>()
                 .AddSingleton<WeatherHelp>()
                 .AddSingleton<StreamMonoService>()
                 .AddSingleton<WelcomeService>()
-                .AddSingleton<PgApiService>()
-                .AddSingleton<GuildConfig>(_ => new GuildConfig())
+                .AddSingleton<ReactionPager>()
                 .AddSingleton<GovorConfig>(_ => new GovorConfig())
                 .AddLavaNode(x =>
                 {
+                    x.Hostname = Utils.lavaHost;
+                    x.Port = Utils.lavaPort;
+                    x.Authorization = Utils.lavaPass;
                     x.SelfDeaf = true;
                 })
                 .AddHttpClient()

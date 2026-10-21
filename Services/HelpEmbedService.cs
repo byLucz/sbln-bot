@@ -4,14 +4,20 @@ public class HelpEmbedService
 {
     public static List<Embed> GetHelpPages()
     {
-        var pages = new List<Embed>
+        var pages = new List<Embed> { BuildMainHelp() };
+        if (sblngavnav5X.Data.Utils.Modules.Music)
+            pages.Add(BuildMusicHelp());
+        pages.Add(BuildFunHelp());
+        if (sblngavnav5X.Data.Utils.Modules.Books)
+            pages.Add(BuildBooksHelp());
+        pages.Add(BuildVipHelp());
+
+        return pages.Select((page, index) =>
         {
-            BuildMainHelp(),
-            BuildMusicHelp(),
-            BuildFunHelp(),
-            BuildVipHelp()
-        };
-        return pages;
+            var builder = page.ToEmbedBuilder();
+            builder.Footer.Text = $"стр. {index + 1}/{pages.Count} \ndev by lucz@lois.media🏃";
+            return builder.Build();
+        }).ToList();
     }
 
     private static Embed BuildMainHelp()
@@ -40,7 +46,8 @@ public class HelpEmbedService
         var cat = new EmbedFieldBuilder().WithName("кит|кот").WithValue("показать рандомного котика");
         var calc = new EmbedFieldBuilder().WithName("кал").WithValue("калькулятор выражений");
         var ava = new EmbedFieldBuilder().WithName("ава").WithValue("получить аватар участника");
-        var chel = new EmbedFieldBuilder().WithName("чел").WithValue("случайный участник сервера");
+        var chel = new EmbedFieldBuilder().WithName("чел").WithValue("инфа об участнике");
+        var meal = new EmbedFieldBuilder().WithName("рецепт").WithValue("рандомный рецепт на русском");
 
         var embed = new EmbedBuilder()
             .WithAuthor(botzname)
@@ -63,7 +70,8 @@ public class HelpEmbedService
             .AddField(cat)
             .AddField(calc)
             .AddField(ava)
-            .AddField(chel);
+            .AddField(chel)
+            .AddField(meal);
 
         return embed.Build();
     }
@@ -84,11 +92,12 @@ public class HelpEmbedService
         var m5 = new EmbedFieldBuilder().WithName("останови|стоп").WithValue("остановить и очистить плейлист");
         var m7 = new EmbedFieldBuilder().WithName("пауза|пз").WithValue("приостановить");
         var m8 = new EmbedFieldBuilder().WithName("продолжи|прод").WithValue("продолжить");
-        var m9 = new EmbedFieldBuilder().WithName("басс|бс").WithValue("басс буст");
+        var m6 = new EmbedFieldBuilder().WithName("перемешай|шафл|перемешка").WithValue("перемешать очередь");
+        var m9 = new EmbedFieldBuilder().WithName("источник|сорс|деф").WithValue("дефолтный источник поиска: ютуб/спотик/склауд");
         var m10 = new EmbedFieldBuilder().WithName("громкость|гр").WithValue("управление громкостью (0-500)");
         var m11 = new EmbedFieldBuilder().WithName("перейти|пр").WithValue("перейти по таймингу");
         var m12 = new EmbedFieldBuilder().WithName("залупа|луп").WithValue("вкл/выкл повтор");
-        var m13 = new EmbedFieldBuilder().WithName("сброс|сб").WithValue("сбросить настройки плеера");
+        var m13 = new EmbedFieldBuilder().WithName("голосование|голос").WithValue("голосование вслух: а | б | в (2-50 вариантов)");
         var m14 = new EmbedFieldBuilder().WithName("озвучь|ттс").WithValue("произнести текст в голосовом канале");
         var m15 = new EmbedFieldBuilder().WithName("лавастат").WithValue("статус музыкального lavalink");
 
@@ -101,6 +110,7 @@ public class HelpEmbedService
             .AddField(m3)
             .AddField(m4)
             .AddField(m5)
+            .AddField(m6)
             .AddField(m7)
             .AddField(m8)
             .AddField(m9)
@@ -193,11 +203,10 @@ public class HelpEmbedService
         var zxc2 = new EmbedFieldBuilder().WithName("апт").WithValue("аптайм бота");
         var zxc3 = new EmbedFieldBuilder().WithName("актив").WithValue("ставит активность бота");
         var t = new EmbedFieldBuilder().WithName("ст").WithValue("меняет статус бота");
-        var hall = new EmbedFieldBuilder().WithName("зал славы").WithValue("зал славы лучших мемберов");
         var r3 = new EmbedFieldBuilder().WithName("добавить стримера").WithValue("добавить twitch-стримера в отслеживание");
         var r4 = new EmbedFieldBuilder().WithName("убрать стримера").WithValue("убрать twitch-стримера из отслеживания");
         var r5 = new EmbedFieldBuilder().WithName("стримеры|стримерши").WithValue("список отслеживаемых стримеров");
-        var g1 = new EmbedFieldBuilder().WithName("говорилка|говор").WithValue("вкл/выкл режим говорилки");
+        var g1 = new EmbedFieldBuilder().WithName("говорилка|говор").WithValue("команды говорилки");
         var g2 = new EmbedFieldBuilder().WithName("настройкиговора").WithValue("показать текущие настройки");
 
         var embed = new EmbedBuilder()
@@ -212,7 +221,6 @@ public class HelpEmbedService
             .AddField(zxc2)
             .AddField(zxc3)
             .AddField(t)
-            .AddField(hall)
             .AddField(r3)
             .AddField(r4)
             .AddField(r5)
@@ -220,5 +228,27 @@ public class HelpEmbedService
             .AddField(g2);
 
         return embed.Build();
+    }
+
+    private static Embed BuildBooksHelp()
+    {
+        var botzname = new EmbedAuthorBuilder()
+            .WithName("Книжный клуб📖")
+            .WithIconUrl("https://assets.coingecko.com/coins/images/8758/large/ShitCoin.png?1561601773");
+        var copy = new EmbedFooterBuilder()
+            .WithText("dev by lucz@lois.media🏃")
+            .WithIconUrl("https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Copyright.svg/1200px-Copyright.svg.png");
+
+        return new EmbedBuilder()
+            .WithAuthor(botzname)
+            .WithFooter(copy)
+            .WithColor(Color.DarkBlue)
+            .AddField("клуб", "правила клуба и формула оценки")
+            .AddField("книга", "найти книгу по названию")
+            .AddField("выбор книги", "выбрать книгу недели (или `отмена`, пока нет оценок)")
+            .AddField("оценить", "оценить книгу недели: 5 чисел от 1 до 10")
+            .AddField("рейтинг", "рейтинг клуба по сезонам")
+            .AddField("членыклуба", "средние оценки и индекс душноты")
+            .Build();
     }
 }

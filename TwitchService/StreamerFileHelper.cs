@@ -25,9 +25,8 @@ namespace sblngavnav5X.Services.Twitch
             {
                 streamerId = await TryVerifyStreamerAsync(name);
             }
-            catch (IndexOutOfRangeException e)
+            catch (IndexOutOfRangeException)
             {
-                Console.WriteLine(e.Message);
                 return -1;
             }
 
@@ -36,27 +35,16 @@ namespace sblngavnav5X.Services.Twitch
             return 1;
         }
 
-        public async Task<bool> TryRemoveStreamerAsync(string name)
+        public Task<bool> TryRemoveStreamerAsync(string name)
         {
             string streamer = name.ToLower();
-            string streamerId;
 
             if (!_lsms.StreamList.Contains(streamer))
-                return false;
+                return Task.FromResult(false);
 
-            try
-            {
-                streamerId = await TryVerifyStreamerAsync(name);
-            }
-            catch (IndexOutOfRangeException e)
-            {
-                Console.WriteLine(e.Message);
-                return false;
-            }
-
-            DataBase.DeleteStreamer(streamer, streamerId);
+            DataBase.DeleteStreamer(streamer);
             DataBase.DownloadStreamers();
-            return true;
+            return Task.FromResult(true);
         }
 
         public async Task<string> TryVerifyStreamerAsync(string streamer)

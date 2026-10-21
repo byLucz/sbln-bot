@@ -36,6 +36,7 @@ namespace sblngavnav5X.Audio
         private readonly ConcurrentDictionary<ulong, SearchPickState> _searchPicksByMessageId = new();
         private readonly ConcurrentDictionary<ulong, VoteSkipState> _voteSkipByMessageId = new();
         private readonly ConcurrentDictionary<ulong, CancellationTokenSource> _autoLeaveCts = new();
+        private readonly ConcurrentDictionary<ulong, DateTimeOffset> _trackStartedAt = new();
 
         private readonly object _statsLock = new();
         private StatsEventArg? _lastStats;
@@ -162,6 +163,8 @@ namespace sblngavnav5X.Audio
             if (_trackStartAwaiters.TryRemove(arg.GuildId, out var tcs))
                 tcs.TrySetResult(true);
 
+            _trackStartedAt[arg.GuildId] = DateTimeOffset.UtcNow;
+
             FireAndForget(async () =>
             {
                 await SendNowPlayingAsync(arg.GuildId, arg.Track);
@@ -198,8 +201,15 @@ namespace sblngavnav5X.Audio
 
                     if (IsRepeatEnabled(args.GuildId))
                     {
-                        await player.PlayAsync(_lavaNode, args.Track, false);
-                        return;
+                        if (_trackStartedAt.TryGetValue(args.GuildId, out var startedAt) && DateTimeOffset.UtcNow - startedAt < TimeSpan.FromSeconds(3))
+                        {
+                            SetRepeat(args.GuildId, false);
+                        }
+                        else
+                        {
+                            await player.PlayAsync(_lavaNode, args.Track, false);
+                            return;
+                        }
                     }
 
                     if (!player.GetQueue().TryDequeue(out var next) || next is null)
@@ -345,6 +355,7 @@ namespace sblngavnav5X.Audio
                 ClearGuildChannels(guildId);
                 _lastNowPlayingId.TryRemove(guildId, out _);
                 _lastNowPlayingTrack.TryRemove(guildId, out _);
+                _trackStartedAt.TryRemove(guildId, out _);
             }
         }
 
@@ -606,7 +617,6 @@ namespace sblngavnav5X.Audio
                 await msg.ModifyAsync(m => m.Embed = embed);
                 return;
             }
-
         }
 
         private async Task HandleSearchPickReactionAsync(
@@ -1014,12 +1024,17 @@ namespace sblngavnav5X.Audio
 
             try
             {
-                var rawPath = Path.GetFullPath(tempPath);
-                var fileUri = new Uri(rawPath).AbsoluteUri;
+                var rawPath = MapToLavalinkPath(Path.GetFullPath(tempPath));
+                var fileUri = Uri.TryCreate(rawPath, UriKind.Absolute, out var uri) ? uri.AbsoluteUri : "file://" + rawPath;
 
                 var searchResp = await _lavaNode.LoadTrackAsync(rawPath);
                 if (searchResp?.Tracks?.Count == 0 || searchResp?.Tracks == null)
                     searchResp = await _lavaNode.LoadTrackAsync(fileUri);
+
+                if (searchResp?.Tracks?.Count is null or 0)
+                    await LoggingService.LogErrorAsync("VI-KA",
+                        $"Lavalink не видит {rawPath}. Смонтируй каталог аудио в Lavalink и включи local source, " +
+                        "а если путь внутри Lavalink другой - задай Lava:AudioPath (или SBLN_AUDIO_DIR_LAVA).");
 
                 var voteTrack = searchResp?.Tracks?.FirstOrDefault();
                 if (voteTrack != null)
@@ -1122,7 +1137,7 @@ namespace sblngavnav5X.Audio
             List<string> items, string winner, HttpClient http)
         {
             var targetFormat = new WaveFormat(44100, 16, 2);
-            var audioDir = Path.Combine(AppContext.BaseDirectory, "audio");
+            var audioDir = AudioDir;
             Directory.CreateDirectory(audioDir);
 
             foreach (var stale in Directory.GetFiles(audioDir, "vote_*.wav"))
@@ -1254,10 +1269,29 @@ namespace sblngavnav5X.Audio
             return (tempPath, announceDuration, cdDuration);
         }
 
+        private static string AudioDir =>
+            Environment.GetEnvironmentVariable("SBLN_AUDIO_DIR") is { Length: > 0 } dir ? dir : Path.Combine(AppContext.BaseDirectory, "audio");
+
+        private static string MapToLavalinkPath(string localPath)
+        {
+            if (string.IsNullOrWhiteSpace(Utils.lavaAudioPath))
+                return localPath;
+
+            var localRoot = Path.GetFullPath(AudioDir);
+            if (!localPath.StartsWith(localRoot, StringComparison.OrdinalIgnoreCase))
+                return localPath;
+
+            var relative = localPath[localRoot.Length..].TrimStart('/', '\\').Replace('\\', '/');
+            return $"{Utils.lavaAudioPath.TrimEnd('/', '\\')}/{relative}";
+        }
+
         private static string? FindCountdownMp3(string outputAudioDir)
         {
             var direct = Path.Combine(outputAudioDir, "countdown.mp3");
             if (File.Exists(direct)) return direct;
+
+            var bundled = Path.Combine(AppContext.BaseDirectory, "audio", "countdown.mp3");
+            if (File.Exists(bundled)) return bundled;
 
             var dir = Directory.GetParent(outputAudioDir);
             while (dir != null)

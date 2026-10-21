@@ -1,5 +1,6 @@
 ﻿using Discord;
 using Discord.WebSocket;
+using sblngavnav5X.Data;
 
 namespace sblngavnav5X.Services
 {
@@ -15,20 +16,20 @@ namespace sblngavnav5X.Services
 
         private async Task OnUserJoined(SocketGuildUser user)
         {
-
-            var channel = user.Guild.TextChannels.FirstOrDefault(c => c.Name == "mainlobby");
-            if (channel == null) return;
-
-            var newbieRole = user.Guild.Roles.FirstOrDefault(r => r.Name == "Челик");
+            var newbieRole = user.Guild.Roles.FirstOrDefault(r => r.Name == Utils.welcomeRole);
             if (newbieRole != null)
             {
-                await user.AddRoleAsync(newbieRole);
+                try { await user.AddRoleAsync(newbieRole); }
+                catch (Exception ex) { await LoggingService.LogWarningAsync("WLCME", $"Роль {newbieRole.Name} не выдана на {user.Guild.Name}: {ex.Message}"); }
             }
+
+            var channel = user.Guild.TextChannels.FirstOrDefault(c => c.Name == Utils.welcomeChannel);
+            if (channel == null) return;
 
             var embed = new EmbedBuilder()
                 .WithColor(Color.Green)
                 .WithTitle($"Добро пожаловать, {user.Username}!")
-                .WithDescription("Я сын гавна, а это официальное представительсво Lois Media в мире Дискордии, устраивайся поудобнее, еп <:Lois:754018858431545375>")
+                .WithDescription("Я сын гавна, больше про меня можешь узнать в команде -> **памаги**")
                 .WithThumbnailUrl(user.GetAvatarUrl() ?? user.GetDefaultAvatarUrl())
                 .Build();
 

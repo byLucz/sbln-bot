@@ -1,7 +1,6 @@
-using Discord.Commands;
+﻿using Discord.Commands;
 using sblngavnav5X.Data;
 using sblngavnav5X.GVR;
-using sblngavnav5X.Services;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -44,14 +43,8 @@ namespace sblngavnav5X.Core
             if (step <= 0 || wordCount <= 0)
                 return;
 
-            if (!File.Exists(Utils.messagesFilePath))
-            {
-                await LoggingService.LogInformationAsync("GOVOR", $"Файл {Utils.messagesFilePath} не найден, генерация ответа пропущена");
-                return;
-            }
-
-            var rawLines = await File.ReadAllLinesAsync(Utils.messagesFilePath);
-            if (rawLines.Length == 0)
+            var rawLines = await GVRStore.ReadAsync();
+            if (rawLines.Count == 0)
                 return;
 
             var sentences = ParseSentences(rawLines);

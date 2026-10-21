@@ -1,9 +1,7 @@
 ﻿using Discord;
 using Discord.Commands;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using static sblngavnav5X.Data.DataRoots;
 
@@ -47,8 +45,8 @@ namespace sblngavnav5X.Commands
 
             var ruName = await TranslateAsync(meal.strMeal ?? string.Empty);
             var ruInstr = await TranslateAsync(meal.strInstructions ?? string.Empty);
-            var ruCat = await TranslateAsync(meal.strCategory ?? "—");
-            var ruKitchen = await TranslateAsync(meal.strArea ?? "—");
+            var ruCat = await TranslateAsync(meal.strCategory ?? "");
+            var ruKitchen = await TranslateAsync(meal.strArea ?? "");
 
             var ingredients = BuildIngredients(meal).ToList();
             var ruIngredients = await TranslateManyAsync(ingredients);
@@ -62,8 +60,8 @@ namespace sblngavnav5X.Commands
                 .WithColor(new Color(139, 92, 246))
                 .WithDescription(Trunc(string.IsNullOrWhiteSpace(ruInstr) ? meal.strInstructions : ruInstr, 2000))
                 .WithFooter("sbln рецепты от шефчика👨‍🍳")
-                .AddField("Категория", string.IsNullOrWhiteSpace(ruCat) ? "—" : ruCat, true)
-                .AddField("Кухня", string.IsNullOrWhiteSpace(ruKitchen) ? "—" : ruKitchen, true);
+                .AddField("Категория", string.IsNullOrWhiteSpace(ruCat) ? "-" : ruCat, true)
+                .AddField("Кухня", string.IsNullOrWhiteSpace(ruKitchen) ? "-" : ruKitchen, true);
 
             if (!string.IsNullOrWhiteSpace(ingredientsStr))
                 eb.AddField("Ингредиенты", Trunc(ingredientsStr, 1024), false);

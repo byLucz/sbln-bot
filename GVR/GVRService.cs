@@ -1,6 +1,5 @@
-using Discord;
+﻿using Discord;
 using Discord.Commands;
-using Discord.WebSocket;
 using sblngavnav5X.Core;
 using sblngavnav5X.Data;
 using System.Runtime.InteropServices;
@@ -10,7 +9,6 @@ namespace sblngavnav5X.GVR
     public class GVRService : ModuleBase<SocketCommandContext>
     {
         private readonly GovorConfig _govorilka;
-        private readonly GuildConfig _guild;
 
         private const string GovorAuthor = "sbln говорилка🎤📓";
         private const string GovorFooter = "powered by GovorNGN";
@@ -19,10 +17,9 @@ namespace sblngavnav5X.GVR
         private static EmbedBuilder GovorEmbed() =>
             EmbedHandler.FieldsEmbed(GovorAuthor, Color.LighterGrey, GovorFooter);
 
-        public GVRService(GovorConfig govor, GuildConfig guild)
+        public GVRService(GovorConfig govor)
         {
             _govorilka = govor;
-            _guild = guild;
         }
 
         [Command("говорилка"), Alias("говор")]
@@ -50,12 +47,12 @@ namespace sblngavnav5X.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task GetSettings()
         {
-            var chips = _govorilka.Rand ? "рандом" : _guild.govorilka.Count.ToString();
+            var chips = _govorilka.Rand ? "рандом" : _govorilka.Count.ToString();
             var embed = EmbedHandler.FieldsEmbed("sbln говорилка/настройки🎤📓", Color.LighterGrey, GovorFooter, authorIconUrl: GovorIcon)
-                .AddField("шаг рандома", $"**{_guild.govorilka.Step}**", true)
+                .AddField("шаг рандома", $"**{_govorilka.Step}**", true)
                 .AddField("число слов", $"**{chips}**", true)
-                .AddField("шанс ролла", $"**{_guild.govorilka.Chance}%**", true)
-                .AddField("кол-во сообщений подзагрузки", $"**{_guild.govorilka.Collection}**", true)
+                .AddField("шанс ролла", $"**{_govorilka.Chance}%**", true)
+                .AddField("кол-во сообщений подзагрузки", $"**{_govorilka.Collection}**", true)
                 .AddField("время подзагрузки", $"**{Utils.govorUpdTime / 1000} сек**", true)
                 .AddField("режим вербальной нищеты", $"**{Utils.govorVM}**", true)
                 .Build();
@@ -66,23 +63,10 @@ namespace sblngavnav5X.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task AppendData(uint amount)
         {
-            var messages = this.Context.Channel.GetMessagesAsync((int)amount).Flatten();
-            using (StreamWriter sw = new StreamWriter(Utils.messagesFilePath, append: true))
-            {
-                await foreach (IMessage message in messages)
-                {
-                    if (message.Author.IsBot) continue;
-                    var content = message.Content.Trim();
-                    if (string.IsNullOrWhiteSpace(content)) continue;
-                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.Contains("https://", StringComparison.OrdinalIgnoreCase)) continue;
-                    sw.WriteLine(content);
-                }
-            }
-            await RemoveDuplicates();
+            var (added, total) = await GVRStore.AppendAsync(await CollectAsync(amount));
             await ReplyAsync(embed: GovorEmbed()
-                .AddField("добавлено", $"***{amount} сообщений***", true)
+                .AddField("добавлено", $"***{added} сообщений***", true)
+                .AddField("всего в базе", $"***{total}***", true)
                 .Build());
         }
 
@@ -105,25 +89,7 @@ namespace sblngavnav5X.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task ClearFile()
         {
-            int before = 0, after = 0;
-
-            if (File.Exists(Utils.messagesFilePath))
-            {
-                var lines = await File.ReadAllLinesAsync(Utils.messagesFilePath);
-                before = lines.Length;
-
-                var cleaned = lines
-                    .Select(l => l.Trim())
-                    .Where(l => !string.IsNullOrWhiteSpace(l))
-                    .Where(l => !l.Contains("https://", StringComparison.OrdinalIgnoreCase))
-                    .Where(l => !l.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase))
-                    .Where(l => !l.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase))
-                    .Distinct()
-                    .ToArray();
-
-                after = cleaned.Length;
-                await File.WriteAllLinesAsync(Utils.messagesFilePath, cleaned);
-            }
+            var (before, after) = await GVRStore.PruneAsync();
 
             await ReplyAsync(embed: GovorEmbed()
                 .AddField("было строк", $"***{before}***", true)
@@ -136,23 +102,9 @@ namespace sblngavnav5X.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task SeedFile(uint amount)
         {
-            var messages = this.Context.Channel.GetMessagesAsync((int)amount).Flatten();
-            using (StreamWriter sw = new StreamWriter(Utils.messagesFilePath))
-            {
-                await foreach (IMessage message in messages)
-                {
-                    if (message.Author.IsBot) continue;
-                    var content = message.Content.Trim();
-                    if (string.IsNullOrWhiteSpace(content)) continue;
-                    if (content.StartsWith(Utils.pref1, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.StartsWith(Utils.pref2, StringComparison.OrdinalIgnoreCase)) continue;
-                    if (content.Contains("https://", StringComparison.OrdinalIgnoreCase)) continue;
-                    sw.WriteLine(content);
-                }
-            }
-            await RemoveDuplicates();
+            var total = await GVRStore.ReplaceAsync(await CollectAsync(amount));
             await ReplyAsync(embed: GovorEmbed()
-                .AddField("ебнуто старое говно и добавлено", $"***{amount} сообщений***", true)
+                .AddField("ебнуто старое говно и добавлено", $"***{total} сообщений***", true)
                 .Build());
         }
 
@@ -248,20 +200,23 @@ namespace sblngavnav5X.GVR
         [RequireUserPermission(GuildPermission.Administrator)]
         public async Task Reset()
         {
-            _guild.govorilka = new GovorConfig();
+            _govorilka.Reset();
+            Utils.govorVM = "выкл";
             await ReplyAsync(embed: GovorEmbed()
                 .AddField("сбросил все на дефолтыч", true)
                 .Build());
         }
 
-        public async Task RemoveDuplicates()
+        private async Task<List<string>> CollectAsync(uint amount)
         {
-            var lines = (await File.ReadAllLinesAsync(Utils.messagesFilePath))
-                .Select(l => l.Trim())
-                .Where(l => l.Length > 0)
-                .Distinct()
-                .ToArray();
-            await File.WriteAllLinesAsync(Utils.messagesFilePath, lines);
+            var contents = new List<string>();
+            await foreach (var message in Context.Channel.GetMessagesAsync((int)amount).Flatten())
+            {
+                if (message.Author.IsBot || message.Attachments.Count > 0)
+                    continue;
+                contents.Add(message.Content);
+            }
+            return contents;
         }
     }
 }

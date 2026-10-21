@@ -1,0 +1,41 @@
+services:
+  bot:
+    image: ${SBLN_IMAGE:-sbln-bot:v5x}
+    build:
+      context: ${SBLN_SOURCE:-.}
+      args:
+        SBLN_VERSION: ${SBLN_VERSION:-}
+        SBLN_CHANNEL: ${SBLN_CHANNEL:-}
+        SBLN_COMMIT: ${SBLN_COMMIT:-}
+    container_name: ${SBLN_CONTAINER:-sbln-bot-v5x}
+    network_mode: ${SBLN_NETWORK_MODE:-bridge}
+    restart: ${SBLN_RESTART:-unless-stopped}
+    init: true
+    stop_grace_period: 30s
+    mem_limit: ${SBLN_MEM_LIMIT:-256m}
+    cpus: ${SBLN_CPUS:-0.5}
+    pids_limit: 128
+    environment:
+      TZ: ${SBLN_TZ:-Europe/Moscow}
+      SBLN_V5X_CONFIG: /opt/sbln/config-v5x.json
+      SBLN_READY_FILE: /tmp/sbln-ready
+      SBLN_AUDIO_DIR: /opt/sbln/audio/${SBLN_INSTANCE:-v5x}
+      SBLN_LOG_DIR: /opt/sbln/logs
+      SBLN_DATA_DIR: /opt/sbln/data
+    volumes:
+      - type: bind
+        source: ${SBLN_CONFIG_FILE:?Config file is required, use config-v5x.json}
+        target: /opt/sbln/config-v5x.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - ${SBLN_DATA_DIR:?Data directory is required}:/opt/sbln/data
+      - ${SBLN_LOG_DIR:?Log directory is required}:/opt/sbln/logs
+      - ${SBLN_AUDIO_ROOT:?Audio directory is required}:/opt/sbln/audio
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -5,39 +5,17 @@ using sblngavnav5X.Core;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
 using System.Diagnostics;
-using System.Globalization;
 using System.Runtime.InteropServices;
 
 namespace sblngavnav5X.Commands;
 
 public class MainCommands : ModuleBase<SocketCommandContext>
 {
-    private DiscordSocketClient _client;
+    private readonly DiscordSocketClient _client;
 
-    public IGuildUser User { get; private set; }
-
-    public MainCommands(DiscordSocketClient client, CommandService commands)
+    public MainCommands(DiscordSocketClient client)
     {
         _client = client;
-    }
-
-    [Command("111")]
-    [RequireOwner]
-    public async Task ChangeLog()
-    {
-        var embed = new EmbedBuilder()
-            .WithDescription(
-                $"{Format.Bold($"devlog ver {Utils.sblnver}")} — Финальный кумулятивный патч перед переездом на .NET 10\n" +
-                $"• AudioSeven: починка плейлистов/миксов, поиск по всем источникам + умные варианты, реакция шафл → команда {Format.Bold("перемешай")}\n" +
-                $"• Ограничение голосования до 50 вариантов, фикс-таймер, появилась возможность скипнуть перечисления\n" +
-                $"• Фикс флажка онлайна (без повторного спама) и кэша предпросмотра\n" +
-                $"• Говорилка обновлена до версии 1.7, фиксы core/edge-кейсов\n" +
-                $"• [Полный чендж-лог на сайте 🌀](https://lois.media/sbln/v5.6.1)")
-            .WithFooter(footer => footer
-                .WithText("part of Lois Media Group😋 · dev by lucz@lois.media🏃")
-                .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x"))
-            .Build();
-        await ReplyAsync(embed: embed);
     }
 
     [Command("ава")]
@@ -69,24 +47,6 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         await Context.Channel.SendMessageAsync("", false, eb.Build());
     }
 
-    public static string GetAvatarForUser(IGuildUser user, string defaultAvatarURL = "https://cdn-icons-png.flaticon.com/512/3670/3670157.png")
-    {
-        if (user != null)
-        {
-            string avatarUrl = user.GetGuildAvatarUrl();
-            if (avatarUrl != null)
-            {
-                return avatarUrl;
-            }
-            avatarUrl = user.GetAvatarUrl();
-            if (avatarUrl != null)
-            {
-                return avatarUrl;
-            }
-        }
-        return defaultAvatarURL;
-    }
-
     [Command("апт")]
     public async Task BotUptime()
     {
@@ -109,15 +69,20 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             "онлайн" => UserStatus.Online,
             _ => UserStatus.Online
         };
-    
-        DataBase.AddStatus(args,status,"","");
+
+        var last = DataBase.GetLastStatus();
+        var type = string.IsNullOrEmpty(last.type) ? ActivityType.Playing.ToString() : last.type;
+        var text = string.IsNullOrWhiteSpace(args) ? last.text : args;
+        var link = type == ActivityType.Streaming.ToString() ? last.link : "";
+        DataBase.AddStatus(text, status, link, type);
 
         await _client.SetStatusAsync(statustype);
-        await _client.SetGameAsync(args);
+        await _client.SetGameAsync(string.IsNullOrWhiteSpace(text) ? null : text, string.IsNullOrEmpty(link) ? null : link,
+            Enum.TryParse<ActivityType>(type, out var activity) ? activity : ActivityType.Playing);
 
         await ReplyAsync(embed: EmbedHandler.Simple(
             string.Empty,
-            $"Игра изменена на **{args}** со статусом **{status}** ✅",
+            $"Игра изменена на **{text}** со статусом **{status}** ✅",
             Color.Green,
             "sbln статус🎫"));
     }
@@ -146,7 +111,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             finalText = linkOrText;
             if (!string.IsNullOrWhiteSpace(extra)) finalText += " " + extra;
         }
-        DataBase.AddStatus(finalText ?? "","", finalLink ?? "", actType.ToString());
+        DataBase.AddStatus(finalText ?? "", DataBase.GetLastStatus().pos, finalLink ?? "", actType.ToString());
         await _client.SetGameAsync(finalText, finalLink, actType);
 
         await ReplyAsync(embed: EmbedHandler.Simple(
@@ -158,6 +123,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
     [Command("инфа разрабов")]
     [Alias("ир")]
+    [RequireOwner]
     public async Task InfoDev()
     {
         var EmbedBuilder = new EmbedBuilder()
@@ -175,7 +141,9 @@ public class MainCommands : ModuleBase<SocketCommandContext>
          $"🔹OS: **{Environment.OSVersion}**\n" +
          $"🔹ОЗУ: **{Environment.SystemPageSize}mb**\n" +
          $"🔹Ядер процессора: **{Environment.ProcessorCount}**\n" +
-         $"🔹Версия .NET Core: **{Environment.Version}**\n" 
+         $"🔹Версия .NET: **{Environment.Version}**\n" +
+         $"🔹Lavalink: **{Utils.lavaHost}:{Utils.lavaPort}**\n" +
+         $"🔹Модули: {ModuleToggle.Summary()}\n"
          )
             .WithFooter(footer =>
             {
@@ -184,9 +152,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             });
         Embed embed = EmbedBuilder.Build();
         await ReplyAsync(embed: embed);
-
     }
-
 
     [Command("инфа")]
     public async Task Info()
@@ -200,7 +166,6 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         {
             dopchik = (Context.Guild.Description);
         }
-        static string GetHeapSize() => Math.Round(GC.GetTotalMemory(true) / (1024.0 * 1024.0), 2).ToString(CultureInfo.CurrentCulture);
         var EmbedBuilder = new EmbedBuilder()
             .WithTitle("Основная информация о сервере 🤖")
             .WithDescription(
@@ -209,7 +174,6 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             $"🔹Имя Бати: {Context.Guild.Owner.Username}#{Context.Guild.Owner.Discriminator} \n" +
             $"🔹ДР сервера: {Context.Guild.CreatedAt.UtcDateTime} \n" +
             $"🔹2FA: {Context.Guild.MfaLevel} \n" +
-            $"🔹Размер кучки: {GetHeapSize()} мб\n" +
             $"🔹Уровень NSFW: {Context.Guild.NsfwLevel} \n" +
             $"🔹Скики ролей: {Context.Guild.Roles.Count} \n" +
             $"🔹Скики cмайликов: {Context.Guild.Emotes.Count} \n" +
@@ -242,7 +206,6 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             {
                 var e = new EmbedBuilder()
                 {
-
                     Title = "анонс сына гавна",
                     Description = message,
                     ThumbnailUrl = Context.User.GetAvatarUrl(),
@@ -250,7 +213,6 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                     {
                         Text = $@"@{user}"
                     }
-
                 };
                 e.WithCurrentTimestamp();
                 await messageChannel.SendMessageAsync(embed: e.Build());
@@ -266,7 +228,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         {
             await ReplyAsync("ага, ага, нужно положительное число");
             return;
-        }    
+        }
         await ReplyAsync("легчайшее");
         var messages = Context.Channel.GetMessagesAsync(max + 2).Flatten();
         foreach (var h in await messages.ToArrayAsync())
@@ -275,35 +237,10 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         }
     }
 
-    [Command("зал славы")]
-    public async Task HallOfGlory()
-    {
-        var versions = DataBase.GetAllVersions();
-        String verText = "";   
-        foreach (var v in versions)
-        {
-            verText += ($"\n{v.Version} — *{v.Date:yyyy-MM-dd}*");
-        }
-        var EmbedBuilder = new EmbedBuilder()
-            .WithTitle("все версии сыночка")
-            .WithDescription(verText)
-            .WithImageUrl("https://sun9-15.userapi.com/impg/c857332/v857332436/15bc51/aBM7tGgnmY0.jpg?size=640x640&quality=96&sign=4ea7c6c8b39104be3a21ae7033cc0283&type=album")
-            .WithFooter(footer =>
-            {
-                footer
-                .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
-                .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
-            });
-        Embed embed = EmbedBuilder.Build();
-        await ReplyAsync(embed: embed);
-    }
-
-
     [Command("эхо")]
     [Cooldown(5)]
     public Task EchoAsync([Remainder] string text)
              => ReplyAsync('\u200B' + text, true);
-
 
     [Command("почта")]
     public async Task SendMailAsync(SocketGuildUser user = null, [Remainder] string message = null)
@@ -387,33 +324,22 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("версия")]
     public async Task BotVersionInfo()
     {
-        var packages = DataBase.GetAllPackageVersions();
+        var embed = new EmbedBuilder()
+            .WithAuthor($"sblngavna ver {Utils.sblnver}")
+            .WithDescription(
+                "Внерелизная сборка ядра 5X, не входит в версионирование(!)\n" +
+                ".NET 8 LTS / Victoria 7 / Discord.Net 3.20.1\n\n" +
+                $"Модули: {ModuleToggle.Summary()}")
+            .AddField("Собрано из",
+                "[v5.6.1](https://lois.media/sbln/v5.6.1) - основа\n" +
+                "[v6.0.0](https://lois.media/sbln/v6.0.0) - общие фиксы, обновление схемы данных")
+            .WithColor(Color.LighterGrey)
+            .WithFooter(footer => footer
+                .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
+                .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x"))
+            .Build();
 
-        var botzname = new EmbedAuthorBuilder()
-            .WithName($"sblngavna ver {Utils.sblnver}");
-
-        var copy = new EmbedFooterBuilder()
-            .WithText("part of Lois Media Group😋 \ndev by lucz@lois.media🏃")
-            .WithIconUrl("https://cdn.betterttv.net/emote/5eef8ed979645a0dec34cc0a/3x");
-
-        const int maxFieldsPerEmbed = 15;
-
-        for (int i = 0; i < packages.Count; i += maxFieldsPerEmbed)
-        {
-            var chunk = packages.Skip(i).Take(maxFieldsPerEmbed);
-
-            var embedBuilder = new EmbedBuilder()
-                .WithAuthor(botzname)
-                .WithFooter(copy)
-                .WithColor(Color.LighterGrey);
-
-            foreach (var item in chunk)
-            {
-                embedBuilder.AddField(item.PackageName, $"***{item.PackageVersion}***", false);
-            }
-
-            await ReplyAsync(embed: embedBuilder.Build());
-        }
+        await ReplyAsync(embed: embed);
     }
 
     [Command("позови")]
@@ -435,7 +361,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     [Command("чел")]
     public async Task UserInfo(SocketGuildUser u = null)
     {
-        SocketGuildUser user = (SocketGuildUser)u;
+        SocketGuildUser user = u ?? (SocketGuildUser)Context.User;
         EmbedBuilder output = new EmbedBuilder();
 
         DateTimeOffset createdAt = user.CreatedAt;
@@ -451,9 +377,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
             dopchik = (user.VoiceState.ToString());
         }
 
-
         output.WithTitle($"{user.Username} {nickname}")
-            .AddField("Состояние:", $"{user.Status}")
             .AddField("Появился в Дискорде:", $"{createdAt} ({(DateTime.UtcNow - createdAt).Days} дней назад)")
             .AddField("Появился на этом сервере:", $"{joinedAt} ({(DateTime.UtcNow - joinedAt).Days} дней назад)")
             .AddField("Роли:", $"{string.Join(", ", user.Roles.ToList())}")
@@ -490,7 +414,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
     }
 
     [Command("бан")]
-    [RequireUserPermission(GuildPermission.KickMembers, ErrorMessage = "тебе нельзя ты додик")]
+    [RequireUserPermission(GuildPermission.BanMembers, ErrorMessage = "тебе нельзя ты додик")]
     public async Task BanMember(SocketGuildUser user = null, [Remainder] string reason = null)
     {
         if (user == null)
@@ -529,6 +453,4 @@ public class MainCommands : ModuleBase<SocketCommandContext>
 
         return (false, text);
     }
-
 }
-

@@ -7,9 +7,6 @@ namespace sblngavnav5X.Audio
         private static readonly Regex UrlRegex =
             new(@"(https?://\S+)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-        private static readonly Regex LeadingCommandRegex =
-            new(@"^\s*(?:(?:х|и|играй)\s+)+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
         private static readonly Regex SpotifyPrefixRegex =
             new(@"^\s*(?:споти|спотик)\s+", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
@@ -27,7 +24,7 @@ namespace sblngavnav5X.Audio
             if (m.Success)
                 searchQuery = m.Groups[1].Value.Trim().TrimEnd(')', ']', '}', '>', '.', ',', ';');
             else
-                searchQuery = LeadingCommandRegex.Replace(searchQuery, "").Trim();
+                searchQuery = searchQuery.Trim();
 
             if (searchQuery.StartsWith("ftts://", StringComparison.OrdinalIgnoreCase))
             {

@@ -1,7 +1,6 @@
 ﻿using Discord;
 using Discord.WebSocket;
 using MySqlConnector;
-using System.Text.Json;
 using static sblngavnav5X.Data.DataRoots;
 using static sblngavnav5X.Data.DataRoots.States;
 
@@ -9,31 +8,45 @@ namespace sblngavnav5X.Data
 {
     public static class DataBase
     {
+        public static readonly Dictionary<string, string> MemeCategories = new()
+        {
+            ["volk"] = "wolfs",
+            ["yaica"] = "quotes",
+            ["pat"] = "pat",
+            ["fff"] = "pressf",
+            ["hug"] = "hug",
+            ["kiss"] = "kiss",
+            ["kus"] = "bite",
+            ["buhat"] = "drunk",
+            ["ebalo"] = "stfu"
+        };
+
+        public static bool CanConnect()
+        {
+            try
+            {
+                using var conn = new MySqlConnection(Utils.connectionString);
+                conn.Open();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public static string GetRandomMeme(string columnName)
         {
+            if (!MemeCategories.TryGetValue(columnName, out var category))
+                throw new ArgumentException($"Недопустимая категория мемов: {columnName}", nameof(columnName));
+
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
 
-            var allowed = new HashSet<string> { "volk", "yaica", "pat", "fff", "hug", "kiss", "kus", "buhat", "ebalo" };
-            if (!allowed.Contains(columnName))
-                throw new ArgumentException($"Недопустимая категория мемов: {columnName}", nameof(columnName));
-
-            string sql = $"SELECT `{columnName}` FROM memes LIMIT 1";
-            using var cmd = new MySqlCommand(sql, conn);
-            var result = cmd.ExecuteScalar()?.ToString();
-            if (string.IsNullOrEmpty(result))
-                return null;
-
-            var items = result
-                .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                .Select(x => x.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToArray();
-            if (items.Length == 0)
-                return null;
-
-            var rnd = new Random();
-            return items[rnd.Next(items.Length)];
+            using var cmd = new MySqlCommand("SELECT url FROM memes WHERE category = @c ORDER BY RAND() LIMIT 1", conn);
+            cmd.Parameters.AddWithValue("@c", category);
+            var result = cmd.ExecuteScalar()?.ToString()?.Trim();
+            return string.IsNullOrEmpty(result) ? null : result;
         }
 
         public static void DownloadStreamers()
@@ -41,22 +54,24 @@ namespace sblngavnav5X.Data
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
 
-            const string sqlStrims = "SELECT strimaki FROM streamers";
-            using (var cmd = new MySqlCommand(sqlStrims, conn))
-            using (var reader = cmd.ExecuteReader())
+            using var cmd = new MySqlCommand("SELECT twitch_id, login FROM streamers ORDER BY login", conn);
+            using var reader = cmd.ExecuteReader();
+
+            var logins = new List<string>();
+            var ids = new List<string>();
+            while (reader.Read())
             {
-                States.Streamers.Clear();
-                while (reader.Read())
-                    Streamers.Add(reader.GetString("strimaki"));
+                var login = reader.GetString("login");
+                logins.Add(login);
+                ids.Add($"{login}:{reader.GetString("twitch_id")}");
             }
 
-            const string sqlIds = "SELECT puk FROM streamersid";
-            using (var cmd = new MySqlCommand(sqlIds, conn))
-            using (var reader = cmd.ExecuteReader())
+            lock (Streamers)
             {
+                Streamers.Clear();
+                Streamers.AddRange(logins);
                 StreamerIds.Clear();
-                while (reader.Read())
-                    StreamerIds.Add(reader.GetString("puk"));
+                StreamerIds.AddRange(ids);
             }
         }
 
@@ -64,71 +79,55 @@ namespace sblngavnav5X.Data
         {
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            using var tx = conn.BeginTransaction();
 
-            var cmd1 = new MySqlCommand("INSERT INTO streamers (strimaki) VALUES (@name)", conn, tx);
-            cmd1.Parameters.AddWithValue("@name", name);
-            cmd1.ExecuteNonQuery();
-
-            var cmd2 = new MySqlCommand("INSERT INTO streamersid (puk) VALUES (@id)", conn, tx);
-            cmd2.Parameters.AddWithValue("@id", id);
-            cmd2.ExecuteNonQuery();
-
-            tx.Commit();
+            using var cmd = new MySqlCommand(
+                @"INSERT INTO streamers (twitch_id, login) VALUES (@id, @login)
+                  ON DUPLICATE KEY UPDATE login = @login", conn);
+            cmd.Parameters.AddWithValue("@id", id);
+            cmd.Parameters.AddWithValue("@login", name);
+            cmd.ExecuteNonQuery();
         }
 
-        public static void DeleteStreamer(string name, string id)
+        public static void DeleteStreamer(string name)
         {
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            using var tx = conn.BeginTransaction();
 
-            var cmd1 = new MySqlCommand("DELETE FROM streamers WHERE strimaki = @name", conn, tx);
-            cmd1.Parameters.AddWithValue("@name", name);
-            cmd1.ExecuteNonQuery();
-
-            var cmd2 = new MySqlCommand("DELETE FROM streamersid WHERE puk = @id", conn, tx);
-            cmd2.Parameters.AddWithValue("@id", id);
-            cmd2.ExecuteNonQuery();
-
-            tx.Commit();
+            using var cmd = new MySqlCommand("DELETE FROM streamers WHERE login = @login", conn);
+            cmd.Parameters.AddWithValue("@login", name);
+            cmd.ExecuteNonQuery();
         }
 
         public static void AddStatus(string text, string pos, string linkStr, string type)
         {
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            const string sql = 
+            const string sql =
                 @"INSERT INTO statusbar (StatusText, StatusPos, StatusLink, StatusType)
                 VALUES (@text, @pos, @link, @type)";
             using var cmd = new MySqlCommand(sql, conn);
-            cmd.Parameters.AddWithValue("@text", text);
-            cmd.Parameters.AddWithValue("@pos", pos);
-            cmd.Parameters.AddWithValue("@link", linkStr);
-            cmd.Parameters.AddWithValue("@type", type);
+            cmd.Parameters.AddWithValue("@text", text ?? "");
+            cmd.Parameters.AddWithValue("@pos", pos ?? "");
+            cmd.Parameters.AddWithValue("@link", linkStr ?? "");
+            cmd.Parameters.AddWithValue("@type", type ?? "");
             cmd.ExecuteNonQuery();
         }
 
-        public static void PushStatus()
+        public static (string text, string pos, string link, string type) GetLastStatus()
         {
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            const string sql = "SELECT StatusText, StatusPos, StatusLink, StatusType FROM statusbar";
-            using var cmd = new MySqlCommand(sql, conn);
-            using var reader = cmd.ExecuteReader();
+            using var cmd = new MySqlCommand(
+                "SELECT StatusText, StatusPos, StatusLink, StatusType FROM statusbar ORDER BY id DESC LIMIT 1", conn);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read())
+                return ("", "", "", "");
 
-            StatusText.Clear();
-            StatusPos.Clear();
-            StatusLink.Clear();
-            StatusType.Clear();
-
-            while (reader.Read())
-            {
-                StatusText.Add(reader.GetString("StatusText"));
-                StatusPos.Add(reader.GetString("StatusPos"));
-                StatusLink.Add(reader.GetString("StatusLink"));
-                StatusType.Add(reader.GetString("StatusType"));
-            }
+            return (
+                r.IsDBNull(0) ? "" : r.GetString(0),
+                r.IsDBNull(1) ? "" : r.GetString(1),
+                r.IsDBNull(2) ? "" : r.GetString(2),
+                r.IsDBNull(3) ? "" : r.GetString(3));
         }
 
         public static List<string> GetAllEmotes()
@@ -152,29 +151,12 @@ namespace sblngavnav5X.Data
             var all = GetAllEmotes();
             if (all.Count == 0)
                 return null;
-            var rnd = new Random();
-            return all[rnd.Next(all.Count)];
+            return all.RandomList();
         }
 
         public static async Task ApplyLastStatusAsync(DiscordSocketClient client)
         {
-            using var conn = new MySqlConnection(Utils.connectionString);
-            await conn.OpenAsync();
-
-            const string sql = 
-                @"SELECT StatusText, StatusPos, StatusLink, StatusType
-                FROM statusbar
-                ORDER BY id DESC
-                LIMIT 1";
-
-            using var cmd = new MySqlCommand(sql, conn);
-            using var reader = await cmd.ExecuteReaderAsync();
-            if (!await reader.ReadAsync()) return;
-
-            var stText = reader.GetString("StatusText");
-            var stPos = reader.GetString("StatusPos");
-            var stLink = reader.GetString("StatusLink");
-            var stType = reader.GetString("StatusType");
+            var (stText, stPos, stLink, stType) = GetLastStatus();
 
             var userStatus = stPos switch
             {
@@ -196,14 +178,14 @@ namespace sblngavnav5X.Data
                 _ => ActivityType.Playing
             };
             string linkForActivity = activityType == ActivityType.Streaming ? stLink : null;
-            await client.SetGameAsync(stText, linkForActivity, activityType);
+            await client.SetGameAsync(string.IsNullOrWhiteSpace(stText) ? null : stText, linkForActivity, activityType);
         }
 
         public static void AddBook(string title, string authors, string imageUrl, string user)
         {
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            const string sql = 
+            const string sql =
                 @"INSERT INTO books (title, authors, image, selected_date, suggested_by, season)
                 VALUES (@t, @a, @i, @d, @u, @s)";
 
@@ -247,7 +229,7 @@ namespace sblngavnav5X.Data
             var result = cmd.ExecuteScalar();
             if (result == DBNull.Value || result == null)
                 return true;
-            var last = DateTime.Parse(result.ToString());
+            var last = Convert.ToDateTime(result);
             return (DateTime.UtcNow - last).TotalDays >= 7;
         }
 
@@ -258,6 +240,15 @@ namespace sblngavnav5X.Data
             const string sql = @"DELETE FROM books WHERE id = (SELECT id FROM books ORDER BY selected_date DESC LIMIT 1)";
             using var cmd = new MySqlCommand(sql, conn);
             cmd.ExecuteNonQuery();
+        }
+
+        public static bool BookHasRatings(int bookId)
+        {
+            using var conn = new MySqlConnection(Utils.connectionString);
+            conn.Open();
+            using var cmd = new MySqlCommand("SELECT COUNT(*) FROM booksRating WHERE book_id = @b", conn);
+            cmd.Parameters.AddWithValue("@b", bookId);
+            return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
         }
 
         public static bool TryParseScores(string[] input, out int[] scores)
@@ -283,8 +274,8 @@ namespace sblngavnav5X.Data
         {
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            const string sql = 
-                @"INSERT INTO booksRating 
+            const string sql =
+                @"INSERT INTO booksRating
                   (user_id, book_id, score_plot, score_style, score_characters, score_originality, score_vibe, final_score, rated_at)
                 VALUES
                   (@u, @b, @s1, @s2, @s3, @s4, @s5, @f, @d)";
@@ -397,131 +388,16 @@ namespace sblngavnav5X.Data
             return dict;
         }
 
-        public static List<VersionEntry> GetAllVersions()
-        {
-            var list = new List<VersionEntry>();
-
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
-
-            const string sql = "SELECT `version`, `date` FROM `versions` ORDER BY `id`";
-            using var cmd = new MySqlCommand(sql, conn);
-            using var reader = cmd.ExecuteReader();
-
-            while (reader.Read())
-            {
-                list.Add(new VersionEntry
-                {
-                    Version = reader.GetString("version"),
-                    Date = reader.GetDateTime("date")
-                });
-            }
-
-            return list;
-        }
-
-        public static List<PackageVersionEntry> GetAllPackageVersions()
-        {
-            var list = new List<PackageVersionEntry>();
-
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
-
-            const string sql = @"SELECT package_name, package_version, created_at
-                                FROM packageVersions
-                                ORDER BY id";
-
-            using var cmd = new MySqlCommand(sql, conn);
-            using var reader = cmd.ExecuteReader();
-
-            while (reader.Read())
-            {
-                list.Add(new PackageVersionEntry
-                {
-                    PackageName = reader.GetString("package_name"),
-                    PackageVersion = reader.GetString("package_version"),
-                    CreatedAt = reader.GetDateTime("created_at")
-                });
-            }
-
-            return list;
-        }
-
-        private static readonly object _exportLock = new();
-
-        public static void ExportBooksJson(string path, Dictionary<string, string> userNames)
-        {
-            var books = new Dictionary<int, BookExportDto>();
-
-            using var conn = new MySqlConnection(Utils.connectionString);
-            conn.Open();
-            const string sql = @"
-                SELECT b.id, b.title, b.authors, b.suggested_by, b.season,
-                       r.user_id, r.score_plot, r.score_style, r.score_characters,
-                       r.score_originality, r.score_vibe, r.final_score
-                FROM books b
-                LEFT JOIN booksRating r ON r.book_id = b.id
-                ORDER BY b.id";
-
-            using var cmd = new MySqlCommand(sql, conn);
-            using var reader = cmd.ExecuteReader();
-
-            while (reader.Read())
-            {
-                int id = reader.GetInt32("id");
-                if (!books.TryGetValue(id, out var book))
-                {
-                    book = new BookExportDto
-                    {
-                        id         = id,
-                        title      = reader.GetString("title"),
-                        authors    = reader.GetString("authors"),
-                        suggestedBy = reader.GetString("suggested_by"),
-                        season     = reader.GetInt32("season")
-                    };
-                    books[id] = book;
-                }
-
-                if (!reader.IsDBNull(reader.GetOrdinal("user_id")))
-                {
-                    string uid  = reader.GetString("user_id");
-                    string name = userNames.TryGetValue(uid, out var n) ? n : uid;
-                    book.ratings[name] = new RatingExportDto
-                    {
-                        scores = new[]
-                        {
-                            reader.GetInt32("score_plot"),
-                            reader.GetInt32("score_style"),
-                            reader.GetInt32("score_characters"),
-                            reader.GetInt32("score_originality"),
-                            reader.GetInt32("score_vibe")
-                        },
-                        final = Math.Round(reader.GetDouble("final_score"), 1)
-                    };
-                }
-            }
-
-            var options = new JsonSerializerOptions { WriteIndented = true };
-            string json = JsonSerializer.Serialize(books.Values.ToList(), options);
-
-            lock (_exportLock)
-            {
-                string tmp = path + ".tmp";
-                File.WriteAllText(tmp, json);
-                File.Move(tmp, path, overwrite: true);
-            }
-        }
-
         public static List<string> LoadStreamsOnline()
         {
             var list = new List<string>();
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
             using var cmd = new MySqlCommand(
-                "SELECT SUBSTRING_INDEX(puk, ':', -1) AS sid FROM streamersid WHERE is_online = 1", conn);
+                "SELECT twitch_id FROM streamers WHERE is_online = 1", conn);
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                list.Add(r.GetString("sid"));
+                list.Add(r.GetString("twitch_id"));
             return list;
         }
 
@@ -530,7 +406,7 @@ namespace sblngavnav5X.Data
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
             using var cmd = new MySqlCommand(
-                "UPDATE streamersid SET is_online = 1 WHERE SUBSTRING_INDEX(puk, ':', -1) = @id", conn);
+                "UPDATE streamers SET is_online = 1 WHERE twitch_id = @id", conn);
             cmd.Parameters.AddWithValue("@id", streamId);
             cmd.ExecuteNonQuery();
         }
@@ -540,7 +416,7 @@ namespace sblngavnav5X.Data
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
             using var cmd = new MySqlCommand(
-                "UPDATE streamersid SET is_online = 0 WHERE SUBSTRING_INDEX(puk, ':', -1) = @id", conn);
+                "UPDATE streamers SET is_online = 0 WHERE twitch_id = @id", conn);
             cmd.Parameters.AddWithValue("@id", streamId);
             cmd.ExecuteNonQuery();
         }
@@ -550,7 +426,7 @@ namespace sblngavnav5X.Data
             var list = new List<RatingEntry>();
             using var conn = new MySqlConnection(Utils.connectionString);
             conn.Open();
-            const string sql = 
+            const string sql =
                 @"SELECT user_id, book_id,
                        score_plot, score_style, score_characters,
                        score_originality, score_vibe, final_score

@@ -1,6 +1,5 @@
 ﻿using Discord;
 using Discord.Commands;
-using Discord.WebSocket;
 using Newtonsoft.Json.Linq;
 using sblngavnav5X.Data;
 using sblngavnav5X.Services;
@@ -10,20 +9,12 @@ namespace sblngavnav5X.Commands
     public class BooksClubCommands : ModuleBase<SocketCommandContext>
     {
         private readonly HttpClient _http;
-        private readonly DiscordSocketClient _client;
+        private readonly ReactionPager _pager;
 
-        private static ulong _ratingMsgId;
-        private static List<Embed> _ratingPages = new();
-        private static int _ratingPage;
-        private static bool _ratingActive;
-        private static readonly Dictionary<ulong, DateTime> _ratingLastClick = new();
-
-        public BooksClubCommands(IHttpClientFactory httpClientFactory, DiscordSocketClient client)
+        public BooksClubCommands(IHttpClientFactory httpClientFactory, ReactionPager pager)
         {
             _http = httpClientFactory.CreateClient();
-            _client = client;
-            _client.ReactionAdded -= OnRatingReactionAdded;
-            _client.ReactionAdded += OnRatingReactionAdded;
+            _pager = pager;
         }
 
         [Command("книга")]
@@ -86,9 +77,16 @@ namespace sblngavnav5X.Commands
 
             if (trimmedInput == "отмена")
             {
-                if (DataBase.GetLastBook().id == 0)
+                var last = DataBase.GetLastBook();
+                if (last.id == 0)
                 {
-                    await ReplyAsync("❌ Нечего отменять — книга не выбрана");
+                    await ReplyAsync("❌ Нечего отменять, книга не выбрана");
+                    return;
+                }
+
+                if (DataBase.BookHasRatings(last.id))
+                {
+                    await ReplyAsync("❌ У книги уже есть оценки, отменить нельзя");
                     return;
                 }
 
@@ -110,7 +108,7 @@ namespace sblngavnav5X.Commands
                 return;
             }
 
-            string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(input)}&langRestrict=ru";
+            string url = $"https://www.googleapis.com/books/v1/volumes?q=intitle:{Uri.EscapeDataString(input)}&langRestrict=ru&key={Utils.gBooksApi}";
 
             var response = await _http.GetAsync(url);
             if (!response.IsSuccessStatusCode)
@@ -161,6 +159,11 @@ namespace sblngavnav5X.Commands
             }
 
             var book = DataBase.GetLastBook();
+            if (book.id == 0)
+            {
+                await ReplyAsync("❌ Книга недели еще не выбрана");
+                return;
+            }
 
             if (DataBase.UserHasRated(Context.User.Id.ToString(), book.id))
             {
@@ -174,7 +177,6 @@ namespace sblngavnav5X.Commands
 
             string scoreEmoji = Utils.GetScoreEmoji(finalScore);
             DataBase.SaveRating(Context.User.Id.ToString(), book.id, scores, finalScore);
-            TriggerBooksExport();
 
             var embed = new EmbedBuilder()
                 .WithTitle($"<:KKLOGO:1352283192014409869> {book.title}")
@@ -218,17 +220,16 @@ namespace sblngavnav5X.Commands
                     "2️⃣ Для чужих пиков  книг разница умножается на 2\n" +
                     "3️⃣ Усреднённая полученная величина нормируется на 56 (фундаментальные оценки без множителя) и переводится в %", false)
                 .AddField("📚 **Доступные команды**",
-                    "**х книга (название)** — ищет книгу по названию\n" +
-                    "**х выбор книги (название)** — установка книги недели (или `отмена` для отмены)\n" +
-                    "**х оценить 8 9 7 10 9 ** — оценить выбранную книгу по критериям\n" +
-                    "**х рейтинг** — показать текущий рейтинг клуба\n" +
-                    "**х членыклуба** — статистика по средним оценкам и индексу душноты", false)
+                    "**х книга (название)** - ищет книгу по названию\n" +
+                    "**х выбор книги (название)** - установка книги недели (или `отмена` для отмены)\n" +
+                    "**х оценить 8 9 7 10 9 ** - оценить выбранную книгу по критериям\n" +
+                    "**х рейтинг** - показать текущий рейтинг клуба\n" +
+                    "**х членыклуба** - статистика по средним оценкам и индексу душноты", false)
                 .WithColor(Color.Gold)
                 .WithFooter("knizhniy klub📖");
 
             await ReplyAsync(embed: embed.Build());
         }
-
 
         [Command("членыклуба")]
         public async Task ClubMembersAsync()
@@ -329,98 +330,15 @@ namespace sblngavnav5X.Commands
             await ReplyAsync(embed: embed.Build());
         }
 
-        private void TriggerBooksExport()
-        {
-            if (string.IsNullOrWhiteSpace(Utils.booksJsonPath)) return;
-            var userNames = Context.Guild.Users
-                .ToDictionary(u => u.Id.ToString(), u => u.Username);
-            Task.Run(() =>
-            {
-                try { DataBase.ExportBooksJson(Utils.booksJsonPath, userNames); }
-                catch (Exception ex) { _ = LoggingService.LogWarningAsync("BOOKS", $"JSON export fail: {ex.Message}"); }
-            });
-        }
-
-        [Command("книжныйэкспорт")]
-        public async Task ManualExportAsync()
-        {
-            if (string.IsNullOrWhiteSpace(Utils.booksJsonPath))
-            {
-                await ReplyAsync("❌ `booksJsonPath` не задан в Utils");
-                return;
-            }
-            try
-            {
-                var userNames = Context.Guild.Users
-                    .ToDictionary(u => u.Id.ToString(), u => u.Username);
-                DataBase.ExportBooksJson(Utils.booksJsonPath, userNames);
-                await ReplyAsync("✅ `books_data.json` обновлён");
-            }
-            catch (Exception ex)
-            {
-                await ReplyAsync($"❌ Ошибка экспорта: {ex.Message}");
-            }
-        }
-
         [Command("рейтинг")]
         public async Task ShowSeasonRatingAsync(int? season = null)
         {
-            _ratingPages = BuildSeasonEmbeds();
-            if (_ratingPages.Count == 0)
-                _ratingPages = new() { new EmbedBuilder().WithTitle("---").WithColor(Color.DarkGrey).Build() };
+            var pages = BuildSeasonEmbeds();
+            if (pages.Count == 0)
+                pages = new() { new EmbedBuilder().WithTitle("---").WithColor(Color.DarkGrey).Build() };
 
-            int max = DataBase.GetMaxSeason();
-            _ratingPage = season.HasValue && season.Value >= 1
-                ? Math.Clamp(season.Value - 1, 0, _ratingPages.Count - 1)
-                : 0;
-
-            var msg = await ReplyAsync(embed: _ratingPages[_ratingPage]);
-            _ratingMsgId = msg.Id;
-            _ratingActive = true;
-
-            await msg.AddReactionAsync(new Emoji("◀"));
-            await msg.AddReactionAsync(new Emoji("▶"));
-        }
-
-        private async Task OnRatingReactionAdded(
-            Cacheable<IUserMessage, ulong> message,
-            Cacheable<IMessageChannel, ulong> channel,
-            SocketReaction reaction)
-        {
-            try
-            {
-                if (reaction.UserId == _client.CurrentUser.Id) return;
-                if (!_ratingActive) return;
-                if (reaction.MessageId != _ratingMsgId) return;
-
-                var now = DateTime.UtcNow;
-                if (_ratingLastClick.TryGetValue(reaction.UserId, out var prev) && (now - prev).TotalSeconds < 1)
-                    return;
-                _ratingLastClick[reaction.UserId] = now;
-
-                var msg = await message.GetOrDownloadAsync();
-                if (msg is null) return;
-
-                if (reaction.Emote.Name == "◀")
-                {
-                    if (_ratingPage > 0) _ratingPage--;
-                }
-                else if (reaction.Emote.Name == "▶")
-                {
-                    if (_ratingPage < _ratingPages.Count - 1) _ratingPage++;
-                }
-                else return;
-
-                await msg.ModifyAsync(m => m.Embed = _ratingPages[_ratingPage]);
-
-                var user = await msg.Channel.GetUserAsync(reaction.UserId);
-                if (user != null)
-                    try { await msg.RemoveReactionAsync(reaction.Emote, user); } catch { }
-            }
-            catch
-            {
-                await LoggingService.LogErrorAsync("knizhniy klub", "ошибка пагинации рейтинга");
-            }
+            var start = season.HasValue && season.Value >= 1 ? season.Value - 1 : 0;
+            await _pager.SendAsync(Context.Channel, pages, start);
         }
 
         private static List<Embed> BuildSeasonEmbeds()

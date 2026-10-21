@@ -29,7 +29,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
         if (min > max)
             (min, max) = (max, min);
 
-        await Context.Channel.SendMessageAsync("Твое число - " + $@"{Utils.RandomNumber(min, max)}");
+        await Context.Channel.SendMessageAsync("Твое число - " + $@"{Random.Shared.NextInt64(min, (long)max + 1)}");
     }
 
     [Command("кит")]
@@ -237,6 +237,12 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
     [Alias("н")]
     public async Task Remind(int seconds, [Remainder] string remindMsg)
     {
+        if (seconds < 1 || seconds > ReminderService.MaxSeconds)
+        {
+            await ReplyAsync($"от 1 до {ReminderService.MaxSeconds} сек. (неделя) чел");
+            return;
+        }
+
         var e = new EmbedBuilder()
         {
             Title = "sbln напоминалка⏰",
@@ -246,7 +252,7 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
         };
 
         await ReplyAsync(embed: e.Build());
-        await ReminderService.RemindAsyncSeconds(Context.User, seconds, remindMsg);
+        await ReminderService.RemindAsyncSeconds(Context.User, Context.Channel, seconds, remindMsg);
     }
 
     [Command("выбери")]
@@ -305,8 +311,16 @@ public class MiscCommands : ModuleBase<SocketCommandContext>
     }
 
     [Command("ембед")]
-    public async Task CmdEmbedMessage(int color = 0, [Remainder] string msg = "")
+    public async Task CmdEmbedMessage([Remainder] string msg = "")
     {
+        var color = 0;
+        var head = msg.Split(' ', 2);
+        if (head.Length > 0 && int.TryParse(head[0], out var parsed) && parsed is >= 1 and <= 4)
+        {
+            color = parsed;
+            msg = head.Length > 1 ? head[1] : string.Empty;
+        }
+
         string[] input = msg.Split('|');
 
         var title = input.Length > 0 ? input[0] : string.Empty;

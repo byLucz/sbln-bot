@@ -1,4 +1,4 @@
-using Newtonsoft.Json;
+﻿using Newtonsoft.Json;
 using sblngavnav5X.Data;
 namespace sblngavnav5X.Commands
 
@@ -9,7 +9,6 @@ namespace sblngavnav5X.Commands
        public WeatherHelp(HttpClient c)
        {
          _Client =c;
-
        }
        public async Task<WeatherSer> GetCityWeather(string City)
        {
@@ -19,19 +18,20 @@ namespace sblngavnav5X.Commands
            {
                try
                {
-                WeatherApiBase b =  JsonConvert.DeserializeObject<WeatherApiBase>(await r.Content.ReadAsStringAsync());
-                return new WeatherSer(){main = b.main , weather = b.weather , windSc = b.windSc, sysSc = b.sysSc, isValid = true};
+                WeatherSer b = JsonConvert.DeserializeObject<WeatherSer>(await r.Content.ReadAsStringAsync());
+                b.isValid = b.main != null && b.weather?.Any() == true;
+                if (!b.isValid) b.Errors = "сервис погоды вернул пустой ответ";
+                return b;
                }
                catch(Exception e)
                {
                   return new WeatherSer(){isValid = false , Errors=e.Message};
                }
            }
-           else 
+           else
            {
                return new WeatherSer{isValid=false,Errors=r.ReasonPhrase,HttpCode=r.StatusCode.ToString()};
            }
-       }  
-
+       }
    }
 }

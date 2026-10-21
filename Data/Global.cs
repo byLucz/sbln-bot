@@ -1,57 +1,93 @@
-﻿using Discord;
-using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Net.Http;
-using System.Runtime.InteropServices;
+﻿using Microsoft.Extensions.Configuration;
 
 namespace sblngavnav5X.Data
 {
-
     public static class Utils
     {
-        public const string sblnver = "5.6.1";
+        public const string sblnver = "5X.SUP";
 
-        public const string token = "INSERT_HERE";
+        private static readonly IConfiguration _config = BuildConfig();
 
-        public const string pref1 = "x ";
+        private static IConfiguration BuildConfig()
+        {
+            var path = Environment.GetEnvironmentVariable("SBLN_V5X_CONFIG");
+            if (string.IsNullOrWhiteSpace(path))
+                path = File.Exists("/opt/sbln/config-v5x.json") ? "/opt/sbln/config-v5x.json" : Path.Combine("config", "config-v5x.json");
 
-        public const string pref2 = "х ";
+            var full = Path.GetFullPath(path);
+            if (!File.Exists(full))
+                throw new FileNotFoundException($"нет файла {full} (задай SBLN_V5X_CONFIG)", full);
 
-        public const string connectionString = "INSERT_HERE";
+            return new ConfigurationBuilder()
+                .SetBasePath(Path.GetDirectoryName(full))
+                .AddJsonFile(Path.GetFileName(full), optional: false, reloadOnChange: false)
+                .Build();
+        }
 
-        public const string kumaConn = "INSERT_HERE";
+        private static string Str(string key, string fallback = "")
+        {
+            var v = _config[key];
+            return string.IsNullOrWhiteSpace(v) ? fallback : v;
+        }
 
-        public const string weatherApiKey = "INSERT_HERE";
+        private static ulong UL(string key, ulong fallback = 0)
+            => ulong.TryParse(_config[key], out var v) ? v : fallback;
 
-        public const string streamCid = "INSERT_HERE";
+        private static int Int(string key, int fallback)
+            => int.TryParse(_config[key], out var v) ? v : fallback;
 
-        public const string streamAuth = "INSERT_HERE";
+        private static bool Bool(string key, bool fallback)
+            => bool.TryParse(_config[key], out var v) ? v : fallback;
 
-        public const string gBooksApi = "INSERT_HERE";
+        private static string DataPath(string key, string fileName)
+            => Str(key, Path.Combine(DataDir, fileName));
 
-        public const string pgApiBaseUrl = "INSERT_HERE";
+        public static readonly string DataDir =
+            Environment.GetEnvironmentVariable("SBLN_DATA_DIR") is { Length: > 0 } dir ? dir : AppContext.BaseDirectory;
 
-        public const string pgApiToken = "INSERT_HERE";
+        public static readonly string token = Str("System:BotToken");
+        public static readonly string pref1 = Str("System:Prefix1", "x ");
+        public static readonly string pref2 = Str("System:Prefix2", "х ");
+        public static readonly string connectionString = Str("System:DbConnectionString");
 
-        public static readonly ulong pgApiRoleId = 11111111111;
+        public static readonly string weatherApiKey = Str("Api:WeatherApiKey");
+        public static readonly string streamCid = Str("Api:StreamCid");
+        public static readonly string streamAuth = Str("Api:StreamAuth");
+        public static readonly string gBooksApi = Str("Api:GBooksApi");
 
-        public const int streamUpdTime = 600;
+        public static readonly string lavaHost = Str("Lava:LavaHost", "127.0.0.1");
+        public static readonly int lavaPort = Int("Lava:LavaPort", 2333);
+        public static readonly string lavaPass = Str("Lava:LavaPass", "youshallnotpass");
+        public static readonly string lavaAudioPath =
+            Environment.GetEnvironmentVariable("SBLN_AUDIO_DIR_LAVA") ?? Str("Lava:AudioPath");
 
-        public const string streamNotifCh = "twitch";
+        public static readonly int streamUpdTime = Math.Max(60, Int("Streams:UpdateSeconds", 600));
+        public static readonly string streamNotifCh = Str("Streams:NotifChannel", "twitch");
 
-        public const ulong messageSourceChannelId = 11111111111;
+        public static readonly string welcomeChannel = Str("Welcome:Channel", "mainlobby");
+        public static readonly string welcomeRole = Str("Welcome:Role", "Челик");
 
-        public const string messagesFilePath = "INSERT_HERE";
+        public static readonly ulong messageSourceChannelId = UL("Govor:MessageSourceChannelId");
+        public static readonly string messagesFilePath = DataPath("Govor:MessagesFile", "messages.csv");
 
-        public static int govorUpdTime = 86400000;
+        public static int govorUpdTime = Math.Max(1000, Int("Govor:IntervalMs", 86400000));
 
         public static string govorVM = "выкл";
 
-        public const int booksSeason = 2;
+        public static readonly int booksSeason = Int("Books:BooksSeason", 2);
 
-        public const string booksJsonPath = "INSERT_HERE";
+        public static class Modules
+        {
+            public static readonly bool Music = Bool("Modules:Music", true);
+            public static readonly bool Govor = Bool("Modules:Govor", true);
+            public static readonly bool Streams = Bool("Modules:Streams", true);
+            public static readonly bool Books = Bool("Modules:Books", true);
+            public static readonly bool Weather = Bool("Modules:Weather", true);
+            public static readonly bool Welcome = Bool("Modules:Welcome", true);
+            public static readonly bool Meal = Bool("Modules:Meal", true);
+            public static readonly bool Fun = Bool("Modules:Fun", true);
+            public static readonly bool Games = Bool("Modules:Games", true);
+        }
 
         public static string[] greetList = new[]
         {
@@ -69,31 +105,25 @@ namespace sblngavnav5X.Data
         public static string GetScoreEmoji(double score)
         {
             if (score >= 91)
-                return "<:KK90:1352292878252249191> <:KKplus:1352292867170631731>"; // 90+
+                return "<:KK90:1352292878252249191> <:KKplus:1352292867170631731>";
             if (score == 90)
-                return "<:KK90:1352292878252249191>"; // 90
+                return "<:KK90:1352292878252249191>";
             if (score >= 75)
-                return "<:KK90:1352292878252249191> <:KKminus:1352292880022114324>"; // 90-
+                return "<:KK90:1352292878252249191> <:KKminus:1352292880022114324>";
             if (score >= 61)
-                return "<:KK60:1352292871260344400> <:KKplus:1352292867170631731>"; // 60+
+                return "<:KK60:1352292871260344400> <:KKplus:1352292867170631731>";
             if (score == 60)
-                return "<:KK60:1352292871260344400>"; // 60
+                return "<:KK60:1352292871260344400>";
             if (score >= 45)
-                return "<:KK60:1352292871260344400> <:KKminus:1352292880022114324>"; // 60-
+                return "<:KK60:1352292871260344400> <:KKminus:1352292880022114324>";
             if (score >= 31)
-                return "<:KK30:1352292869179965544> <:KKplus:1352292867170631731>"; // 30+
+                return "<:KK30:1352292869179965544> <:KKplus:1352292867170631731>";
             if (score == 30)
-                return "<:KK30:1352292869179965544>"; // 30
-            return "<:KK30:1352292869179965544> <:KKminus:1352292880022114324>"; // 30-
+                return "<:KK30:1352292869179965544>";
+            return "<:KK30:1352292869179965544> <:KKminus:1352292880022114324>";
         }
-        public static double Round(double value, int places)
-        {
 
-            long factor = (long)Math.Pow(10, places);
-            value = value * factor;
-            long tmp = (long)Math.Round(value);
-            return (double)tmp / factor;
-        }
+        public static double Round(double value, int places) => Math.Round(value, places);
 
         public static string TrackLink(string? title, string? url)
         {
@@ -121,16 +151,8 @@ namespace sblngavnav5X.Data
             return false;
         }
 
-        public static int RandomNumber(int min, int max)
-        {
-            Random random = new Random();
-            return random.Next(min, max);
-        }
-        public static T RandomList<T>(this IList<T> items)
-        {
-            var random = new Random();
+        public static int RandomNumber(int min, int max) => Random.Shared.Next(min, max);
 
-            return items[random.Next(items.Count)];
-        }
+        public static T RandomList<T>(this IList<T> items) => items[Random.Shared.Next(items.Count)];
     }
 }

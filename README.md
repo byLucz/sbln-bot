@@ -1,52 +1,30 @@
-# sbln-bot
-[![wakatime](https://wakatime.com/badge/user/018b8006-2512-45db-8277-d8e3339a3084/project/637bbc99-c13f-4c8f-b0c1-8a25356d22c9.svg)](https://wakatime.com/badge/user/018b8006-2512-45db-8277-d8e3339a3084/project/637bbc99-c13f-4c8f-b0c1-8a25356d22c9)
-![Static Badge](https://img.shields.io/badge/build-passing-brightgreen)
+﻿# sbln-bot v5X.SUP
 
-sbln-bot is a modular Discord bot built on .NET 8 that blends music playback, Twitch stream notifications, games, meme commands, administration, utility tools & deliver a lot of funny stuff 😋
+Off-release support build of the v5X line. It is outside release versioning: no tags, no changelogs. Important fixes only, new features go to v6 (`master`).
 
----
+Built from [v5.6.1](https://lois.media/sbln/v5.6.1) (base) and [v6.0.0](https://lois.media/sbln/v6.0.0) (ported fixes, DB schema).
 
-# Features 🏃
-### Core Bot Infrastructure
-* Command & Interaction Handling: Centralized dispatch for prefix and slash commands.
-* Logging & Diagnostics: Color‑coded console logging with severity tags.
-* Welcome & Reminder Services: Automatic greetings and DM reminders.
+## Stack
 
-### Music
-* Queue, play, skip, pause, resume, and control volume with Lavalink.
-* Automatic track announcements and error embeds.
+.NET 8 LTS (SDK `8.0.426`, runtime `8.0.32`), MariaDB, Lavalink 4, Victoria 7.
 
-### Twitch Integration
-* Live stream monitoring and channel notifications (TwitchService/StreamMonoService.cs).
-* Admin commands to add/remove monitored streamers (TwitchService/TwitchCommands.cs).
+## Config
 
-### Fun & Games
-* Meme actions (hug, kiss, pat, etc.), cats, jokes, calculator, minesweeper, emoji races.
-* GVR Markov‑chain chat generator with adjustable parameters.
+Own file `config-v5x.json`, v6 configs are never read. Example: `config/config-v5x.example.json`.
+Path: `SBLN_V5X_CONFIG`, else `/opt/sbln/config-v5x.json`, else `config/config-v5x.json`.
+Modules are switched in the `Modules` section.
 
-### Utilities
-* Weather: OpenWeather lookup with translated output.
-* Crypto Prices: Bitfinex stats for BTC, ETH, SOL, TON.
-* General Commands: Avatars, reminders, status changes, uptime, help pages, and admin tools.
+## Docker
 
-### and more...
-  
----
+Deployed by the main script from `master`, no own scripts. `docker-compose.yml` uses the v6 variables, pass `config-v5x.json` as `SBLN_CONFIG_FILE`.
 
-## Dependencies 📦
+## Footprint vs v6
 
-Stack: `.NET 8, MariaDB 11, Lavalink 4`
+| | v6 | v5X.SUP |
+|---|---|---|
+| App publish | 81 MB, 75 files | 9.6 MB, 43 files (~8x smaller) |
+| Image | ~0.7-1 GB (ffmpeg, tesseract, fonts, docker-cli) | ~130 MB, chiseled, no shell (~5-8x smaller) |
+| Idle RAM | ~200-400 MB (Server GC, presences, Telegram, Remna, ONNX) | ~60-100 MB, capped at 256 MB (~3-4x less) |
+| Host access | `docker.sock` mounted | none |
 
-| Nuggets  |
-| ----------------|
-| Discord.Net     | 
-| Discord.Addons.Interactive| 
-| Victoria        | 
-| TwitchLib       | 
-| MySqlConnector  |
-| Newtonsoft.Json |
-
----
-
-## Usage 📝
-Feel free to use sbln`ok for your moves
+Publish size is measured. Image and RAM are estimates, check with `docker images` and `docker stats`.

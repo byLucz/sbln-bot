@@ -1,5 +1,4 @@
-using Discord;
-using System;
+﻿using Discord;
 
 namespace sblngavnav5X.Core
 {
