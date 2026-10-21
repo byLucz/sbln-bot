@@ -249,6 +249,9 @@ namespace sblngavnav6.Audio8
             string userReason,
             string logReason)
         {
+            if (source is Audio8Player { RepeatEnabled: true } looped)
+                looped.RepeatMode = TrackRepeatMode.None;
+
             if (await TryReserveAsync(source, track).ConfigureAwait(false))
                 return;
 
@@ -286,7 +289,7 @@ namespace sblngavnav6.Audio8
 
             try
             {
-                var query = track.SourceName == "youtube" && track.Uri is not null
+                var query = track.SourceName is "youtube" or "soundcloud" && track.Uri is not null
                     ? track.Uri.ToString()
                     : Audio8SearchService.BuildQuery(track);
 
@@ -294,7 +297,7 @@ namespace sblngavnav6.Audio8
                 IUserMessage notice = null;
                 if (channel is not null)
                 {
-                    try { notice = await _service.SendAsync(channel, await Audio8Embeds.Accent("резерв", $"🔁 {track.Title}: YouTube не отдал трек, ищу через резервный источник, это может занять до минуты")).ConfigureAwait(false); }
+                    try { notice = await _service.SendAsync(channel, await Audio8Embeds.Accent("резерв", $"🔁 {track.Title}: {Audio8Embeds.SourceLabel(track)} не отдал трек, ищу через резервный источник, это может занять до минуты")).ConfigureAwait(false); }
                     catch (Exception ex) when (ex is HttpException or TimeoutException) { }
                 }
 

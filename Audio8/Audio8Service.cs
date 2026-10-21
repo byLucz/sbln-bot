@@ -644,8 +644,9 @@ namespace sblngavnav6.Audio8
                     continue;
 
                 var position = player.Position?.Position;
+                var speed = Math.Min((player.Filters.Timescale?.Speed ?? 1f) * (player.Filters.Timescale?.Rate ?? 1f), 1f);
 
-                if (position is null || position.Value <= track.Duration + Audio8Constants.OverrunTolerance)
+                if (position is null || speed <= 0f || position.Value <= track.Duration / speed + Audio8Constants.OverrunTolerance)
                     continue;
 
                 await LoggingService.LogWarningAsync(

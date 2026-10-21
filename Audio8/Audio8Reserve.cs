@@ -28,7 +28,7 @@ namespace sblngavnav6.Audio8
             !string.IsNullOrWhiteSpace(Global.Vars.Cfg.lavaYtAgent) && !string.IsNullOrWhiteSpace(Global.Vars.Cfg.remnaAgentToken);
 
         public static bool Covers(LavalinkTrack track) =>
-            track is not null && track.SourceName is not ("http" or "local" or "soundcloud");
+            track is not null && track.SourceName is not ("http" or "local");
 
         public async Task<string> StatusAsync(CancellationToken cancellationToken = default)
         {

@@ -75,13 +75,13 @@ namespace sblngavnav6.Audio8
             var (sourceName, isUrl) = Audio8Query.Detect(query.Identifier);
             var reserveTried = false;
 
-            if (!result.HasMatches && Audio8Reserve.Configured && sourceName == "YouTube" && (result.IsFailed || isUrl))
+            if (!result.HasMatches && Audio8Reserve.Configured && sourceName is "YouTube" or "SoundCloud" && (result.IsFailed || isUrl))
             {
                 reserveTried = true;
-                var notice = await ReplyAsync(embed: await Audio8Embeds.Accent("резерв", "🔁 YouTube не отдал трек, ищу через резервный источник, это может занять до минуты"));
+                var notice = await ReplyAsync(embed: await Audio8Embeds.Accent("резерв", $"🔁 {sourceName} не отдал трек, ищу через резервный источник, это может занять до минуты"));
                 using var typing = Context.Channel.EnterTypingState();
 
-                var (reserved, reserveError) = await _reserve.ResolveAsync(isUrl ? query.Identifier : Audio8Query.StripPrefix(query.Identifier));
+                var (reserved, reserveError) = await _reserve.ResolveAsync(isUrl || sourceName == "SoundCloud" ? query.Identifier : Audio8Query.StripPrefix(query.Identifier));
                 if (reserved is not null)
                 {
                     await _service.ModifyAsync(notice, await Audio8Embeds.Accent("резерв", "🔁 нашёл через резервный источник, ставлю"));
