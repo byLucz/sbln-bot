@@ -41,18 +41,18 @@
   <ItemGroup>
     <PackageReference Include="Lavalink4NET.Discord.NET" Version="4.2.2" />
     <PackageReference Include="Lavalink4NET.InactivityTracking" Version="4.2.2" />
-    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.31.0" />
-    <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="NLayer" Version="1.11.0" NoWarn="NU1701" />
-    <PackageReference Include="Discord.Net" Version="3.20.1" />
-    <PackageReference Include="MailKit" Version="4.17.0" />
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.9" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9" />
-    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.9" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.9" />
-    <PackageReference Include="MySqlConnector" Version="2.6.0" />
-    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
-    <PackageReference Include="TwitchLib.Api" Version="3.10.2" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.32.0" />
+    <PackageReference Include="NAudio" Version="3.3.0" />
+    <PackageReference Include="NLayer" Version="3.0.1" NoWarn="NU1701" />
+    <PackageReference Include="Discord.Net" Version="3.20.2" />
+    <PackageReference Include="MailKit" Version="5.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="11.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="11.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="11.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="11.0.0" />
+    <PackageReference Include="MySqlConnector" Version="3.0.0" />
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="11.0.0" />
+    <PackageReference Include="TwitchLib.Api" Version="3.11.0" />
   </ItemGroup>
 
 </Project>
