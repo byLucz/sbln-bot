@@ -1,6 +1,7 @@
 using DiscordTelegramFrontier;
 using System.Net;
 using Telegram.Bot;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 
 namespace sblngavnav6.TelegramExtensions.Core;
@@ -20,7 +21,7 @@ public sealed class TelegramNotifier(FrontierService frontier)
             html,
             parseMode: ParseMode.Html,
             messageThreadId: topic == 0 ? null : topic,
-            linkPreviewOptions: true,
+            linkPreviewOptions: LinkPreviewOptions.Disabled,
             cancellationToken: cancellationToken);
     }
 }
