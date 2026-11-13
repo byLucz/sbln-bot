@@ -1,6 +1,10 @@
 # sbln-bot
-[![wakatime](https://wakatime.com/badge/user/018b8006-2512-45db-8277-d8e3339a3084/project/637bbc99-c13f-4c8f-b0c1-8a25356d22c9.svg)](https://wakatime.com/badge/user/018b8006-2512-45db-8277-d8e3339a3084/project/637bbc99-c13f-4c8f-b0c1-8a25356d22c9)
-![Static Badge](https://img.shields.io/badge/build-passing-brightgreen)
+
+[![wakatime](https://wakatime.com/badge/user/018b8006-2512-45db-8277-d8e3339a3084/project/b12467c9-4e49-44ff-acb7-c9a5158dca7a.svg)](https://wakatime.com/badge/user/018b8006-2512-45db-8277-d8e3339a3084/project/b12467c9-4e49-44ff-acb7-c9a5158dca7a)
+[![Build](https://img.shields.io/github/actions/workflow/status/byLucz/sblngavna/release.yml?branch=master&label=build&logo=githubactions&logoColor=white)](https://github.com/byLucz/sblngavna/actions/workflows/release.yml)
+[![Latest release](https://img.shields.io/github/v/release/byLucz/sblngavna?logo=github&logoColor=white)](https://github.com/byLucz/sblngavna/releases/latest)
+[![License](https://img.shields.io/github/license/byLucz/sblngavna?color=22c55e)](LICENSE.txt)
+[![TG via DTF](https://img.shields.io/badge/TG%20via-DTF-26A5E4?logo=telegram&logoColor=white)](https://github.com/byLucz/DTF)
 
 sbln-bot is a modular Discord bot built on .NET 10 that blends music playback, Twitch stream notifications, a Telegram bridge, games, meme commands, administration, utility tools & deliver a lot of funny stuff 😋
 
