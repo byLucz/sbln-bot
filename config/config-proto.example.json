@@ -1,18 +1,19 @@
-﻿{
+{
+  "Docker": {
+    "NetworkMode": "bridge"
+  },
   "System": {
+    "LogLevel": "Info",
     "BotToken": "",
     "DbConnectionString": "Server=host.docker.internal;Port=3306;Database=sbln_proto;Uid=USER;Pwd=PASS;",
-    "GvrBase": "sbln_govor",
     "Prefix1": "п ",
     "Prefix2": "p ",
-    "GvrPrefixes": "х,x",
     "SlashScopeGuild": "500673210463813632",
     "DevGuild": "500673210463813632",
-    "StreamsEnabled": "false",
-    "PpmEnabled": "true",
-    "RemnaEnabled": "true",
-    "MessageSourceChannelId": "0",
-    "LogLevel": "Info"
+    "GvrEnabled": "false",
+    "TwitchEnabled": "false",
+    "PpmEnabled": "false",
+    "RemnaEnabled": "false"
   },
   "Api": {
     "WeatherApiKey": "",
@@ -23,6 +24,12 @@
     "PgApiToken": "",
     "ApexKey": ""
   },
+  "Telegram": {
+    "Token": "",
+    "DefaultGuild": "0",
+    "ChatGuild": {},
+    "UserLink": {}
+  },
   "Remna": {
     "Servers": [
       { "Name": "", "Url": "", "Token": "" }
@@ -32,9 +39,6 @@
     "WatchSeconds": "60",
     "AgentPort": "8687",
     "AgentToken": ""
-  },
-  "Docker": {
-    "NetworkMode": "bridge"
   },
   "Lava": {
     "LavaHost": "host.docker.internal",
@@ -58,10 +62,9 @@
     "BooksSeason": "2",
     "BooksCountry": "PL"
   },
-  "Telegram": {
-    "Token": "",
-    "DefaultGuild": "0",
-    "ChatGuild": {},
-    "UserLink": {}
+  "GVR": {
+    "Database": "sbln_govor",
+    "Prefixes": "х,x",
+    "SourceChannelId": "0"
   }
 }

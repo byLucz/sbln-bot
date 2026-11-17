@@ -132,7 +132,8 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         var pictures = await _gvr.ImageCountAsync();
 
         var database = alive ? $"жива, {watch.ElapsedMilliseconds}ms" : "недоступна";
-        var twitch = Global.Vars.Cfg.streamsEnabled ? "вкл" : "выкл";
+        var twitch = Global.Vars.Cfg.twitchEnabled ? "вкл" : "выкл";
+        var gvr = Global.Vars.Cfg.gvrEnabled ? "вкл" : "выкл";
         var ppm = Global.Vars.Cfg.ppmEnabled ? "вкл" : "выкл";
         var remna = Global.Vars.Cfg.remnaEnabled ? "вкл" : "выкл";
         var telegram = string.IsNullOrWhiteSpace(Global.Vars.Cfg.telegramToken) ? "выкл" : "вкл";
@@ -175,6 +176,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
                     $"Движок: **{EmbedHandler.AudioEngine}**", true),
                 new EmbedFieldSpec("🧩 Модули",
                     $"Twitch: **{twitch}**\n" +
+                    $"GVR: **{gvr}**\n" +
                     $"PPM: **{ppm}**\n" +
                     $"Remnawave: **{remna}**\n" +
                     $"Telegram: **{telegram}**", true)

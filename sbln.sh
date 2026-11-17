@@ -11,14 +11,21 @@ fi
 cmd=${1:-menu}
 if [[ $# -gt 0 ]]; then shift; fi
 
-SYNC_DEF='def sync($e; $u): if ($e | type) == "object" and ($u | type) == "object" and ($e | length) > 0 then reduce ($e | keys_unsorted[]) as $k ({}; .[$k] = (if ($u | has($k)) then sync($e[$k]; $u[$k]) else $e[$k] end)) else $u end;'
+SYNC_DEF='def sync($e; $u): if ($e | type) == "object" and ($u | type) == "object" and ($e | length) > 0 then reduce ($e | keys_unsorted[]) as $k ({}; .[$k] = (if ($u | has($k)) then sync($e[$k]; $u[$k]) else $e[$k] end)) else $u end;
+def migrate_config:
+  .System = (({TwitchEnabled: .System.StreamsEnabled} | with_entries(select(.value != null))) + (.System // {}))
+  | .GVR = (({
+    Database: .System.GvrBase,
+    Prefixes: .System.GvrPrefixes,
+    SourceChannelId: .System.MessageSourceChannelId
+  } | with_entries(select(.value != null))) + (.GVR // {}));'
 
 config_sync() {
   local example=$1 config=$2 tmp removed
   command -v jq >/dev/null 2>&1 || { echo '>> jq не найден, синхронизация конфига пропущена (apt install jq)' >&2; return 0; }
   [[ -f "$example" && -f "$config" ]] || return 0
   tmp=$(mktemp)
-  if ! jq -s "$SYNC_DEF sync(.[0]; .[1])" "$example" "$config" > "$tmp" 2>/dev/null || [[ ! -s "$tmp" ]]; then
+  if ! jq -s "$SYNC_DEF sync(.[0]; (.[1] | migrate_config))" "$example" "$config" > "$tmp" 2>/dev/null || [[ ! -s "$tmp" ]]; then
     rm -f "$tmp"
     echo ">> не смог разобрать $config или $example, синхронизация пропущена" >&2
     return 0
@@ -27,7 +34,7 @@ config_sync() {
     rm -f "$tmp"
     return 0
   fi
-  removed=$(jq -rs "$SYNC_DEF"' sync(.[0]; .[1]) as $r | .[1] as $u | [($u | [paths]) - ($r | [paths]) | .[]] as $gone | [$gone[] | select(. as $p | any($gone[]; . == $p[:-1]) | not) | map(tostring) | join(".")] | join(", ")' "$example" "$config" 2>/dev/null) || removed=''
+  removed=$(jq -rs "$SYNC_DEF"' sync(.[0]; (.[1] | migrate_config)) as $r | .[1] as $u | [($u | [paths]) - ($r | [paths]) | .[]] as $gone | [$gone[] | select(. as $p | any($gone[]; . == $p[:-1]) | not) | map(tostring) | join(".")] | join(", ")' "$example" "$config" 2>/dev/null) || removed=''
   cp -p "$config" "$config.bak"
   cat "$tmp" > "$config"
   rm -f "$tmp"

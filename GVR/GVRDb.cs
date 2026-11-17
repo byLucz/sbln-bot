@@ -293,11 +293,14 @@ namespace sblngavnav6.GVR
 
         private async Task<bool> ReadyAsync()
         {
+            if (!Global.Vars.Cfg.gvrEnabled)
+                return false;
+
             if (!string.IsNullOrWhiteSpace(Global.Vars.Cfg.connectionString) && !string.IsNullOrWhiteSpace(Global.Vars.Cfg.gvrBase))
                 return true;
 
             if (Interlocked.Exchange(ref _warned, 1) == 0)
-                await LoggingService.LogWarningAsync(LogSource, "не заданы System:DbConnectionString или System:GvrBase, говорилка не работает");
+                await LoggingService.LogWarningAsync(LogSource, "не заданы System:DbConnectionString или GVR:Database, говорилка не работает");
 
             return false;
         }

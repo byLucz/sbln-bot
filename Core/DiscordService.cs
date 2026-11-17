@@ -96,7 +96,7 @@ namespace sblngavnav6.Core
 
                 await _commandHandler.InitializeAsync();
                 await _interHandler.InitializeAsync();
-                if (Global.Vars.Cfg.streamsEnabled)
+                if (Global.Vars.Cfg.twitchEnabled)
                 {
                     await DataBase.DownloadStreamers();
                     _streams = _services.GetRequiredService<StreamMonoService>();

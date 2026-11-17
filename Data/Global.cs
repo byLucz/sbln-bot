@@ -49,17 +49,19 @@ namespace sblngavnav6.Data
 
                 public static readonly string token = Str("System:BotToken");
                 public static readonly string connectionString = Str("System:DbConnectionString");
-                public static readonly string gvrBase = Str("System:GvrBase", "sbln_govor");
                 public static readonly string pref1 = Str("System:Prefix1", "x ");
                 public static readonly string pref2 = Str("System:Prefix2", "х ");
-                public static readonly string gvrPrefixes = Str("System:GvrPrefixes");
                 public static readonly ulong slashScopeGuild = UL("System:SlashScopeGuild", 0);
                 public static readonly ulong devGuild = UL("System:DevGuild", 0);
-                public static readonly bool streamsEnabled = Bool("System:StreamsEnabled", true);
+                public static readonly bool gvrEnabled = Bool("System:GvrEnabled", true);
+                public static readonly bool twitchEnabled = Bool("System:TwitchEnabled", Bool("System:StreamsEnabled", true));
                 public static readonly bool ppmEnabled = Bool("System:PpmEnabled", true);
                 public static readonly bool remnaEnabled = Bool("System:RemnaEnabled", false);
-                public static readonly ulong messageSourceChannelId = UL("System:MessageSourceChannelId", 0);
                 public static readonly string logLevel = Str("System:LogLevel", "Info");
+
+                public static readonly string gvrBase = Str("GVR:Database", Str("System:GvrBase", "sbln_govor"));
+                public static readonly string gvrPrefixes = Str("GVR:Prefixes", Str("System:GvrPrefixes"));
+                public static readonly ulong messageSourceChannelId = UL("GVR:SourceChannelId", UL("System:MessageSourceChannelId", 0));
 
                 public static readonly string weatherApiKey = Str("Api:WeatherApiKey");
                 public static readonly string streamCid = Str("Api:StreamCid");

@@ -34,7 +34,8 @@ namespace sblngavnav6.Services
         {
             if (_cts != null) return;
             _cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _gvr.Collected += WriteCoreAsync;
+            if (Global.Vars.Cfg.gvrEnabled)
+                _gvr.Collected += WriteCoreAsync;
             _loop = LoopAsync(_cts.Token);
         }
 
@@ -57,7 +58,7 @@ namespace sblngavnav6.Services
             try
             {
                 Write(CommandsPath, Commands(), AppJsonContext.Default.ListPortalCommandSectionDto);
-                if (!File.Exists(CorePath))
+                if (Global.Vars.Cfg.gvrEnabled && !File.Exists(CorePath))
                     await WriteCoreAsync();
 
                 do

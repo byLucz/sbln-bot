@@ -3,6 +3,7 @@ using Discord.Commands;
 using Discord.Net;
 using DiscordTelegramFrontier;
 using sblngavnav6.Common;
+using sblngavnav6.Data;
 using sblngavnav6.Images;
 using sblngavnav6.Services;
 using System.Text;
@@ -49,6 +50,9 @@ namespace sblngavnav6.GVR
         public async Task<(int Added, int Images, int Scanned, int Removed, int Total)> CollectAsync(
             IMessageChannel channel, int count, CancellationToken cancellationToken = default)
         {
+            if (!Global.Vars.Cfg.gvrEnabled)
+                return default;
+
             var lines = new List<string>();
             var images = new List<GVRImage>();
             var scanned = 0;
@@ -84,6 +88,9 @@ namespace sblngavnav6.GVR
 
         public async Task<(List<(string Word, int Count)> Words, List<(int A, int B, int Weight)> Links)> CoreAsync(int top, int linksPerWord)
         {
+            if (!Global.Vars.Cfg.gvrEnabled)
+                return ([], []);
+
             var counts = new Dictionary<string, int>();
             var messages = new List<string[]>();
 
@@ -126,7 +133,7 @@ namespace sblngavnav6.GVR
 
         public async Task TrySendGeneratedMessageAsync(SocketCommandContext context)
         {
-            if (CommonUtils.RandomNumber(1, 100) > _config.Chance)
+            if (!Global.Vars.Cfg.gvrEnabled || CommonUtils.RandomNumber(1, 100) > _config.Chance)
                 return;
 
             var words = _config.Rand
@@ -148,7 +155,7 @@ namespace sblngavnav6.GVR
 
         private async Task<bool> SendDemotivatorAsync(SocketCommandContext context, int step)
         {
-            if (step <= 0)
+            if (!Global.Vars.Cfg.gvrEnabled || step <= 0)
                 return false;
 
             var model = await GetModelAsync(step).ConfigureAwait(false);
@@ -223,7 +230,7 @@ namespace sblngavnav6.GVR
 
         public async Task SendGeneratedMessageAsync(SocketCommandContext context, int step, int wordCount)
         {
-            if (step <= 0 || wordCount <= 0)
+            if (!Global.Vars.Cfg.gvrEnabled || step <= 0 || wordCount <= 0)
                 return;
 
             var model = await GetModelAsync(step).ConfigureAwait(false);

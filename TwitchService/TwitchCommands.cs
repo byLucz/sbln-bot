@@ -110,10 +110,10 @@ namespace sblngavnav6.Commands.Twitch
 
         private async Task<bool> DisabledAsync()
         {
-            if (Global.Vars.Cfg.streamsEnabled)
+            if (Global.Vars.Cfg.twitchEnabled)
                 return false;
 
-            await FailAsync("модуль твича выключен, включается в конфиге: `System:StreamsEnabled`");
+            await FailAsync("модуль твича выключен, включается в конфиге: `System:TwitchEnabled`");
             return true;
         }
 

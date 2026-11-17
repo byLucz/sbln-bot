@@ -111,6 +111,9 @@ namespace sblngavnav6.Core
                 assembly: Assembly.GetEntryAssembly(),
                 services: _services);
 
+            if (!Global.Vars.Cfg.gvrEnabled)
+                await _commands.RemoveModuleAsync<GVRCommands>();
+
             _commandNames = _commands.Commands
                 .SelectMany(command => command.Aliases)
                 .Select(alias => alias.ToLowerInvariant())
@@ -178,7 +181,7 @@ namespace sblngavnav6.Core
                 return;
             }
 
-            if (DevGuildGate.IsDevGuild(context.Guild))
+            if (Global.Vars.Cfg.gvrEnabled && DevGuildGate.IsDevGuild(context.Guild))
                 _ = Task.Run(() => TrySendGeneratedAsync(context));
         }
 
@@ -466,6 +469,8 @@ namespace sblngavnav6.Core
 
         private async Task StartTimerAsync()
         {
+            if (!Global.Vars.Cfg.gvrEnabled) return;
+
             lock (_timerLock)
             {
                 if (_timerStarted || _stopped) return;
