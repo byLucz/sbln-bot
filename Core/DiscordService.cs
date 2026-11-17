@@ -35,6 +35,7 @@ namespace sblngavnav6.Core
         private Task _frontierTask = Task.CompletedTask;
         private CancellationTokenSource _readyGraceCts;
         private bool _started;
+        private volatile bool _stopping;
         private int _running;
 
         private static readonly TimeSpan ReadyGrace = TimeSpan.FromSeconds(45);
@@ -49,6 +50,7 @@ namespace sblngavnav6.Core
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             void Cancel()
             {
+                _stopping = true;
                 try { stopping.Cancel(); }
                 catch (ObjectDisposedException) { }
                 catch (AggregateException ex) { Console.Error.WriteLine($"Ошибка отмены фоновых задач: {ex}"); }
@@ -358,7 +360,9 @@ namespace sblngavnav6.Core
             }
         }
 
-        private static Task LogAsync(LogMessage log)
-            => LoggingService.LogDiscordAsync(log);
+        private Task LogAsync(LogMessage log)
+            => _stopping && log.Exception is OperationCanceledException
+                ? Task.CompletedTask
+                : LoggingService.LogDiscordAsync(log);
     }
 }
