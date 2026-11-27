@@ -15,8 +15,8 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
 
     private const int PageSize = 100;
 
-    private static List<PastaEntry> _pasta;
-    private static DateTimeOffset _pastaLoadedAt;
+    private static volatile List<PastaEntry> _pasta;
+    private static long _pastaLoadedAtTicks;
     private static ulong _pastaNewestId;
 
     [Frontier]
@@ -120,22 +120,25 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
         if (channel is null)
             return null;
 
-        if (_pasta is { Count: > 0 } && DateTimeOffset.UtcNow - _pastaLoadedAt < PastaTtl)
-            return _pasta;
+        var now = DateTimeOffset.UtcNow.UtcTicks;
+        var loadedAt = Volatile.Read(ref _pastaLoadedAtTicks);
+        if (_pasta is { Count: > 0 } cached && now - loadedAt < PastaTtl.Ticks)
+            return cached;
 
         await PastaGate.WaitAsync().ConfigureAwait(false);
 
         try
         {
-            if (_pasta is { Count: > 0 } && DateTimeOffset.UtcNow - _pastaLoadedAt < PastaTtl)
-                return _pasta;
+            now = DateTimeOffset.UtcNow.UtcTicks;
+            if (_pasta is { Count: > 0 } current && now - Volatile.Read(ref _pastaLoadedAtTicks) < PastaTtl.Ticks)
+                return current;
 
             if (_pasta is { Count: > 0 })
                 await TopUpAsync(channel).ConfigureAwait(false);
             else
                 await CrawlAsync(channel).ConfigureAwait(false);
 
-            _pastaLoadedAt = DateTimeOffset.UtcNow;
+            Volatile.Write(ref _pastaLoadedAtTicks, DateTimeOffset.UtcNow.UtcTicks);
 
             return _pasta;
         }
@@ -174,6 +177,8 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
 
     private static async Task TopUpAsync(ITextChannel channel)
     {
+        var added = new List<PastaEntry>();
+
         while (true)
         {
             var batch = (await channel.GetMessagesAsync(_pastaNewestId, Direction.After, PageSize).FlattenAsync().ConfigureAwait(false)).ToList();
@@ -182,11 +187,14 @@ public class RandomCommands : ModuleBase<SocketCommandContext>
                 break;
 
             _pastaNewestId = batch.Max(message => message.Id);
-            _pasta.AddRange(Keep(batch));
+            added.AddRange(Keep(batch));
 
             if (batch.Count < PageSize)
                 break;
         }
+
+        if (added.Count > 0)
+            _pasta = [.. _pasta, .. added];
     }
 
     private static IEnumerable<PastaEntry> Keep(IEnumerable<IMessage> batch) => batch

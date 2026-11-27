@@ -171,19 +171,25 @@ namespace sblngavnav6.GVR
                 if (image is null)
                     return false;
 
+                if (context.Client.GetChannel(image.ChannelId) is not IMessageChannel channel)
+                    continue;
+
                 string url;
 
                 try
                 {
-                    var message = context.Client.GetChannel(image.ChannelId) is IMessageChannel channel
-                        ? await channel.GetMessageAsync(image.MessageId).ConfigureAwait(false)
-                        : null;
+                    var message = await channel.GetMessageAsync(image.MessageId).ConfigureAwait(false);
 
                     url = message is null ? null
                         : image.IsEmbed ? message.Embeds.ElementAtOrDefault((int)image.ItemId) is { } embed ? ImageTools.EmbedImage(embed) : null
                         : message.Attachments.FirstOrDefault(item => item.Id == image.ItemId)?.Url;
                 }
-                catch (HttpException)
+                catch (HttpException ex) when (ex.DiscordCode == DiscordErrorCode.UnknownMessage || ex.HttpCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    await _db.RemoveImageAsync(image.Id).ConfigureAwait(false);
+                    continue;
+                }
+                catch (Exception ex) when (ex is HttpException or TimeoutException)
                 {
                     continue;
                 }
@@ -409,18 +415,7 @@ namespace sblngavnav6.GVR
                 var key = string.Join(" ", temp.Skip(Math.Max(0, temp.Count - step)).Take(step));
 
                 if (!chain.ContainsKey(key))
-                {
-                    bool found = false;
-                    for (int back = 1; back < step; back++)
-                    {
-                        var keyParts = key.Split(' ');
-                        if (keyParts.Length <= back) break;
-                        var shorter = string.Join(" ", keyParts.Skip(back));
-                        if (chain.ContainsKey(shorter)) { key = shorter; found = true; break; }
-                    }
-                    if (!found)
-                        key = model.RandomKey();
-                }
+                    key = model.RandomKey();
 
                 var value = Choose(chain[key], temp);
 

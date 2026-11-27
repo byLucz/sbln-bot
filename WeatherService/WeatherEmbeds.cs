@@ -122,7 +122,7 @@ namespace sblngavnav6.Commands
             slots
                 .Select(slot => Condition(slot.Weather))
                 .Where(condition => condition is not null)
-                .GroupBy(condition => condition.Icon?[..2] ?? "")
+                .GroupBy(condition => condition.Icon is { Length: >= 2 } icon ? icon[..2] : "")
                 .OrderByDescending(group => group.Count())
                 .FirstOrDefault()?.First();
 

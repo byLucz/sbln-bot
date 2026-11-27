@@ -111,7 +111,7 @@ public class MainCommands : ModuleBase<SocketCommandContext>
         await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
         {
             AuthorName = "sbln аватарки👨‍🦲",
-            ImageUrl = GuildAvatar(user),
+            ImageUrl = GuildAvatar(user, resolved),
             Color = Color.Red
         }));
     }

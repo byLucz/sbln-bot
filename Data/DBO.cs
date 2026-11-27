@@ -168,21 +168,6 @@ namespace sblngavnav6.Data
                 value => value?.ToString()?.Trim());
         }
 
-        public static Task<int> AddMeme(string category, string url) =>
-            ExecAsync(
-                "INSERT IGNORE INTO memes (category, url) VALUES (@c, @u)",
-                cmd =>
-                {
-                    cmd.Parameters.AddWithValue("@c", category?.Trim().ToLowerInvariant());
-                    cmd.Parameters.AddWithValue("@u", url?.Trim());
-                });
-
-        public static Task<int> CountMemes(string category) =>
-            ScalarAsync(
-                "SELECT COUNT(*) FROM memes WHERE category = @c",
-                cmd => cmd.Parameters.AddWithValue("@c", category),
-                value => Convert.ToInt32(value));
-
         public static async Task DownloadStreamers()
         {
             var rows = await RowsAsync(
@@ -284,7 +269,7 @@ namespace sblngavnav6.Data
                 {
                     cmd.Parameters.AddWithValue("@t", title);
                     cmd.Parameters.AddWithValue("@a", authors);
-                    cmd.Parameters.AddWithValue("@i", imageUrl);
+                    cmd.Parameters.AddWithValue("@i", imageUrl ?? string.Empty);
                     cmd.Parameters.AddWithValue("@d", DateTime.UtcNow.ToString("yyyy-MM-dd"));
                     cmd.Parameters.AddWithValue("@u", user);
                     cmd.Parameters.AddWithValue("@s", Global.Vars.Cfg.booksSeason);
@@ -294,13 +279,13 @@ namespace sblngavnav6.Data
         public static Task<(int id, string title, string authors, string image, DateTime selectedDate, string suggestedBy)> GetLastBook()
         {
             return RowAsync(
-                @"SELECT id, title, authors, image, selected_date, suggested_by FROM books ORDER BY selected_date DESC LIMIT 1",
+                @"SELECT id, title, authors, image, selected_date, suggested_by FROM books ORDER BY selected_date DESC, id DESC LIMIT 1",
                 null,
                 r => (
                     r.GetInt32("id"),
                     r.GetString("title"),
                     r.GetString("authors"),
-                    r.GetString("image"),
+                    r.IsDBNull(r.GetOrdinal("image")) ? string.Empty : r.GetString("image"),
                     r.GetDateTime("selected_date"),
                     r.GetString("suggested_by")),
                 (0, string.Empty, string.Empty, string.Empty, DateTime.MinValue, string.Empty));
@@ -316,9 +301,9 @@ namespace sblngavnav6.Data
             return last is null || (DateTime.UtcNow - last.Value).TotalDays >= 7;
         }
 
-        public static Task RemoveLastBook()
+        public static Task RemoveBook(int id)
         {
-            return ExecAsync(@"DELETE FROM books WHERE id = (SELECT id FROM books ORDER BY selected_date DESC LIMIT 1)");
+            return ExecAsync("DELETE FROM books WHERE id = @id", cmd => cmd.Parameters.AddWithValue("@id", id));
         }
 
         public static bool TryParseScores(string[] input, out int[] scores)
