@@ -57,8 +57,6 @@ namespace sblngavnav6.Audio8
 
         public bool RepeatEnabled => RepeatMode is TrackRepeatMode.Track;
 
-        public bool QueueRepeatEnabled => RepeatMode is TrackRepeatMode.Queue;
-
         public bool ToggleRepeat()
         {
             var enabled = !RepeatEnabled;

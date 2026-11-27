@@ -18,7 +18,8 @@ namespace sblngavnav6.Audio8
         ulong GuildId,
         ulong MessageId,
         ulong RequestedByUserId,
-        string TrackKey);
+        string TrackKey,
+        DateTimeOffset CreatedAtUtc);
 
     internal sealed record Audio8PickState(
         ulong GuildId,
@@ -36,7 +37,8 @@ namespace sblngavnav6.Audio8
         ulong GuildId,
         ulong MessageId,
         ulong RequestedByUserId,
-        string TrackKey);
+        string TrackKey,
+        DateTimeOffset CreatedAtUtc);
 
     internal sealed class Audio8MessageStates
     {
@@ -44,11 +46,13 @@ namespace sblngavnav6.Audio8
         private readonly ConcurrentDictionary<ulong, Audio8PickState> _picks = new();
         private readonly ConcurrentDictionary<ulong, Audio8VoteSkipState> _voteSkips = new();
         private readonly ConcurrentDictionary<ulong, Audio8SkipState> _skips = new();
-        private readonly ConcurrentDictionary<ulong, ulong> _voteSessions = new();
+        private readonly ConcurrentDictionary<ulong, (ulong MessageId, CancellationTokenSource Cts)> _voteSessions = new();
 
         public void AddHoist(Audio8HoistState state) => _hoists[state.MessageId] = state;
 
         public bool TryGetHoist(ulong messageId, out Audio8HoistState state) => _hoists.TryGetValue(messageId, out state);
+
+        public bool TryRemoveHoist(Audio8HoistState state) => _hoists.TryRemove(new KeyValuePair<ulong, Audio8HoistState>(state.MessageId, state));
 
         public void RemoveHoist(ulong messageId) => _hoists.TryRemove(messageId, out _);
 
@@ -56,23 +60,51 @@ namespace sblngavnav6.Audio8
 
         public bool TryGetPick(ulong messageId, out Audio8PickState state) => _picks.TryGetValue(messageId, out state);
 
+        public bool TryRemovePick(Audio8PickState state) => _picks.TryRemove(new KeyValuePair<ulong, Audio8PickState>(state.MessageId, state));
+
         public void RemovePick(ulong messageId) => _picks.TryRemove(messageId, out _);
 
         public void AddVoteSkip(ulong messageId, Audio8VoteSkipState state) => _voteSkips[messageId] = state;
 
         public bool TryGetVoteSkip(ulong messageId, out Audio8VoteSkipState state) => _voteSkips.TryGetValue(messageId, out state);
 
+        public bool TryRemoveVoteSkip(ulong messageId, Audio8VoteSkipState state) => _voteSkips.TryRemove(new KeyValuePair<ulong, Audio8VoteSkipState>(messageId, state));
+
         public void RemoveVoteSkip(ulong messageId) => _voteSkips.TryRemove(messageId, out _);
 
-        public bool TryStartVoteSession(ulong guildId, ulong messageId) => _voteSessions.TryAdd(guildId, messageId);
+        public bool TryStartVoteSession(ulong guildId, ulong messageId, out CancellationTokenSource cts)
+        {
+            var fresh = new CancellationTokenSource();
+            if (_voteSessions.TryAdd(guildId, (messageId, fresh)))
+            {
+                cts = fresh;
+                return true;
+            }
 
-        public void EndVoteSession(ulong guildId) => _voteSessions.TryRemove(guildId, out _);
+            fresh.Dispose();
+            cts = null;
+            return false;
+        }
+
+        public void EndVoteSession(ulong guildId, ulong messageId)
+        {
+            if (_voteSessions.TryGetValue(guildId, out var current)
+                && current.MessageId == messageId
+                && _voteSessions.TryRemove(new KeyValuePair<ulong, (ulong MessageId, CancellationTokenSource Cts)>(guildId, current)))
+            {
+                try { current.Cts.Cancel(); }
+                catch (ObjectDisposedException) { }
+                current.Cts.Dispose();
+            }
+        }
 
         public bool IsVoteRunning(ulong guildId) => _voteSessions.ContainsKey(guildId);
 
         public void AddSkip(Audio8SkipState state) => _skips[state.MessageId] = state;
 
         public bool TryGetSkip(ulong messageId, out Audio8SkipState state) => _skips.TryGetValue(messageId, out state);
+
+        public bool TryRemoveSkip(Audio8SkipState state) => _skips.TryRemove(new KeyValuePair<ulong, Audio8SkipState>(state.MessageId, state));
 
         public void RemoveSkip(ulong messageId) => _skips.TryRemove(messageId, out _);
 
@@ -94,16 +126,29 @@ namespace sblngavnav6.Audio8
                 if (pair.Value.GuildId == guildId)
                     _skips.TryRemove(pair);
 
-            _voteSessions.TryRemove(guildId, out _);
+            if (_voteSessions.TryRemove(guildId, out var vote))
+            {
+                try { vote.Cts.Cancel(); }
+                catch (ObjectDisposedException) { }
+                vote.Cts.Dispose();
+            }
         }
 
         public void RemoveStale()
         {
             var now = DateTimeOffset.UtcNow;
 
+            foreach (var pair in _hoists.ToArray())
+                if (now - pair.Value.CreatedAtUtc > Audio8Constants.MessageStateLifetime)
+                    _hoists.TryRemove(pair);
+
             foreach (var pair in _picks.ToArray())
                 if (now - pair.Value.CreatedAtUtc > Audio8Constants.MessageStateLifetime)
                     _picks.TryRemove(pair);
+
+            foreach (var pair in _skips.ToArray())
+                if (now - pair.Value.CreatedAtUtc > Audio8Constants.MessageStateLifetime)
+                    _skips.TryRemove(pair);
         }
     }
 
@@ -173,8 +218,11 @@ namespace sblngavnav6.Audio8
     internal sealed class Audio8Interactions : IDisposable
     {
         private static readonly TimeSpan RecoveryCooldown = TimeSpan.FromSeconds(60);
+        private static readonly TimeSpan ReserveCooldown = TimeSpan.FromSeconds(15);
 
         private readonly ConcurrentDictionary<ulong, DateTimeOffset> _lastRecovery = new();
+        private readonly ConcurrentDictionary<ulong, DateTimeOffset> _lastReserve = new();
+        private readonly ConcurrentDictionary<ulong, byte> _reserveInFlight = new();
 
         private readonly IAudioService _audio;
         private readonly Audio8Service _service;
@@ -284,8 +332,20 @@ namespace sblngavnav6.Audio8
 
         private async Task<bool> TryReserveAsync(ILavalinkPlayer source, LavalinkTrack track)
         {
-            if (!Audio8Reserve.Configured || source is not Audio8Player player || !Audio8Reserve.Covers(track))
+            if (!Audio8Reserve.Configured || source is not Audio8Player player || player.SilentMode || !Audio8Reserve.Covers(track))
                 return false;
+
+            if (_service.IsVoteRunning(player.GuildId))
+                return false;
+
+            var now = DateTimeOffset.UtcNow;
+            if (_lastReserve.TryGetValue(player.GuildId, out var last) && now - last < ReserveCooldown)
+                return false;
+
+            if (!_reserveInFlight.TryAdd(player.GuildId, 0))
+                return false;
+
+            _lastReserve[player.GuildId] = now;
 
             try
             {
@@ -302,7 +362,7 @@ namespace sblngavnav6.Audio8
                 }
 
                 var (reserved, _) = await _reserve.ResolveAsync(query).ConfigureAwait(false);
-                if (reserved is null)
+                if (reserved is null || player.State is PlayerState.Destroyed || _service.IsVoteRunning(player.GuildId))
                 {
                     if (notice is not null)
                     {
@@ -314,6 +374,9 @@ namespace sblngavnav6.Audio8
 
                 await player.LockedAsync(async () =>
                 {
+                    if (player.State is PlayerState.Destroyed || _service.IsVoteRunning(player.GuildId))
+                        return;
+
                     if (player.CurrentTrack is null)
                         await player.PlayAsync(reserved, enqueue: false).ConfigureAwait(false);
                     else
@@ -336,6 +399,10 @@ namespace sblngavnav6.Audio8
                 await LoggingService.LogWarningAsync(Audio8Constants.LogSource,
                     $"Резерв не сработал g={player.GuildId}: {ex.Message}").ConfigureAwait(false);
                 return false;
+            }
+            finally
+            {
+                _reserveInFlight.TryRemove(player.GuildId, out _);
             }
         }
 
@@ -563,22 +630,24 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
+            if (!_states.TryRemoveHoist(state))
+            {
+                await component.DeferAsync();
+                return;
+            }
+
             var player = _service.GetPlayer(state.GuildId);
             if (player is null)
             {
-                _states.RemoveHoist(state.MessageId);
                 await RespondAsync("плеер уже не в войсе", ephemeral: true);
                 return;
             }
 
             if (!await _service.HoistAsync(player, state.TrackKey))
             {
-                _states.RemoveHoist(state.MessageId);
                 await RespondAsync("трека уже нет в очереди", ephemeral: true);
                 return;
             }
-
-            _states.RemoveHoist(state.MessageId);
 
             var track = player.Queue.FirstOrDefault()?.Track;
             if (track is null)
@@ -600,7 +669,8 @@ namespace sblngavnav6.Audio8
                 state.GuildId,
                 component.Message.Id,
                 state.RequestedByUserId,
-                Audio8Service.TrackKey(track)));
+                Audio8Service.TrackKey(track),
+                DateTimeOffset.UtcNow));
         }
 
         [ComponentInteraction($"{Audio8Controls.PickId}:*")]
@@ -630,10 +700,15 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
+            if (!_states.TryRemovePick(state))
+            {
+                await component.DeferAsync();
+                return;
+            }
+
             var player = _service.GetPlayer(state.GuildId);
             if (player is null)
             {
-                _states.RemovePick(state.MessageId);
                 await RespondAsync("плеер уже не в войсе", ephemeral: true);
                 return;
             }
@@ -652,8 +727,6 @@ namespace sblngavnav6.Audio8
                 return true;
             });
 
-            _states.RemovePick(state.MessageId);
-
             var embed = await Audio8Embeds.PickChosen(picked);
             var controls = _service.BuildControls(queued ? Audio8Controls.SkipToTrack() : null);
 
@@ -668,8 +741,9 @@ namespace sblngavnav6.Audio8
                 _states.AddSkip(new Audio8SkipState(
                     state.GuildId,
                     component.Message.Id,
-                    state.RequestedByUserId,
-                    Audio8Service.TrackKey(picked)));
+                    state.RequestedByUserId == 0 ? Context.User.Id : state.RequestedByUserId,
+                    Audio8Service.TrackKey(picked),
+                    DateTimeOffset.UtcNow));
             }
         }
 
@@ -682,6 +756,12 @@ namespace sblngavnav6.Audio8
             if (!_states.TryGetVoteSkip(component.Message.Id, out var state))
             {
                 await RespondAsync("голосование уже идёт дальше", ephemeral: true);
+                return;
+            }
+
+            if (!_states.TryRemoveVoteSkip(component.Message.Id, state))
+            {
+                await component.DeferAsync();
                 return;
             }
 
@@ -715,28 +795,30 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
-            if (Context.User.Id != state.RequestedByUserId)
+            if (state.RequestedByUserId != 0 && Context.User.Id != state.RequestedByUserId)
             {
                 await RespondAsync("это не твой трек", ephemeral: true);
+                return;
+            }
+
+            if (!_states.TryRemoveSkip(state))
+            {
+                await component.DeferAsync();
                 return;
             }
 
             var player = _service.GetPlayer(state.GuildId);
             if (player is null)
             {
-                _states.RemoveSkip(state.MessageId);
                 await RespondAsync("плеер уже не в войсе", ephemeral: true);
                 return;
             }
 
             if (!await _service.SkipToQueuedAsync(player, state.TrackKey))
             {
-                _states.RemoveSkip(state.MessageId);
                 await RespondAsync("трек уже не первый в очереди", ephemeral: true);
                 return;
             }
-
-            _states.RemoveSkip(state.MessageId);
 
             var cleared = _service.BuildControls(null);
             await component.UpdateAsync(message => message.Components = cleared);

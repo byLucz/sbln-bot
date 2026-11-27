@@ -56,7 +56,7 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
-            var player = await EnsurePlayerAsync(requireSameChannel: false);
+            var player = await EnsurePlayerAsync();
             if (player is null)
                 return;
 
@@ -81,7 +81,11 @@ namespace sblngavnav6.Audio8
                 var notice = await ReplyAsync(embed: await Audio8Embeds.Accent("резерв", $"🔁 {sourceName} не отдал трек, ищу через резервный источник, это может занять до минуты"));
                 using var typing = Context.Channel.EnterTypingState();
 
-                var (reserved, reserveError) = await _reserve.ResolveAsync(isUrl || sourceName == "SoundCloud" ? query.Identifier : Audio8Query.StripPrefix(query.Identifier));
+                var reserveQuery = !string.IsNullOrEmpty(query.FallbackIdentifier)
+                    ? query.FallbackIdentifier
+                    : isUrl || sourceName == "SoundCloud" ? query.Identifier : Audio8Query.StripPrefix(query.Identifier);
+
+                var (reserved, reserveError) = await _reserve.ResolveAsync(reserveQuery);
                 if (reserved is not null)
                 {
                     await _service.ModifyAsync(notice, await Audio8Embeds.Accent("резерв", "🔁 нашёл через резервный источник, ставлю"));
@@ -149,20 +153,29 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
-            if (!Audio8Query.IsAllowedUrl(searchQuery))
+            var plan = Audio8Query.Normalize(searchQuery, Audio8Query.YouTubePrefix);
+            var (sourceName, isUrl) = Audio8Query.Detect(plan.Identifier);
+
+            if (plan.Identifier.StartsWith("ftts://", StringComparison.OrdinalIgnoreCase)
+                || !Audio8Query.IsAllowedUrl(plan.Identifier)
+                || (isUrl && sourceName is not ("YouTube" or "SoundCloud")))
             {
-                await ReplyAsync(embed: await Audio8Embeds.Error("резерв", "такие ссылки не поддерживаются, только YouTube"));
+                await ReplyAsync(embed: await Audio8Embeds.Error("резерв", "такие ссылки не поддерживаются, только YouTube и SoundCloud"));
                 return;
             }
 
-            var player = await EnsurePlayerAsync(requireSameChannel: false);
+            var player = await EnsurePlayerAsync();
             if (player is null)
                 return;
 
             var notice = await ReplyAsync(embed: await Audio8Embeds.Accent("резерв", "🔁 ищу через резервный источник, это может занять до минуты"));
             using var typing = Context.Channel.EnterTypingState();
 
-            var (track, error) = await _reserve.ResolveAsync(searchQuery);
+            var reserveQuery = !string.IsNullOrEmpty(plan.FallbackIdentifier)
+                ? plan.FallbackIdentifier
+                : isUrl || sourceName == "SoundCloud" ? plan.Identifier : Audio8Query.StripPrefix(plan.Identifier);
+
+            var (track, error) = await _reserve.ResolveAsync(reserveQuery);
             if (track is null)
             {
                 await _service.ModifyAsync(notice, await Audio8Embeds.Error("резерв", $"резерв тоже не нашёл трек: {error}"));
@@ -521,7 +534,7 @@ namespace sblngavnav6.Audio8
                 items = items.Take(Audio8Constants.MaxVoteItems).ToList();
             }
 
-            var player = await EnsurePlayerAsync(requireSameChannel: false, allowDuringVote: true);
+            var player = await EnsurePlayerAsync(allowDuringVote: true);
             if (player is null)
                 return;
 
@@ -551,7 +564,7 @@ namespace sblngavnav6.Audio8
                 .Build());
         }
 
-        private async Task<Audio8Player> EnsurePlayerAsync(bool requireSameChannel, bool allowDuringVote = false)
+        private async Task<Audio8Player> EnsurePlayerAsync(bool allowDuringVote = false)
         {
             if (!allowDuringVote && _service.IsVoteRunning(Context.Guild.Id))
             {
@@ -562,14 +575,6 @@ namespace sblngavnav6.Audio8
             if (Context.User is not IVoiceState { VoiceChannel: { } voiceChannel })
             {
                 await ReplyAsync("надо быть в войсе 😡");
-                return null;
-            }
-
-            var existing = _service.GetPlayer(Context.Guild.Id);
-
-            if (existing is not null && requireSameChannel && !Audio8Service.IsInSameVoice(Context.User, existing))
-            {
-                await ReplyAsync("ты не в том войсе где я 😡");
                 return null;
             }
 

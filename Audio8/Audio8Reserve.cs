@@ -28,7 +28,9 @@ namespace sblngavnav6.Audio8
             !string.IsNullOrWhiteSpace(Global.Vars.Cfg.lavaYtAgent) && !string.IsNullOrWhiteSpace(Global.Vars.Cfg.remnaAgentToken);
 
         public static bool Covers(LavalinkTrack track) =>
-            track is not null && track.SourceName is not ("http" or "local");
+            track is not null
+            && track.SourceName is not ("http" or "local" or "flowery" or "flowery-tts")
+            && track.Identifier?.StartsWith("ftts://", StringComparison.OrdinalIgnoreCase) != true;
 
         public async Task<string> StatusAsync(CancellationToken cancellationToken = default)
         {
@@ -128,10 +130,10 @@ namespace sblngavnav6.Audio8
             ("cookies are no longer valid", "cookies протухли, перезалей их на агент"),
             ("too many requests", "YouTube ограничил запросы, подожди или обнови cookies"),
             ("http error 429", "YouTube ограничил запросы, подожди или обнови cookies"),
-            ("nsig", "yt-dlp устарел, обнови агент: ragent update"),
-            ("signature extraction", "yt-dlp устарел, обнови агент: ragent update"),
-            ("requested format is not available", "yt-dlp устарел, обнови агент: ragent update"),
-            ("unable to extract", "yt-dlp устарел, обнови агент: ragent update"),
+            ("nsig", "yt-dlp устарел, обнови агент: ragent music update"),
+            ("signature extraction", "yt-dlp устарел, обнови агент: ragent music update"),
+            ("requested format is not available", "yt-dlp устарел, обнови агент: ragent music update"),
+            ("unable to extract", "yt-dlp устарел, обнови агент: ragent music update"),
             ("private video", "видео приватное"),
             ("video unavailable", "видео недоступно"),
             ("sign in to confirm your age", "видео 18+, нужны cookies аккаунта")

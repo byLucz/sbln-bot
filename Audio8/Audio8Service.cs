@@ -39,6 +39,7 @@ namespace sblngavnav6.Audio8
         private readonly Audio8Persistence _persistence;
         private readonly ConcurrentDictionary<ulong, string> _searchPrefixes = new();
         private readonly ConcurrentDictionary<ulong, List<Audio8RecentPlaylist>> _recentPlaylists = new();
+        private readonly ConcurrentDictionary<ulong, byte> _voluntaryLeaves = new();
 
         private CancellationTokenSource _cleanupCts;
         private Task _cleanupTask = Task.CompletedTask;
@@ -175,6 +176,8 @@ namespace sblngavnav6.Audio8
             return ValueTask.FromResult(new Audio8Player(properties));
         }
 
+        internal bool ConsumeVoluntaryLeave(ulong guildId) => _voluntaryLeaves.TryRemove(guildId, out _);
+
         internal async Task HandleKickedAsync(ulong guildId)
         {
             var player = GetPlayer(guildId);
@@ -184,6 +187,31 @@ namespace sblngavnav6.Audio8
             if (player is null)
                 return;
 
+            await ClearPanelsAsync(player).ConfigureAwait(false);
+        }
+
+        public async Task LeaveAsync(ulong guildId, CancellationToken cancellationToken = default)
+        {
+            var player = GetPlayer(guildId);
+            if (player is null) return;
+
+            _voluntaryLeaves[guildId] = 0;
+            _states.DropGuild(guildId);
+            await ClearPanelsAsync(player).ConfigureAwait(false);
+
+            try
+            {
+                await player.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+                await player.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Выход из войса g={guildId}: {ex.Message}");
+            }
+        }
+
+        private async Task ClearPanelsAsync(Audio8Player player)
+        {
             var panels = new[] { player.NowPlayingMessage, player.QueueMessage };
 
             player.NowPlayingMessage = null;
@@ -196,24 +224,6 @@ namespace sblngavnav6.Audio8
 
                 try { await ModifyAsync(panel, clearControls: true).ConfigureAwait(false); }
                 catch (Exception ex) when (ex is HttpException or TimeoutException) { }
-            }
-        }
-
-        public async Task LeaveAsync(ulong guildId, CancellationToken cancellationToken = default)
-        {
-            var player = GetPlayer(guildId);
-            if (player is null) return;
-
-            _states.DropGuild(guildId);
-
-            try
-            {
-                await player.DisconnectAsync(cancellationToken).ConfigureAwait(false);
-                await player.DisposeAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Выход из войса g={guildId}: {ex.Message}");
             }
         }
 
@@ -411,7 +421,7 @@ namespace sblngavnav6.Audio8
                 for (var candidate = i + 1; candidate < items.Count; candidate++)
                 {
                     var fitsPrevious = !SameAuthor(items[candidate].Track, items[i - 1].Track);
-                    var fitsNext = i + 1 >= items.Count || !SameAuthor(items[candidate].Track, items[i + 1].Track);
+                    var fitsNext = candidate == i + 1 || i + 1 >= items.Count || !SameAuthor(items[candidate].Track, items[i + 1].Track);
 
                     if (fitsPrevious && fitsNext)
                     {
@@ -607,7 +617,8 @@ namespace sblngavnav6.Audio8
                 guildId,
                 message.Id,
                 requestedByUserId,
-                TrackKey(track)));
+                TrackKey(track),
+                DateTimeOffset.UtcNow));
         }
 
         public Task<IUserMessage> SendWithControlsAsync(
@@ -686,10 +697,10 @@ namespace sblngavnav6.Audio8
                 _persistence.LastSavedGuilds);
         }
 
-        internal Audio8State CaptureState() => new()
+        internal async Task<Audio8State> CaptureStateAsync(CancellationToken cancellationToken = default) => new()
         {
             Guilds = CaptureGuildSettings(),
-            Players = CaptureSnapshots().ToList()
+            Players = await CaptureSnapshotsAsync(cancellationToken).ConfigureAwait(false)
         };
 
         internal void RestoreGuildSettings(IReadOnlyList<Audio8GuildSettings> settings)
@@ -736,19 +747,25 @@ namespace sblngavnav6.Audio8
             return settings;
         }
 
-        internal IReadOnlyList<Audio8GuildSnapshot> CaptureSnapshots()
+        internal async Task<List<Audio8GuildSnapshot>> CaptureSnapshotsAsync(CancellationToken cancellationToken = default)
         {
             var snapshots = new List<Audio8GuildSnapshot>();
 
             foreach (var player in _audio.Players.Players.OfType<Audio8Player>())
             {
-                if (player.VoiceChannelId == 0 || player.State is PlayerState.Destroyed)
+                if (player.VoiceChannelId == 0 || player.State is PlayerState.Destroyed || player.SilentMode || _states.IsVoteRunning(player.GuildId))
                     continue;
 
-                if (player.CurrentTrack is null && player.Queue.IsEmpty)
-                    continue;
+                try
+                {
+                    var snapshot = await player.LockedAsync(
+                        () => Task.FromResult(player.CurrentTrack is null && player.Queue.IsEmpty ? null : Audio8Persistence.Capture(player)),
+                        cancellationToken).ConfigureAwait(false);
 
-                snapshots.Add(Audio8Persistence.Capture(player));
+                    if (snapshot is not null)
+                        snapshots.Add(snapshot);
+                }
+                catch (ObjectDisposedException) { }
             }
 
             return snapshots;

@@ -180,17 +180,18 @@ namespace sblngavnav6.Audio8
             string fallback = null;
             string selectedTrackId = null;
             var query = raw ?? string.Empty;
+            var trimmed = query.Trim();
+
+            if (trimmed.StartsWith("ftts://", StringComparison.OrdinalIgnoreCase))
+            {
+                query = NormalizeTts(trimmed).Replace("%", "%25", StringComparison.Ordinal);
+                return new Audio8QueryPlan(query, 0, null, null);
+            }
 
             var urlMatch = UrlRegex().Match(query);
             query = urlMatch.Success
                 ? urlMatch.Groups[1].Value.Trim().TrimEnd(')', ']', '}', '>', '.', ',', ';')
-                : query.Trim();
-
-            if (query.StartsWith("ftts://", StringComparison.OrdinalIgnoreCase))
-            {
-                query = NormalizeTts(query).Replace("%", "%25", StringComparison.Ordinal);
-                return new Audio8QueryPlan(query, 0, null, null);
-            }
+                : trimmed;
 
             if (query.Contains("youtu.be", StringComparison.OrdinalIgnoreCase))
                 query = query.Replace("youtu.be/", "youtube.com/watch?v=", StringComparison.OrdinalIgnoreCase);

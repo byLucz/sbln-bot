@@ -34,6 +34,7 @@ namespace sblngavnav6.Audio8
 
         private CancellationTokenSource _snapshotCts;
         private Task _snapshotTask = Task.CompletedTask;
+        private volatile bool _lavalinkReady;
         private bool _started;
         private bool _disposed;
 
@@ -66,6 +67,8 @@ namespace sblngavnav6.Audio8
                 return;
 
             var guildId = before.VoiceChannel.Guild.Id;
+            if (_service.ConsumeVoluntaryLeave(guildId))
+                return;
 
             await LoggingService.LogInformationAsync(Audio8Constants.LogSource, $"Выкинули из войса g={guildId}");
             await _service.HandleKickedAsync(guildId).ConfigureAwait(false);
@@ -75,6 +78,7 @@ namespace sblngavnav6.Audio8
 
         private Task OnConnectionReadyAsync(object sender, ConnectionReadyEventArgs args)
         {
+            _lavalinkReady = true;
             var attempts = Interlocked.Exchange(ref _reconnectAttempts, 0);
             var downSince = _disconnectedSinceUtc;
 
@@ -177,6 +181,7 @@ namespace sblngavnav6.Audio8
             try
             {
                 await _audio.WaitForReadyAsync(timeout.Token).ConfigureAwait(false);
+                _lavalinkReady = true;
                 return true;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -236,7 +241,17 @@ namespace sblngavnav6.Audio8
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
                 {
-                    await _persistence.SaveAsync(_service.CaptureState(), cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        var state = await _service.CaptureStateAsync(cancellationToken).ConfigureAwait(false);
+                        if (!state.IsEmpty || _lavalinkReady)
+                            await _persistence.SaveAsync(state, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                    catch (Exception ex)
+                    {
+                        await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Сохранение снимка не удалось: {ex.Message}");
+                    }
 
                     try { await _service.EnforceTrackLimitsAsync(cancellationToken).ConfigureAwait(false); }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -264,7 +279,12 @@ namespace sblngavnav6.Audio8
                 _snapshotCts = null;
             }
 
-            try { await _persistence.SaveAsync(_service.CaptureState()).ConfigureAwait(false); }
+            try
+            {
+                var state = await _service.CaptureStateAsync().ConfigureAwait(false);
+                if (!state.IsEmpty || _lavalinkReady)
+                    await _persistence.SaveAsync(state).ConfigureAwait(false);
+            }
             catch (Exception ex)
             {
                 await LoggingService.LogWarningAsync(Audio8Constants.LogSource, $"Снимок состояния не сохранён: {ex.Message}");

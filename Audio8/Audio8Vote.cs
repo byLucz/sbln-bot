@@ -43,7 +43,7 @@ namespace sblngavnav6.Audio8
             HttpClient http,
             CancellationToken cancellationToken = default)
         {
-            if (!_states.TryStartVoteSession(player.GuildId, statusMessage.Id))
+            if (!_states.TryStartVoteSession(player.GuildId, statusMessage.Id, out var sessionCts))
             {
                 await _service.ModifyAsync(statusMessage,
                     Audio8Embeds.Vote("⚠️ На сервере уже идёт голосование, дождись его окончания", Color.Orange))
@@ -51,14 +51,22 @@ namespace sblngavnav6.Audio8
                 return;
             }
 
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, sessionCts.Token);
+            var token = linkedCts.Token;
+
             Audio8VoteAudio audio;
             try
             {
-                audio = await _composer.BuildAsync(items, winner, http, cancellationToken).ConfigureAwait(false);
+                audio = await _composer.BuildAsync(items, winner, http, token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                _states.EndVoteSession(player.GuildId, statusMessage.Id);
+                return;
             }
             catch (Exception ex)
             {
-                _states.EndVoteSession(player.GuildId);
+                _states.EndVoteSession(player.GuildId, statusMessage.Id);
                 await LoggingService.LogErrorAsync(Audio8Constants.LogSource, "Сборка аудио голосования сорвалась", ex);
                 await _service.ModifyAsync(statusMessage,
                     Audio8Embeds.Vote("❌ Ошибка при подготовке аудио", Color.Red)).ConfigureAwait(false);
@@ -69,7 +77,7 @@ namespace sblngavnav6.Audio8
 
             try
             {
-                var voteTrack = await LoadLocalAsync(audio.Path, cancellationToken).ConfigureAwait(false);
+                var voteTrack = await LoadLocalAsync(audio.Path, token).ConfigureAwait(false);
                 if (voteTrack is null)
                 {
                     await LoggingService.LogErrorAsync(
@@ -83,27 +91,28 @@ namespace sblngavnav6.Audio8
                     return;
                 }
 
-                snapshot = await CaptureAndSilenceAsync(player, cancellationToken).ConfigureAwait(false);
+                snapshot = await CaptureAndSilenceAsync(player, token).ConfigureAwait(false);
 
-                var started = player.WaitForTrackStartAsync(Audio8Constants.TrackStartTimeout, cancellationToken);
-                await player.PlayAsync(voteTrack, enqueue: false, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var started = player.WaitForTrackStartAsync(Audio8Constants.TrackStartTimeout, token);
+                await player.PlayAsync(voteTrack, enqueue: false, cancellationToken: token).ConfigureAwait(false);
                 await started.ConfigureAwait(false);
 
                 await _service.ModifyAsync(statusMessage, Audio8Embeds.Vote(
                     "🎙️ Варианты дрипа...\n\n" + FormatItems(items), Color.DarkBlue)).ConfigureAwait(false);
 
-                await AnnounceAsync(player, statusMessage, audio, cancellationToken).ConfigureAwait(false);
-                await CountdownAsync(statusMessage, items, audio.CountdownDuration, cancellationToken).ConfigureAwait(false);
+                await AnnounceAsync(player, statusMessage, audio, token).ConfigureAwait(false);
+                await CountdownAsync(statusMessage, items, audio.CountdownDuration, token).ConfigureAwait(false);
 
                 await _service.ModifyAsync(statusMessage, Audio8Embeds.VoteFinished(winner)).ConfigureAwait(false);
-                await Task.Delay(ResultLinger, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(ResultLinger, token).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
             finally
             {
                 _states.RemoveVoteSkip(statusMessage.Id);
                 player.SilentMode = false;
 
-                if (snapshot is not null)
+                if (snapshot is not null && !sessionCts.IsCancellationRequested && player.State is not Lavalink4NET.Players.PlayerState.Destroyed)
                 {
                     try { await RestoreAsync(player, snapshot).ConfigureAwait(false); }
                     catch (Exception ex)
@@ -114,7 +123,7 @@ namespace sblngavnav6.Audio8
                     }
                 }
 
-                _states.EndVoteSession(player.GuildId);
+                _states.EndVoteSession(player.GuildId, statusMessage.Id);
 
                 try { File.Delete(audio.Path); }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
