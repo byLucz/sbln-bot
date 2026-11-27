@@ -204,7 +204,7 @@ public static class RemnaPanelBuilder
         fields.Add(new($"📜 Падения за {RemnaStore.HistoryWindow.TotalHours:0}ч", CommonUtils.Text.CodeTable(
             incidents.Count == 0 ? [] : new[] { (IReadOnlyList<string>)["нода", "раз", "простой", "время", "ошибка"] }.Concat(incidents
                 .GroupBy(i => (i.Server, i.Uuid, i.Node))
-                .Select(g => (g.Key.Node, Count: g.Count(), Open: g.Any(i => i.End is null),
+                .Select(g => (g.Key.Node, Count: g.Count(),
                     Downtime: TimeSpan.FromTicks(g.Sum(i => ((i.End ?? now) - (i.Start < now - RemnaStore.HistoryWindow ? now - RemnaStore.HistoryWindow : i.Start)).Ticks)),
                     Last: g.First()))
                 .OrderByDescending(g => g.Downtime)

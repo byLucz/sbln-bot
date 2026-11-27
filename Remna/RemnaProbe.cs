@@ -15,6 +15,8 @@ public sealed record RemnaProbeTarget(RemnaServer Server, string Label, string A
 
 public sealed record RemnaProbeResult(RemnaProbeTarget Target, bool Ok, string Error, int? CertDays, long Ms, bool Expiring = false, DateTime? NotAfter = null);
 
+public sealed record RemnaProbeBatch(List<RemnaProbeResult> Results, HashSet<string> CheckedServers);
+
 public static class RemnaProbe
 {
     public const int CertWarningDays = 7;
@@ -32,7 +34,7 @@ public static class RemnaProbe
             .ToDictionary(group => group.Key, group => group.First());
 
         return hosts
-            .Where(host => !host.IsDisabled && !string.IsNullOrWhiteSpace(host.Address) && host.Port > 0)
+            .Where(host => !host.IsDisabled && !string.IsNullOrWhiteSpace(host.Address) && host.Port is > 0 and <= 65535)
             .Where(host => host.Nodes is not { Count: > 0 } || nodes.Any(node => host.Nodes.Contains(node.Uuid) && node.IsConnected && !node.IsDisabled))
             .Select(host => (Host: host, Inbound: host.Inbound?.ConfigProfileInboundUuid is { } id && inbounds.TryGetValue(id, out var found) ? found : null))
             .Where(entry => entry.Inbound is not { IsUdp: true } || entry.Inbound is { IsQuic: true, HasObfs: false })
@@ -106,6 +108,10 @@ public static class RemnaProbe
         {
             return new RemnaProbeResult(target, false, ex.GetBaseException().Message, null, sw.ElapsedMilliseconds);
         }
+        catch (Exception ex) when (!(ex is OperationCanceledException && cancellationToken.IsCancellationRequested))
+        {
+            return new RemnaProbeResult(target, false, ex.GetBaseException().Message, null, sw.ElapsedMilliseconds);
+        }
     }
 
     [SupportedOSPlatform("linux")]
@@ -162,22 +168,31 @@ public static class RemnaProbe
     }
 
     public static async Task<List<RemnaProbeResult>> CheckAsync(RemnaService remna, IEnumerable<RemnaServerNodes> servers, CancellationToken cancellationToken = default)
+        => (await CheckBatchAsync(remna, servers, cancellationToken).ConfigureAwait(false)).Results;
+
+    public static async Task<RemnaProbeBatch> CheckBatchAsync(RemnaService remna, IEnumerable<RemnaServerNodes> servers, CancellationToken cancellationToken = default)
     {
         var targets = new List<RemnaProbeTarget>();
+        var checkedServers = new HashSet<string>(StringComparer.Ordinal);
         foreach (var entry in servers.Where(s => s.Result.Ok))
         {
             var hosts = await remna.HostsAsync(entry.Server, cancellationToken);
-            if (hosts.Ok)
-                targets.AddRange(Targets(entry.Server, hosts.Data ?? [], entry.Result.Data ?? [])
-                    .Where(target => !target.Quic || QuicSupported));
+            if (!hosts.Ok)
+                continue;
+
+            checkedServers.Add(entry.Server.Url);
+            targets.AddRange(Targets(entry.Server, hosts.Data ?? [], entry.Result.Data ?? [])
+                .Where(target => !target.Quic || QuicSupported));
         }
 
         using var gate = new SemaphoreSlim(8);
-        return (await Task.WhenAll(targets.Select(async target =>
+        var results = (await Task.WhenAll(targets.Select(async target =>
         {
             await gate.WaitAsync(cancellationToken);
             try { return await ProbeAsync(target, cancellationToken); }
             finally { gate.Release(); }
         }))).ToList();
+
+        return new RemnaProbeBatch(results, checkedServers);
     }
 }

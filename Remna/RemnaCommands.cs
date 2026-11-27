@@ -276,7 +276,7 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
                     $"🧹 {node.Data.DisplayName}: освобождено {CommonUtils.Text.Bytes(result.Data.Freed)}, свободно {CommonUtils.Text.Bytes(result.Data.Free)}",
                     Color.Green, EmbedHandler.LoisFooter)
                 : await EmbedHandler.CreateErrorEmbed(RemnaWatchService.AgentName, result.Error ?? result.Data?.Error ?? "очистка не удалась");
-            await (progress is RestFollowupMessage followup ? followup.ModifyAsync(properties => properties.Embed = embed) : progress.ModifyAsync(properties => properties.Embed = embed));
+            await progress.ModifyAsync(properties => properties.Embed = embed);
             return;
         }
 
@@ -289,7 +289,7 @@ public class RemnaInteractions : InteractionModuleBase<IInteractionContext>
             var embed = scan.Ok
                 ? RemnaPanelBuilder.BuildScanEmbed(_remna, new RemnaNodeRef(server, node.Data), current, scan.Data)
                 : await EmbedHandler.CreateErrorEmbed(RemnaWatchService.AgentName, scan.Error);
-            await (progress is RestFollowupMessage followup ? followup.ModifyAsync(properties => properties.Embed = embed) : progress.ModifyAsync(properties => properties.Embed = embed));
+            await progress.ModifyAsync(properties => properties.Embed = embed);
         }
     }
 

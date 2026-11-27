@@ -196,24 +196,24 @@ public sealed class RemnaWatchService
     private async Task CheckPortsAsync(List<RemnaServerNodes> servers, CancellationToken cancellationToken)
     {
         var now = DateTimeOffset.UtcNow;
-        var results = await RemnaProbe.CheckAsync(_remna, servers, cancellationToken);
-        var active = results.Select(r => PortIncident(r.Target)).ToHashSet();
+        var batch = await RemnaProbe.CheckBatchAsync(_remna, servers, cancellationToken);
+        var results = batch.Results;
+        var active = results.Select(r => (r.Target.Server.Url, PortIncident(r.Target))).ToHashSet();
         var keys = results.Select(r => r.Target.Key).ToHashSet();
 
-        foreach (var server in servers.Where(s => s.Result.Ok).Select(s => s.Server))
+        foreach (var server in servers.Where(s => s.Result.Ok && batch.CheckedServers.Contains(s.Server.Url)).Select(s => s.Server))
         {
-            var orphans = await _store.CloseIncidentsAsync(server, i => i.Uuid?.StartsWith("port:", StringComparison.Ordinal) == true && !active.Contains(i.Uuid), now);
+            var orphans = await _store.CloseIncidentsAsync(server, i => i.Uuid?.StartsWith("port:", StringComparison.Ordinal) == true && !active.Contains((server.Url, i.Uuid)), now);
             foreach (var orphan in orphans)
             {
-                var endpoint = orphan.Uuid[5..orphan.Uuid.LastIndexOf(':')];
-                var current = results.FirstOrDefault(r => r.Target.Server.Url == server.Url && r.Target.Endpoint == endpoint);
+                var current = results.FirstOrDefault(r => r.Target.Server.Url == server.Url && orphan.Uuid.StartsWith($"port:{r.Target.Endpoint}:", StringComparison.Ordinal));
 
                 if (current is { Ok: true } or { Expiring: true })
                     await AlertAsync($"🔐 {current.Target.Label} снова доступен клиентам", server,
-                        detail: $"{endpoint}\nнастройки хоста изменены, простой {CommonUtils.Time.FormatAge(now - orphan.Start)}");
+                        detail: $"{current.Target.Endpoint}\nнастройки хоста изменены, простой {CommonUtils.Time.FormatAge(now - orphan.Start)}");
             }
         }
-        foreach (var gone in _ports.Keys.Where(key => !keys.Contains(key)).ToList())
+        foreach (var gone in _ports.Keys.Where(key => !keys.Contains(key) && batch.CheckedServers.Any(url => key.StartsWith(url + "|", StringComparison.Ordinal))).ToList())
             _ports.Remove(gone);
 
         foreach (var result in results)
