@@ -32,30 +32,36 @@ else
 fi
 [[ -d "$ROOT/.git" ]] && git -C "$ROOT" submodule update --init --recursive
 install -d -m 0755 /usr/local/bin
-install -m 0755 "$ROOT/sbln.sh" /usr/local/bin/sbln
-install -m 0755 "$ROOT/sblnproto.sh" /usr/local/bin/sblnproto
+if [[ "$channel" = proto ]]; then
+  install -m 0755 "$ROOT/sblnproto.sh" /usr/local/bin/sblnproto
+  [[ -e /usr/local/bin/sbln ]] || install -m 0755 "$ROOT/sbln.sh" /usr/local/bin/sbln
+else
+  install -m 0755 "$ROOT/sbln.sh" /usr/local/bin/sbln
+fi
 CONFIG="$BASE/config.json"
 example=config.example.json
 if [[ "$channel" = proto ]]; then CONFIG="$BASE/config-proto.json"; example=config-proto.example.json; fi
+SBLN_GROUP=${SBLN_GROUP:-sbln}
+getent group "$SBLN_GROUP" >/dev/null || groupadd --system "$SBLN_GROUP"
 config_user=${SBLN_CONFIG_USER:-${SUDO_USER:-}}
 if [[ -n "$config_user" ]]; then
   config_uid=$(id -u -- "$config_user")
-  config_gid=$(id -g -- "$config_user")
+  usermod -aG "$SBLN_GROUP" "$config_user"
 elif [[ -f "$CONFIG" ]]; then
   config_uid=$(stat -c %u -- "$CONFIG")
-  config_gid=$(stat -c %g -- "$CONFIG")
 else
   config_uid=$(id -u)
-  config_gid=$(id -g)
 fi
 if [[ ! -f "$CONFIG" ]]; then
-  install -m 0666 -o "$config_uid" -g "$config_gid" "$ROOT/config/$example" "$CONFIG"
+  install -m 0660 -o "$config_uid" -g "$SBLN_GROUP" "$ROOT/config/$example" "$CONFIG"
   echo "Создан $CONFIG. Заполни конфиг и повтори установку."
+  [[ -n "$config_user" ]] || echo "Для доступа админа к конфигу: usermod -aG $SBLN_GROUP <user>"
   exit 1
 fi
-chown "$config_uid:$config_gid" "$CONFIG"
-chmod 0666 "$CONFIG"
-bash /usr/local/bin/sbln config-sync "$ROOT/config/$example" "$CONFIG"
+chown "$config_uid:$SBLN_GROUP" "$CONFIG"
+chmod 0660 "$CONFIG"
+[[ -n "$config_user" ]] || echo "Для доступа админа к конфигу: usermod -aG $SBLN_GROUP <user>"
+bash "$ROOT/sbln.sh" config-sync "$ROOT/config/$example" "$CONFIG"
 if [[ "$channel" = proto ]]; then
   exec bash /usr/local/bin/sblnproto hotswap "$ROOT"
 fi

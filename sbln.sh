@@ -6,7 +6,7 @@ SVC=sbln-service
 BOT=sbln-bot
 [[ "$BASE" =~ ^/[a-zA-Z0-9_./-]+$ && "$BASE" != / && "$BASE" != *..* ]] || exit 1
 if ! docker info >/dev/null 2>&1 && [[ ${EUID:-$(id -u)} -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
-  exec sudo -E bash "$0" "$@"
+  exec sudo --preserve-env=SBLN_BASE,SBLN_NET bash "$0" "$@"
 fi
 cmd=${1:-menu}
 if [[ $# -gt 0 ]]; then shift; fi
@@ -36,6 +36,7 @@ config_sync() {
   fi
   removed=$(jq -rs "$SYNC_DEF"' sync(.[0]; (.[1] | migrate_config)) as $r | .[1] as $u | [($u | [paths]) - ($r | [paths]) | .[]] as $gone | [$gone[] | select(. as $p | any($gone[]; . == $p[:-1]) | not) | map(tostring) | join(".")] | join(", ")' "$example" "$config" 2>/dev/null) || removed=''
   cp -p "$config" "$config.bak"
+  chmod o-rwx "$config.bak" 2>/dev/null || true
   cat "$tmp" > "$config"
   rm -f "$tmp"
   echo ">> конфиг $config синхронизирован с примером, прошлая версия: $config.bak"
@@ -68,7 +69,7 @@ network_mode() {
 
 docker_root() {
   local dir
-  dir=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null | head -1) || dir=''
+  dir=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null | awk 'NR==1 {print}') || dir=''
   [[ -n "$dir" && -d "$dir" ]] || dir=/var/lib/docker
   printf '%s\n' "$dir"
 }
@@ -155,7 +156,7 @@ container_span() {
 
 lava_name() {
   docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null \
-    | awk 'tolower($0) ~ /lavalink|lava/ {print $1; exit}'
+    | awk 'tolower($0) ~ /lavalink|lava/ && !seen {print $1; seen=1}'
 }
 
 lava_port() {
@@ -171,13 +172,13 @@ lava_pid() {
   local port
   command -v ss >/dev/null 2>&1 || return 1
   port=$(lava_port "$1")
-  ss -Hltnp "sport = :$port" 2>/dev/null | head -1 | sed -nE 's/.*pid=([0-9]+).*/\1/p'
+  ss -Hltnp "sport = :$port" 2>/dev/null | awk 'NR==1 {print}' | sed -nE 's/.*pid=([0-9]+).*/\1/p'
 }
 
 lava_unit() {
   local pid=$1 unit
   [[ -n "$pid" && -r "/proc/$pid/cgroup" ]] || return 1
-  unit=$(sed -nE 's#.*/([^/]+\.service)$#\1#p' "/proc/$pid/cgroup" | head -1)
+  unit=$(sed -nE 's#.*/([^/]+\.service)$#\1#p' "/proc/$pid/cgroup" | awk 'NR==1 {print}')
   [[ -n "$unit" ]] || return 1
   printf '%s\n' "$unit"
 }
@@ -187,14 +188,14 @@ lava_logfile() {
   [[ -n "$pid" && -r "/proc/$pid/cwd" ]] || return 1
   cwd=$(readlink -f "/proc/$pid/cwd" 2>/dev/null) || return 1
   [[ -d "$cwd/logs" ]] || return 1
-  ls -1t "$cwd"/logs/*.log 2>/dev/null | head -1
+  ls -1t "$cwd"/logs/*.log 2>/dev/null | awk 'NR==1 {print}'
 }
 
 lava_listener() {
   local port line
   command -v ss >/dev/null 2>&1 || return 1
   port=$(lava_port "$1")
-  line=$(ss -Hltnp "sport = :$port" 2>/dev/null | head -1)
+  line=$(ss -Hltnp "sport = :$port" 2>/dev/null | awk 'NR==1 {print}')
   [[ -n "$line" ]] || return 1
   printf '%s\n' "$line" | sed -nE 's/.*users:\(\("([^"]+)",pid=([0-9]+).*/\1 (pid \2)/p'
 }
@@ -356,7 +357,6 @@ case "$cmd" in
     bash "$APP/sbln.sh" config-sync "$APP/config/config.example.json" "$BASE/config.json"
     bash "$APP/sbln.sh" build "$APP"
     install -m 0755 "$APP/sbln.sh" /usr/local/bin/sbln
-    [[ -e /usr/local/bin/sblnproto && -f "$APP/sblnproto.sh" ]] && install -m 0755 "$APP/sblnproto.sh" /usr/local/bin/sblnproto
     systemctl restart "$SVC"
     wait_ready
     echo 'Обновлено из master, служба перезапущена.'

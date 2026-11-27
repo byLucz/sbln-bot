@@ -7,7 +7,7 @@ PCONFIG="$BASE/config-proto.json"
 PBOT=sbln-bot-proto
 [[ "$BASE" =~ ^/[a-zA-Z0-9_./-]+$ && "$BASE" != / && "$BASE" != *..* ]] || exit 1
 if ! docker info >/dev/null 2>&1 && [[ ${EUID:-$(id -u)} -ne 0 ]] && command -v sudo >/dev/null 2>&1; then
-  exec sudo -E bash "$0" "$@"
+  exec sudo --preserve-env=SBLN_BASE,SBLN_NET bash "$0" "$@"
 fi
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 HELPER="$ROOT/sbln.sh"
@@ -52,9 +52,8 @@ case "$cmd" in
       exec bash "$PROTO/sblnproto.sh" hotswap "$PROTO"
     fi
     [[ -d "$PROTO/.git" ]] && git -C "$PROTO" submodule update --init --recursive
-    install -m 0755 "$PROTO/sbln.sh" /usr/local/bin/sbln
     install -m 0755 "$PROTO/sblnproto.sh" /usr/local/bin/sblnproto
-    HELPER=/usr/local/bin/sbln
+    HELPER="$PROTO/sbln.sh"
     bash "$HELPER" config-sync "$PROTO/config/config-proto.example.json" "$PCONFIG"
     network=$(bash "$HELPER" network "$PCONFIG")
     echo "Сеть proto: $network (конфиг: $PCONFIG)"
