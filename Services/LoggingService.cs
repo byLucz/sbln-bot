@@ -40,7 +40,7 @@ namespace sblngavnav6.Services
                 var severityText = GetSeverityString(severity);
                 var sourceText = SourceToString(src);
                 var text = BuildMessage(message, exception, src, severity);
-                var isError = severity is LogSeverity.Error or LogSeverity.Critical || exception != null;
+                var isError = severity is LogSeverity.Error or LogSeverity.Critical;
 
                 await _sync.WaitAsync();
                 acquired = true;
@@ -120,6 +120,14 @@ namespace sblngavnav6.Services
                 log.Exception.Message.Contains("WebSocket connection was closed", StringComparison.OrdinalIgnoreCase))
             {
                 return "Gateway закрыл соединение, переподключаюсь";
+            }
+
+            if (log.Exception is WebSocketException &&
+                (log.Exception.Message.Contains("status code '502'", StringComparison.OrdinalIgnoreCase)
+                    || log.Exception.Message.Contains("status code '503'", StringComparison.OrdinalIgnoreCase)
+                    || log.Exception.Message.Contains("status code '504'", StringComparison.OrdinalIgnoreCase)))
+            {
+                return "Gateway временно недоступен (5xx), переподключаюсь";
             }
 
             return null;

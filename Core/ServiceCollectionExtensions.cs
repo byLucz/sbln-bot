@@ -107,8 +107,8 @@ namespace sblngavnav6.Core
         {
             for (var current = ex; current is not null; current = current.InnerException)
             {
-                if (current is ApiRequestException)
-                    return false;
+                if (current is ApiRequestException api)
+                    return api.ErrorCode is >= 500 or 429;
 
                 if (current is RequestException or HttpRequestException or TimeoutException or IOException or SocketException)
                     return true;
