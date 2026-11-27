@@ -282,6 +282,7 @@ panel() {
 
 build() {
   local source=${1:-$APP} channel=${2:-stable} version sha network config="$BASE/config.json" name="$BOT" channel_arg='' restart=unless-stopped
+  local pver mju last maj min pat
   [[ "$channel" = stable || "$channel" = proto ]] || exit 1
   source=$(cd -- "$source" && pwd)
   if [[ "$channel" = proto ]]; then config="$BASE/config-proto.json"; name=sbln-bot-proto; channel_arg=proto; restart=no; fi
@@ -292,7 +293,15 @@ build() {
     version=$(git -C "$source" tag --points-at HEAD -l 'v*' | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' | sort -V | tail -1)
     [[ -n "$version" ]] || { echo 'На HEAD master ещё нет релизного тега. Дождись CI и повтори.' >&2; exit 1; }
   else
-    version=$(sed -nE 's/.*<SblnVersion>([0-9]+\.[0-9]+\.[0-9]+)<\/SblnVersion>.*/\1/p' "$source/Directory.Build.props")
+    pver=$(sed -nE 's/.*<SblnVersion>([0-9]+\.[0-9]+\.[0-9]+)<\/SblnVersion>.*/\1/p' "$source/Directory.Build.props")
+    mju=$(sed -nE 's/.*<MJU>(true|false)<\/MJU>.*/\1/p' "$source/Directory.Build.props")
+    last=$(git -C "$source" tag -l 'v*' | sed -nE 's/^v([0-9]+\.[0-9]+\.[0-9]+)$/\1/p' | sort -V | tail -1)
+    if [[ -z "$last" ]] || { [[ "$pver" != "$last" ]] && [[ "$(printf '%s\n%s\n' "$pver" "$last" | sort -V | tail -1)" = "$pver" ]]; }; then
+      version="$pver"
+    else
+      IFS=. read -r maj min pat <<< "$last"
+      if [[ "$mju" = true ]]; then version="$maj.$((min + 1)).0"; else version="$maj.$min.$((pat + 1))"; fi
+    fi
   fi
   [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
   mkdir -p "$BASE/data/$channel" "$BASE/logs/$channel" "$BASE/audio/$channel"

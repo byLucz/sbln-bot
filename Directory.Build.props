@@ -3,7 +3,7 @@
   <PropertyGroup>
     <SblnVersion>6.0.0</SblnVersion>
     <SblnChannel>proto</SblnChannel>
-    <MJU>true</MJU>
+    <MJU>false</MJU>
 
     <Version>$(SblnVersion)</Version>
     <InformationalVersion>$(SblnVersion) $(SblnChannel)</InformationalVersion>
