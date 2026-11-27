@@ -91,14 +91,24 @@ namespace sblngavnav6.Core
 
     public static class SuperuserGate
     {
+        private static ulong _cachedOwnerId;
+
         public static async Task<bool> IsBotOwnerAsync(IDiscordClient client, IUser user)
         {
             if (user is null)
                 return false;
 
+            var cached = Volatile.Read(ref _cachedOwnerId);
+            if (cached != 0)
+                return cached == user.Id;
+
             try
             {
-                return (await client.GetApplicationInfoAsync()).Owner?.Id == user.Id;
+                var ownerId = (await client.GetApplicationInfoAsync()).Owner?.Id ?? 0;
+                if (ownerId != 0)
+                    Interlocked.CompareExchange(ref _cachedOwnerId, ownerId, 0);
+
+                return ownerId != 0 && ownerId == user.Id;
             }
             catch (Exception)
             {

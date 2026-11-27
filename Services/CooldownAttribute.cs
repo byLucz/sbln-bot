@@ -26,19 +26,23 @@ namespace sblngavnav6.Services
             var key = new CooldownInfo(context.Sender()?.Id ?? 0, command.GetHashCode());
             var now = DateTimeOffset.UtcNow;
 
-            if (_cooldowns.TryGetValue(key, out var endsAt))
+            while (true)
             {
-                var left = endsAt - now;
+                if (_cooldowns.TryGetValue(key, out var endsAt))
+                {
+                    var left = endsAt - now;
 
-                if (left > TimeSpan.Zero)
-                    return Task.FromResult(PreconditionResult.FromError(
-                        $"дружище, имей совесть, напишешь только через {FormatAge(left)}. Ок? Ок."));
+                    if (left > TimeSpan.Zero)
+                        return Task.FromResult(PreconditionResult.FromError(
+                            $"дружище, имей совесть, напишешь только через {FormatAge(left)}. Ок? Ок."));
 
-                _cooldowns.TryUpdate(key, now.Add(CooldownLength), endsAt);
-            }
-            else
-            {
-                _cooldowns.TryAdd(key, now.Add(CooldownLength));
+                    if (_cooldowns.TryUpdate(key, now.Add(CooldownLength), endsAt))
+                        break;
+                }
+                else if (_cooldowns.TryAdd(key, now.Add(CooldownLength)))
+                {
+                    break;
+                }
             }
 
             if (_cooldowns.Count > PurgeThreshold)

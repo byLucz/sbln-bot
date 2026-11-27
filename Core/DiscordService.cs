@@ -48,6 +48,7 @@ namespace sblngavnav6.Core
                 throw new InvalidOperationException("DiscordService уже запущен");
 
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var shutdownDone = new ManualResetEventSlim(false);
             void Cancel()
             {
                 _stopping = true;
@@ -60,7 +61,11 @@ namespace sblngavnav6.Core
                 args.Cancel = true;
                 Cancel();
             }
-            void OnProcessExit(object sender, EventArgs args) => Cancel();
+            void OnProcessExit(object sender, EventArgs args)
+            {
+                Cancel();
+                shutdownDone.Wait(TimeSpan.FromSeconds(25));
+            }
 
             using var sigterm = OperatingSystem.IsWindows() ? null : PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
             {
@@ -169,6 +174,7 @@ namespace sblngavnav6.Core
                 {
                     Console.CancelKeyPress -= OnCancelKeyPress;
                     AppDomain.CurrentDomain.ProcessExit -= OnProcessExit;
+                    shutdownDone.Set();
                 }
             }
         }
@@ -202,6 +208,7 @@ namespace sblngavnav6.Core
 
         private async Task KeepFrontierAsync(CancellationToken cancellationToken)
         {
+            using var _ = cancellationToken.Register(_frontier.Stop);
             var since = DateTimeOffset.UtcNow;
             var reported = DateTimeOffset.MinValue;
             var attempt = 0;
@@ -320,23 +327,23 @@ namespace sblngavnav6.Core
 
         private void ScheduleNotReady()
         {
-            CancelNotReady();
-
             var cts = new CancellationTokenSource();
-            _readyGraceCts = cts;
+            var token = cts.Token;
+            DisposeGraceCts(Interlocked.Exchange(ref _readyGraceCts, cts));
 
             _ = Task.Run(async () =>
             {
-                try { await Task.Delay(ReadyGrace, cts.Token).ConfigureAwait(false); }
+                try { await Task.Delay(ReadyGrace, token).ConfigureAwait(false); }
                 catch (OperationCanceledException) { return; }
 
                 lock (_readyLock) SetReady(false);
             });
         }
 
-        private void CancelNotReady()
+        private void CancelNotReady() => DisposeGraceCts(Interlocked.Exchange(ref _readyGraceCts, null));
+
+        private static void DisposeGraceCts(CancellationTokenSource cts)
         {
-            var cts = Interlocked.Exchange(ref _readyGraceCts, null);
             if (cts is null) return;
 
             try { cts.Cancel(); }

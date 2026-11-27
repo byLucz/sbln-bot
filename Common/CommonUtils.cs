@@ -14,8 +14,8 @@ namespace sblngavnav6.Common
             public static string Avatar(IUser user, ushort size = 128) =>
                 user?.GetAvatarUrl(ImageFormat.Auto, size) ?? user?.GetDefaultAvatarUrl() ?? DefaultAvatar;
 
-            public static string GuildAvatar(IGuildUser user, string fallback = DefaultAvatar) =>
-                user?.GetGuildAvatarUrl() ?? user?.GetAvatarUrl() ?? user?.GetDefaultAvatarUrl() ?? fallback;
+            public static string GuildAvatar(IGuildUser user, ushort size = 128, string fallback = DefaultAvatar) =>
+                user?.GetGuildAvatarUrl(ImageFormat.Auto, size) ?? user?.GetAvatarUrl(ImageFormat.Auto, size) ?? user?.GetDefaultAvatarUrl() ?? fallback;
 
             public static string UserName(IUser user, bool mention = false) =>
                 (mention ? user?.Mention : user?.Username ?? user?.GlobalName) ?? "кто-то";
@@ -387,6 +387,7 @@ namespace sblngavnav6.Common
                     return ApiResponse.Fail($"{label} URL невалидный: {baseUrl}");
 
                 var client = factory.CreateClient(label);
+                client.Timeout = Timeout.InfiniteTimeSpan;
                 client.BaseAddress = baseUri;
 
                 using var request = new HttpRequestMessage(method, route);

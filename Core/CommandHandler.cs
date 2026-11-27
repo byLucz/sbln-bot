@@ -27,7 +27,6 @@ namespace sblngavnav6.Core
         private readonly IServiceProvider _services;
         private readonly GVRConfig _govorilka;
         private readonly GVRMessagesHandler _gvrMessages;
-        private readonly GVRDb _gvrDb;
         private readonly CancellationTokenSource _stopping = new();
         private readonly ConcurrentDictionary<ulong, MailReplyRoute> _mailReplyRoutes = new();
         private readonly object _timerLock = new();
@@ -55,7 +54,6 @@ namespace sblngavnav6.Core
             _commands = services.GetRequiredService<CommandService>();
             _client = services.GetRequiredService<DiscordSocketClient>();
             _gvrMessages = services.GetRequiredService<GVRMessagesHandler>();
-            _gvrDb = services.GetRequiredService<GVRDb>();
 
             HookEvents();
         }
