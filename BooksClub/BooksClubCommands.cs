@@ -74,6 +74,8 @@ namespace sblngavnav6.BooksClub
             }));
         }
 
+        private static readonly SemaphoreSlim SelectGate = new(1, 1);
+
         [RequireDevGuild]
         [Command("выбор книги")]
         public async Task SelectBook([Remainder] string input = "")
@@ -82,66 +84,82 @@ namespace sblngavnav6.BooksClub
 
             if (trimmed.Equals("отмена", StringComparison.OrdinalIgnoreCase))
             {
-                var last = await DataBase.GetLastBook();
-
-                if (last.id == 0)
+                await SelectGate.WaitAsync();
+                try
                 {
-                    await FailAsync("нечего отменять, книга не выбрана");
+                    var last = await DataBase.GetLastBook();
+
+                    if (last.id == 0)
+                    {
+                        await FailAsync("нечего отменять, книга не выбрана");
+                        return;
+                    }
+
+                    if (await DataBase.BookHasRatings(last.id))
+                    {
+                        await FailAsync($"**{last.title}** уже оценивали, отменить нельзя");
+                        return;
+                    }
+
+                    await DataBase.RemoveBook(last.id);
+                    await ReplyAsync(embed: Simple("✅ Последняя выбранная книга отменена", Color.Purple));
                     return;
                 }
-
-                if (await DataBase.BookHasRatings(last.id))
+                finally
                 {
-                    await FailAsync($"**{last.title}** уже оценивали, отменить нельзя");
-                    return;
+                    SelectGate.Release();
                 }
-
-                await DataBase.RemoveLastBook();
-                await ReplyAsync(embed: Simple("✅ Последняя выбранная книга отменена", Color.Purple));
-                return;
             }
 
-            if (!await DataBase.CanSelectNewBook() || string.IsNullOrWhiteSpace(trimmed))
+            await SelectGate.WaitAsync();
+            try
             {
-                var current = await DataBase.GetLastBook();
+                if (!await DataBase.CanSelectNewBook() || string.IsNullOrWhiteSpace(trimmed))
+                {
+                    var current = await DataBase.GetLastBook();
+
+                    await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
+                    {
+                        Title = $"{Logo} Книга недели уже выбрана",
+                        Description =
+                            $"**{current.title}**\n" +
+                            $"✍️ Автор(ы): {current.authors}\n" +
+                            $"📅 {current.selectedDate:yyyy-MM-dd}\n" +
+                            $"👤 {current.suggestedBy}",
+                        ThumbnailUrl = current.image,
+                        Color = Color.DarkPurple,
+                        Footer = Footer
+                    }), components: current.id == 0 ? null : _pager.BuildControls(BookRating.OpenButton()));
+                    return;
+                }
+
+                var info = await FetchVolumeAsync(trimmed);
+
+                if (info is null)
+                {
+                    await FailAsync("книга не найдена или гугл недоступен");
+                    return;
+                }
+
+                var title = Text(info, "title", "Неизвестно");
+                var authors = Authors(info);
+                var image = Thumbnail(info) ?? string.Empty;
+
+                await DataBase.AddBook(title, authors, image, Context.User.Username);
 
                 await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
                 {
-                    Title = $"{Logo} Книга недели уже выбрана",
-                    Description =
-                        $"**{current.title}**\n" +
-                        $"✍️ Автор(ы): {current.authors}\n" +
-                        $"📅 {current.selectedDate:yyyy-MM-dd}\n" +
-                        $"👤 {current.suggestedBy}",
-                    ThumbnailUrl = current.image,
-                    Color = Color.DarkPurple,
+                    Title = $"{Logo} Книга недели выбрана!",
+                    Description = $"**{title}**\n✍️ {authors}\n📅 {DateTime.UtcNow:yyyy-MM-dd}\n👤 Выбрал: {Context.User.Username}",
+                    ThumbnailUrl = image,
+                    Color = Color.Purple,
                     Footer = Footer
-                }), components: current.id == 0 ? null : _pager.BuildControls(BookRating.OpenButton()));
-                return;
+                }), components: _pager.BuildControls(BookRating.OpenButton()));
             }
-
-            var info = await FetchVolumeAsync(trimmed);
-
-            if (info is null)
+            finally
             {
-                await FailAsync("книга не найдена или гугл недоступен");
-                return;
+                SelectGate.Release();
             }
-
-            var title = Text(info, "title", "Неизвестно");
-            var authors = Authors(info);
-            var image = Thumbnail(info);
-
-            await DataBase.AddBook(title, authors, image, Context.User.Username);
-
-            await ReplyAsync(embed: EmbedHandler.Build(new EmbedSpec
-            {
-                Title = $"{Logo} Книга недели выбрана!",
-                Description = $"**{title}**\n✍️ {authors}\n📅 {DateTime.UtcNow:yyyy-MM-dd}\n👤 Выбрал: {Context.User.Username}",
-                ThumbnailUrl = image,
-                Color = Color.Purple,
-                Footer = Footer
-            }), components: _pager.BuildControls(BookRating.OpenButton()));
         }
 
         [RequireDevGuild]
@@ -186,15 +204,25 @@ namespace sblngavnav6.BooksClub
                 return;
             }
 
-            if (await DataBase.UserHasRated(Context.User.Id.ToString(), book.id))
-            {
-                await FailAsync("эта книга уже получала твою оценку");
-                return;
-            }
-
+            var userId = Context.User.Id.ToString();
             var finalScore = BookRating.Final(scores);
 
-            await DataBase.SaveRating(Context.User.Id.ToString(), book.id, scores, finalScore);
+            await BookRating.SaveGate.WaitAsync();
+            try
+            {
+                if (await DataBase.UserHasRated(userId, book.id))
+                {
+                    await FailAsync("эта книга уже получала твою оценку");
+                    return;
+                }
+
+                await DataBase.SaveRating(userId, book.id, scores, finalScore);
+            }
+            finally
+            {
+                BookRating.SaveGate.Release();
+            }
+
             BookRating.TriggerExport(Context.Guild);
 
             await ReplyAsync(embed: BookRating.Result(book.title, book.authors, Context.User.Username, scores, finalScore));

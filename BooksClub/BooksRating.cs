@@ -11,6 +11,7 @@ namespace sblngavnav6.BooksClub
     internal static class BookRating
     {
         public const string OpenId = "kkr_open";
+        internal static readonly SemaphoreSlim SaveGate = new(1, 1);
 
         public static readonly (string Emoji, string Name)[] Criteria =
         [
@@ -148,8 +149,6 @@ namespace sblngavnav6.BooksClub
     [RequireDevGuildInteraction]
     public class BooksRatingInteractions : InteractionModuleBase<SocketInteractionContext>
     {
-        private static readonly SemaphoreSlim SaveGate = new(1, 1);
-
         private readonly PaginatorService _pager;
 
         public BooksRatingInteractions(PaginatorService pager)
@@ -238,13 +237,12 @@ namespace sblngavnav6.BooksClub
         [ComponentInteraction("kkr_save:*:*")]
         public async Task SaveAsync(string bookRaw, string state)
         {
+            await DeferAsync();
+
             var scores = BookRating.Decode(state);
 
             if (!int.TryParse(bookRaw, out var bookId) || scores.Any(score => score is < 1 or > 10))
-            {
-                await DeferAsync();
                 return;
-            }
 
             var book = await CurrentBookAsync(bookId);
             if (book is null)
@@ -253,7 +251,7 @@ namespace sblngavnav6.BooksClub
             var userId = Context.User.Id.ToString();
             var final = BookRating.Final(scores);
 
-            await SaveGate.WaitAsync();
+            await BookRating.SaveGate.WaitAsync();
             try
             {
                 if (await DataBase.UserHasRated(userId, bookId))
@@ -266,7 +264,7 @@ namespace sblngavnav6.BooksClub
             }
             finally
             {
-                SaveGate.Release();
+                BookRating.SaveGate.Release();
             }
 
             BookRating.TriggerExport(Context.Guild as SocketGuild);
@@ -306,6 +304,13 @@ namespace sblngavnav6.BooksClub
         private Task UpdateAsync(Embed embed, Action<ComponentBuilder, int> controls)
         {
             var components = _pager.BuildControls(controls);
+
+            if (Context.Interaction.HasResponded)
+                return ModifyOriginalResponseAsync(message =>
+                {
+                    message.Embed = embed;
+                    message.Components = components;
+                });
 
             return ((SocketMessageComponent)Context.Interaction).UpdateAsync(message =>
             {
