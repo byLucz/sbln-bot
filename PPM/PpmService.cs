@@ -168,6 +168,7 @@ namespace sblngavnav6.PPM
         }
 
         private static readonly TimeSpan MinSweepDelay = TimeSpan.FromSeconds(1);
+        private static readonly TimeSpan RetrySweepDelay = TimeSpan.FromSeconds(60);
         private static readonly TimeSpan IdleSweepDelay = TimeSpan.FromMinutes(5);
 
         private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(30);
@@ -360,6 +361,7 @@ namespace sblngavnav6.PPM
         {
             while (!cancellationToken.IsCancellationRequested)
             {
+                var hadFailure = false;
                 try
                 {
                     var expired = await DataBase.GetExpiredPpmMailboxes();
@@ -376,6 +378,7 @@ namespace sblngavnav6.PPM
                         }
                         else
                         {
+                            hadFailure = true;
                             await LoggingService.LogWarningAsync(LogSource, $"Не удалось удалить {email}: {output}");
                         }
                     }
@@ -386,14 +389,15 @@ namespace sblngavnav6.PPM
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return; }
                 catch (Exception ex)
                 {
+                    hadFailure = true;
                     await LoggingService.LogErrorAsync(LogSource, "Ошибка sweeper-цикла", ex);
                 }
 
-                await WaitForNextSweepAsync(cancellationToken).ConfigureAwait(false);
+                await WaitForNextSweepAsync(hadFailure, cancellationToken).ConfigureAwait(false);
             }
         }
 
-        private async Task WaitForNextSweepAsync(CancellationToken cancellationToken)
+        private async Task WaitForNextSweepAsync(bool hadFailure, CancellationToken cancellationToken)
         {
             TimeSpan delay;
 
@@ -407,11 +411,12 @@ namespace sblngavnav6.PPM
             }
             catch (Exception)
             {
-                delay = MinSweepDelay;
+                delay = RetrySweepDelay;
             }
 
-            if (delay < MinSweepDelay)
-                delay = MinSweepDelay;
+            var minDelay = hadFailure ? RetrySweepDelay : MinSweepDelay;
+            if (delay < minDelay)
+                delay = minDelay;
             else if (delay > IdleSweepDelay)
                 delay = IdleSweepDelay;
 

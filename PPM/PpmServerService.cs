@@ -1,6 +1,5 @@
 using sblngavnav6.Data;
 using System.Diagnostics;
-using System.Text;
 
 namespace sblngavnav6.PPM
 {
@@ -30,15 +29,10 @@ namespace sblngavnav6.PPM
                 psi.ArgumentList.Add(a);
 
             using var proc = new Process { StartInfo = psi };
-            var sb = new StringBuilder();
-            proc.OutputDataReceived += (_, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
-            proc.ErrorDataReceived += (_, e) => { if (e.Data != null) sb.AppendLine(e.Data); };
 
             try
             {
                 proc.Start();
-                proc.BeginOutputReadLine();
-                proc.BeginErrorReadLine();
             }
             catch (Exception ex)
             {
@@ -49,7 +43,16 @@ namespace sblngavnav6.PPM
             cts.CancelAfter(TimeSpan.FromSeconds(30));
             try
             {
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync(cts.Token);
+                var stderrTask = proc.StandardError.ReadToEndAsync(cts.Token);
                 await proc.WaitForExitAsync(cts.Token);
+                await Task.WhenAll(stdoutTask, stderrTask);
+
+                var combined = string.Join("\n",
+                    new[] { stdoutTask.Result.Trim(), stderrTask.Result.Trim() }
+                        .Where(part => part.Length > 0));
+
+                return (proc.ExitCode == 0, combined);
             }
             catch (OperationCanceledException)
             {
@@ -57,8 +60,6 @@ namespace sblngavnav6.PPM
                 cancellationToken.ThrowIfCancellationRequested();
                 return (false, "docker exec timeout (30s)");
             }
-
-            return (proc.ExitCode == 0, sb.ToString().Trim());
         }
     }
 }

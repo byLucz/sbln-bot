@@ -98,7 +98,6 @@ namespace sblngavnav6.PPM
         });
     }
 
-    [RequireDevAccess]
     public class PpmCommands : ModuleBase<SocketCommandContext>
     {
         private readonly PaginatorService _pager;
@@ -112,6 +111,7 @@ namespace sblngavnav6.PPM
             _commandHandler = commandHandler;
         }
 
+        [RequireGuild]
         [Command("почта")]
         public async Task SendMailAsync(SocketGuildUser user = null, [Remainder] string message = null)
         {
@@ -207,6 +207,7 @@ namespace sblngavnav6.PPM
             return (false, text);
         }
 
+        [RequireDevAccess]
         [Command("печкин")]
         [Alias("ппм", "емейл")]
 
