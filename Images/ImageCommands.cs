@@ -15,6 +15,7 @@ namespace sblngavnav6.Images
         private const string Author = "sbln картинки🖼️";
         private const string Footer = "powered by SkiaSharp";
         private const string NoPicture = "прикрепи картинку, ответь на сообщение с ней или дай ссылку";
+        private const int MaxUrlCandidates = 5;
 
         private readonly HttpClient _http;
         private readonly GVRMessagesHandler _gvr;
@@ -102,17 +103,22 @@ namespace sblngavnav6.Images
                 return;
             }
 
-            using var source = await SourceAsync(args)
-                ?? ImageTools.Decode(await AvatarBytesAsync(Mentioned(args) ?? Context.Message?.ReferencedMessage?.Author ?? Context.Sender()));
+            var bytes = await SourceBytesAsync(args)
+                ?? await AvatarBytesAsync(Mentioned(args) ?? Context.Message?.ReferencedMessage?.Author ?? Context.Sender());
 
-            if (source is null)
+            if (bytes is null)
             {
                 await FailAsync("не смог открыть картинку");
                 return;
             }
 
             await RenderAsync("demotivator.jpg", null, () =>
-                Task.FromResult(ImageEffects.Demotivator(source, Truncate(text[0], 120), text.Length > 1 ? Truncate(text[1], 240) : null)));
+            {
+                using var source = ImageTools.Decode(bytes);
+                return Task.FromResult(source is null
+                    ? null
+                    : ImageEffects.Demotivator(source, Truncate(text[0], 120), text.Length > 1 ? Truncate(text[1], 240) : null));
+            }, "не смог открыть картинку");
         }
 
         [Frontier]
@@ -121,32 +127,68 @@ namespace sblngavnav6.Images
         [Cooldown(5)]
         public async Task SheffogramAsync([Remainder] string args = "")
         {
-            using var source = await SourceAsync(args);
+            var bytes = await SourceBytesAsync(args);
 
-            if (source is null)
+            if (bytes is null)
             {
                 await FailAsync(NoPicture);
                 return;
             }
 
-            var faces = await Task.Run(() => FaceDetector.Detect(source));
+            var mentioned = Mentioned(args);
+            var avatarBytes = mentioned is null ? null : await AvatarBytesAsync(mentioned);
+            string failReason = null;
+            byte[] rendered = null;
+            var faceCount = 0;
 
-            if (faces.Count == 0)
+            using (Context.Channel.EnterTypingState())
             {
-                await FailAsync("на картинке не обнаружено ебальничка");
+                await ImageTools.RenderGate.WaitAsync();
+                try
+                {
+                    (rendered, faceCount, failReason) = await Task.Run(() =>
+                    {
+                        using var source = ImageTools.Decode(bytes);
+                        if (source is null)
+                            return ((byte[])null, 0, "не смог открыть картинку");
+
+                        var faces = FaceDetector.Detect(source);
+                        if (faces.Count == 0)
+                            return ((byte[])null, 0, "на картинке не обнаружено ебальничка");
+
+                        using var avatar = mentioned is null ? null : ImageTools.Circle(avatarBytes, 256);
+                        var output = ImageEffects.Sheffogram(source, avatar ?? ImageEffects.Sheff.Value,
+                            avatar is null ? ImageEffects.SheffPoints : ImageEffects.AvatarPoints, faces);
+                        return (output, faces.Count, (string)null);
+                    });
+                }
+                catch (Exception ex) when (ex is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
+                {
+                    await LoggingService.LogErrorAsync("IMAGE", "Не удалось собрать sheffogram.jpg", ex);
+                    await FailAsync("картинка не собралась, детали в логах");
+                    return;
+                }
+                finally
+                {
+                    ImageTools.RenderGate.Release();
+                }
+            }
+
+            if (failReason is not null)
+            {
+                await FailAsync(failReason);
                 return;
             }
 
-            var mentioned = Mentioned(args);
-            var avatarBytes = mentioned is null ? null : await AvatarBytesAsync(mentioned);
-
-            await RenderAsync("sheffogram.jpg", $"⬇️ {(faces.Count > 1 ? "еще челы превращены" : "еще один челик превращен")} в {(mentioned is null ? "шефа" : mentioned.Mention)}... ⬇️", () =>
+            using var stream = new MemoryStream(rendered);
+            await Context.Channel.SendFileAsync(stream, "sheffogram.jpg", embed: EmbedHandler.Build(new EmbedSpec
             {
-                using var avatar = mentioned is null ? null : ImageTools.Circle(avatarBytes, 256);
-
-                return Task.FromResult(ImageEffects.Sheffogram(source, avatar ?? ImageEffects.Sheff.Value,
-                    avatar is null ? ImageEffects.SheffPoints : ImageEffects.AvatarPoints, faces));
-            });
+                AuthorName = Author,
+                Description = $"⬇️ {(faceCount > 1 ? "еще челы превращены" : "еще один челик превращен")} в {(mentioned is null ? "шефа" : mentioned.Mention)}... ⬇️",
+                ImageUrl = "attachment://sheffogram.jpg",
+                Color = Color.Gold,
+                Footer = Footer
+            }));
         }
 
         [Frontier]
@@ -159,9 +201,9 @@ namespace sblngavnav6.Images
                 : args.Contains("рус", StringComparison.OrdinalIgnoreCase) ? "rus"
                 : "rus+eng";
 
-            using var source = await SourceAsync(args);
+            var bytes = await SourceBytesAsync(args);
 
-            if (source is null)
+            if (bytes is null)
             {
                 await FailAsync(NoPicture);
                 return;
@@ -173,6 +215,13 @@ namespace sblngavnav6.Images
             await ImageTools.RenderGate.WaitAsync();
             try
             {
+                using var source = ImageTools.Decode(bytes);
+                if (source is null)
+                {
+                    await FailAsync("не смог открыть картинку");
+                    return;
+                }
+
                 text = (await ImageTools.RecognizeTextAsync(source, languages)).Trim();
             }
             catch (Exception ex) when (ex is InvalidOperationException or IOException or System.ComponentModel.Win32Exception)
@@ -201,7 +250,7 @@ namespace sblngavnav6.Images
             }));
         }
 
-        private async Task RenderAsync(string fileName, string description, Func<Task<byte[]>> render)
+        private async Task RenderAsync(string fileName, string description, Func<Task<byte[]>> render, string emptyError = null)
         {
             using var typing = Context.Channel.EnterTypingState();
 
@@ -222,6 +271,12 @@ namespace sblngavnav6.Images
                 ImageTools.RenderGate.Release();
             }
 
+            if (result is null)
+            {
+                await FailAsync(emptyError ?? "не смог открыть картинку");
+                return;
+            }
+
             using var stream = new MemoryStream(result);
 
             await Context.Channel.SendFileAsync(stream, fileName, embed: EmbedHandler.Build(new EmbedSpec
@@ -234,9 +289,9 @@ namespace sblngavnav6.Images
             }));
         }
 
-        private async Task<SKBitmap> SourceAsync(string args)
+        private async Task<byte[]> SourceBytesAsync(string args)
         {
-            if (ImageTools.Decode(await Context.IncomingImageAsync(ImageTools.MaxSourceBytes)) is { } sent)
+            if (await Context.IncomingImageAsync(ImageTools.MaxSourceBytes) is { Length: > 0 } sent && ImageTools.CanDecode(sent))
                 return sent;
 
             var referenced = Context.Message?.ReferencedMessage;
@@ -246,10 +301,11 @@ namespace sblngavnav6.Images
                 .Concat(referenced?.Embeds.Select(ImageTools.EmbedImage) ?? [])
                 .Concat(Words(args).Where(word => EmbedHandler.Link(word) is not null));
 
-            foreach (var url in candidates.Where(url => !string.IsNullOrWhiteSpace(url)).Distinct())
+            foreach (var url in candidates.Where(url => !string.IsNullOrWhiteSpace(url)).Distinct().Take(MaxUrlCandidates))
             {
-                if (ImageTools.Decode(await CommonUtils.Web.DownloadAsync(_http, url, ImageTools.MaxSourceBytes)) is { } bitmap)
-                    return bitmap;
+                var bytes = await CommonUtils.Web.DownloadAsync(_http, url, ImageTools.MaxSourceBytes);
+                if (ImageTools.CanDecode(bytes))
+                    return bytes;
             }
 
             return null;

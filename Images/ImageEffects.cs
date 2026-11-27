@@ -112,7 +112,8 @@ namespace sblngavnav6.Images
                 canvas.RotateDegrees(angle * 180 / MathF.PI, box.MidX, (top + bottom) / 2);
 
                 using (var shape = FaceShape(box.MidX, top, bottom, box.Width * 0.54f))
-                using (var mask = new SKPaint { Color = SKColors.Black, IsAntialias = true, MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, box.Width * 0.05f) })
+                using (var blur = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, box.Width * 0.05f))
+                using (var mask = new SKPaint { Color = SKColors.Black, IsAntialias = true, MaskFilter = blur })
                     canvas.DrawPath(shape, mask);
 
                 canvas.Restore();
@@ -157,12 +158,13 @@ namespace sblngavnav6.Images
             canvas.SaveLayer();
             canvas.DrawImage(image, area, Smooth);
 
+            using (var edgeShader = SKShader.CreateRadialGradient(
+                new SKPoint(area.MidX, area.MidY), Math.Min(area.Width, area.Height) / 2,
+                [SKColors.Black, SKColors.Black, SKColors.Transparent], [0, 0.84f, 1], SKShaderTileMode.Clamp))
             using (var edge = new SKPaint
             {
                 BlendMode = SKBlendMode.DstIn,
-                Shader = SKShader.CreateRadialGradient(
-                    new SKPoint(area.MidX, area.MidY), Math.Min(area.Width, area.Height) / 2,
-                    [SKColors.Black, SKColors.Black, SKColors.Transparent], [0, 0.84f, 1], SKShaderTileMode.Clamp)
+                Shader = edgeShader
             })
                 canvas.DrawPaint(edge);
 

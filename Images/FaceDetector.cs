@@ -28,6 +28,8 @@ namespace sblngavnav6.Images
 
             using var resized = image.Resize(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul),
                 new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.None));
+            if (resized is null)
+                return [];
 
             var input = new DenseTensor<float>([1, 3, InputSize, InputSize]);
             var tensor = input.Buffer.Span;

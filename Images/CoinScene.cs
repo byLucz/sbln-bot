@@ -66,12 +66,10 @@ namespace sblngavnav6.Images
 
         private void Draw(SKCanvas canvas, float angle, float height, int frame)
         {
-            using (var background = new SKPaint
-            {
-                Shader = SKShader.CreateRadialGradient(
-                    new SKPoint(Width / 2f, GroundY), Width * 0.8f,
-                    [new SKColor(30, 92, 58), new SKColor(8, 28, 18)], SKShaderTileMode.Clamp)
-            })
+            using (var shader = SKShader.CreateRadialGradient(
+                new SKPoint(Width / 2f, GroundY), Width * 0.8f,
+                [new SKColor(30, 92, 58), new SKColor(8, 28, 18)], SKShaderTileMode.Clamp))
+            using (var background = new SKPaint { Shader = shader })
                 canvas.DrawRect(0, 0, Width, Height, background);
 
             var lift = height / Lift;
@@ -81,11 +79,12 @@ namespace sblngavnav6.Images
             var sin = MathF.Sin(angle);
             var squash = Math.Max(0.04f, MathF.Abs(cos));
 
+            using (var blur = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 4 + 10 * lift))
             using (var shadow = new SKPaint
             {
                 Color = new SKColor(0, 0, 0, (byte)(120 - 70 * lift)),
                 IsAntialias = true,
-                MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 4 + 10 * lift)
+                MaskFilter = blur
             })
             {
                 var spread = Radius * (0.95f - 0.35f * lift);
@@ -97,11 +96,12 @@ namespace sblngavnav6.Images
             if (settled)
             {
                 var pulse = 0.5f + 0.5f * MathF.Sin((frame - FlightFrames - SettleFrames) * 0.45f);
+                using var glowBlur = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 14 + 6 * pulse);
                 using var glow = new SKPaint
                 {
                     Color = new SKColor(255, 214, 80, (byte)(110 + 80 * pulse)),
                     IsAntialias = true,
-                    MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 14 + 6 * pulse)
+                    MaskFilter = glowBlur
                 };
                 canvas.DrawCircle(center, radius + 10, glow);
             }
@@ -135,14 +135,15 @@ namespace sblngavnav6.Images
             using (var edge = new SKPaint { Color = new SKColor(255, 226, 120), IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 3 })
                 canvas.DrawCircle(0, 0, inner + 2, edge);
 
+            using (var shineShader = SKShader.CreateLinearGradient(
+                new SKPoint(-radius, -radius), new SKPoint(radius, radius),
+                [new SKColor(255, 255, 255, (byte)(30 + 90 * MathF.Abs(sin))), new SKColor(255, 255, 255, 0), new SKColor(0, 0, 0, (byte)(40 + 120 * (1 - squash)))],
+                [0, 0.45f, 1],
+                SKShaderTileMode.Clamp))
             using (var shine = new SKPaint
             {
                 IsAntialias = true,
-                Shader = SKShader.CreateLinearGradient(
-                    new SKPoint(-radius, -radius), new SKPoint(radius, radius),
-                    [new SKColor(255, 255, 255, (byte)(30 + 90 * MathF.Abs(sin))), new SKColor(255, 255, 255, 0), new SKColor(0, 0, 0, (byte)(40 + 120 * (1 - squash)))],
-                    [0, 0.45f, 1],
-                    SKShaderTileMode.Clamp)
+                Shader = shineShader
             })
                 canvas.DrawCircle(0, 0, radius, shine);
 

@@ -116,12 +116,10 @@ namespace sblngavnav6.Images
 
         private void Draw(SKCanvas canvas, float time, int frame)
         {
-            using (var sky = new SKPaint
-            {
-                Shader = SKShader.CreateLinearGradient(
-                    new SKPoint(0, 0), new SKPoint(0, Height),
-                    [new SKColor(38, 24, 66), new SKColor(14, 10, 24)], SKShaderTileMode.Clamp)
-            })
+            using (var skyShader = SKShader.CreateLinearGradient(
+                new SKPoint(0, 0), new SKPoint(0, Height),
+                [new SKColor(38, 24, 66), new SKColor(14, 10, 24)], SKShaderTileMode.Clamp))
+            using (var sky = new SKPaint { Shader = skyShader })
                 canvas.DrawRect(0, 0, Width, Height, sky);
 
             using (var floor = new SKPaint { Color = new SKColor(255, 255, 255, 18), IsAntialias = true })
@@ -169,7 +167,8 @@ namespace sblngavnav6.Images
 
         private static void DrawShadow(SKCanvas canvas, float x, float radius)
         {
-            using var shadow = new SKPaint { Color = new SKColor(0, 0, 0, 90), IsAntialias = true, MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 6) };
+            using var blur = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 6);
+            using var shadow = new SKPaint { Color = new SKColor(0, 0, 0, 90), IsAntialias = true, MaskFilter = blur };
             canvas.DrawOval(new SKRect(x - radius * 0.9f, FloorY - 6, x + radius * 0.9f, FloorY + 8), shadow);
         }
 
@@ -183,13 +182,14 @@ namespace sblngavnav6.Images
             var rect = new SKRect(-radius, -radius, radius, radius);
             canvas.DrawImage(image, rect, ImageTools.Smooth);
 
+            using var shadeShader = SKShader.CreateLinearGradient(
+                new SKPoint(-radius, 0), new SKPoint(radius, 0),
+                [new SKColor(255, 255, 255, 40), new SKColor(0, 0, 0, (byte)(110 * (1 - turn) + 30))],
+                SKShaderTileMode.Clamp);
             using var shade = new SKPaint
             {
                 IsAntialias = true,
-                Shader = SKShader.CreateLinearGradient(
-                    new SKPoint(-radius, 0), new SKPoint(radius, 0),
-                    [new SKColor(255, 255, 255, 40), new SKColor(0, 0, 0, (byte)(110 * (1 - turn) + 30))],
-                    SKShaderTileMode.Clamp)
+                Shader = shadeShader
             };
             canvas.DrawCircle(0, 0, radius, shade);
 

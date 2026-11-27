@@ -26,6 +26,8 @@ namespace sblngavnav6.Images
         public static readonly SemaphoreSlim RenderGate = new(2, 2);
 
         private static readonly ConcurrentDictionary<int, SKTypeface> Fallbacks = new();
+        private static readonly ConcurrentDictionary<string, SKTypeface> FallbackFamilies = new(StringComparer.Ordinal);
+        private const int MaxFallbackCodepoints = 1024;
 
         private static readonly Dictionary<char, char> ToLatin = new()
         {
@@ -44,6 +46,19 @@ namespace sblngavnav6.Images
 
         public static string AssetPath(string name) => Path.Combine(AppContext.BaseDirectory, "images", name);
 
+        public static bool CanDecode(byte[] bytes)
+        {
+            if (bytes is not { Length: > 0 })
+                return false;
+
+            using var data = SKData.CreateCopy(bytes);
+            using var codec = SKCodec.Create(data);
+            return codec is not null
+                && codec.Info.Width > 0
+                && codec.Info.Height > 0
+                && (long)codec.Info.Width * codec.Info.Height <= MaxPixels;
+        }
+
         public static SKBitmap Decode(byte[] bytes)
         {
             if (bytes is not { Length: > 0 })
@@ -52,7 +67,7 @@ namespace sblngavnav6.Images
             using var data = SKData.CreateCopy(bytes);
             using var codec = SKCodec.Create(data);
 
-            if (codec is null || (long)codec.Info.Width * codec.Info.Height > MaxPixels)
+            if (codec is null || codec.Info.Width <= 0 || codec.Info.Height <= 0 || (long)codec.Info.Width * codec.Info.Height > MaxPixels)
                 return null;
 
             var size = codec.GetScaledDimensions(Math.Min(1f, MaxSide / (float)Math.Max(codec.Info.Width, codec.Info.Height)));
@@ -173,7 +188,7 @@ namespace sblngavnav6.Images
                 var element = elements.GetTextElement();
                 var typeface = font.ContainsGlyphs(element)
                     ? font.Typeface
-                    : Fallbacks.GetOrAdd(char.ConvertToUtf32(element, 0), SKFontManager.Default.MatchCharacter) ?? font.Typeface;
+                    : GetFallbackTypeface(element, font.Typeface);
 
                 if (current is not null && typeface != current)
                 {
@@ -187,6 +202,33 @@ namespace sblngavnav6.Images
 
             if (run.Length > 0)
                 yield return (run.ToString(), current);
+        }
+
+        private static SKTypeface GetFallbackTypeface(string element, SKTypeface defaultTypeface)
+        {
+            var codepoint = char.ConvertToUtf32(element, 0);
+            if (Fallbacks.TryGetValue(codepoint, out var cached))
+                return cached ?? defaultTypeface;
+
+            var matched = SKFontManager.Default.MatchCharacter(codepoint);
+            if (matched is null)
+            {
+                if (Fallbacks.Count < MaxFallbackCodepoints)
+                    Fallbacks.TryAdd(codepoint, null);
+                return defaultTypeface;
+            }
+
+            if (!FallbackFamilies.TryAdd(matched.FamilyName, matched))
+            {
+                var existing = FallbackFamilies[matched.FamilyName];
+                matched.Dispose();
+                matched = existing;
+            }
+
+            if (Fallbacks.Count < MaxFallbackCodepoints)
+                Fallbacks.TryAdd(codepoint, matched);
+
+            return matched;
         }
 
         public static async Task<string> RecognizeTextAsync(SKBitmap source, string languages, CancellationToken cancellationToken = default)
@@ -205,16 +247,14 @@ namespace sblngavnav6.Images
                     canvas.Clear(SKColors.White);
 
                     using (var picture = SKImage.FromBitmap(source))
-                    using (var gray = new SKPaint
-                    {
-                        ColorFilter = SKColorFilter.CreateColorMatrix(
-                        [
-                            0.299f, 0.587f, 0.114f, 0, 0,
-                            0.299f, 0.587f, 0.114f, 0, 0,
-                            0.299f, 0.587f, 0.114f, 0, 0,
-                            0, 0, 0, 1, 0
-                        ])
-                    })
+                    using (var grayFilter = SKColorFilter.CreateColorMatrix(
+                    [
+                        0.299f, 0.587f, 0.114f, 0, 0,
+                        0.299f, 0.587f, 0.114f, 0, 0,
+                        0.299f, 0.587f, 0.114f, 0, 0,
+                        0, 0, 0, 1, 0
+                    ]))
+                    using (var gray = new SKPaint { ColorFilter = grayFilter })
                         canvas.DrawImage(picture, SKRect.Create(pad, pad, width, height), new SKSamplingOptions(SKCubicResampler.Mitchell), gray);
 
                     using var probe = prepared.Resize(new SKImageInfo(32, 32, SKColorType.Gray8, SKAlphaType.Opaque), Smooth);
