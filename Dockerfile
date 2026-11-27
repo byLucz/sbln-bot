@@ -1,5 +1,10 @@
-FROM mcr.microsoft.com/dotnet/sdk:10.0-noble AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.404-noble AS build
 WORKDIR /src
+
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+    DOTNET_SKIP_FIRST_TIME_EXPERIENCE=1 \
+    DOTNET_NOLOGO=1 \
+    DOTNET_GCHeapHardLimit=0x20000000
 
 ARG TARGETARCH
 ARG SBLN_CHANNEL=
@@ -12,17 +17,18 @@ COPY external/DTF/DTF.csproj external/DTF/
 COPY TelegramExtensions/TelegramExtensions.csproj TelegramExtensions/
 RUN --mount=type=cache,id=sbln-nuget,target=/root/.nuget/packages \
     rid=linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64); \
-    dotnet restore sblngavnav6.csproj -r "$rid"
+    dotnet restore sblngavnav6.csproj -r "$rid" --disable-parallel
 
 COPY . .
 RUN --mount=type=cache,id=sbln-nuget,target=/root/.nuget/packages \
     rid=linux-$([ "$TARGETARCH" = arm64 ] && echo arm64 || echo x64); \
     if [ -n "$SBLN_VERSION" ]; then set -- "-p:SblnVersion=$SBLN_VERSION"; else set --; fi; \
     dotnet publish sblngavnav6.csproj -c Release -o /app --no-restore -r "$rid" --self-contained false \
+      -m:1 --disable-build-servers -p:UseSharedCompilation=false \
       -p:DebugType=none -p:DebugSymbols=false \
       "-p:SblnChannel=$SBLN_CHANNEL" "-p:SourceRevisionId=$SBLN_COMMIT" "$@"
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0-noble AS runtime
+FROM mcr.microsoft.com/dotnet/runtime:10.0.15-noble AS runtime
 WORKDIR /app
 
 RUN apt-get update \

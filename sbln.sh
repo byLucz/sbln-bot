@@ -82,7 +82,7 @@ free_kb() {
 }
 
 prune() {
-  local keep=${1:-72h} before after freed
+  local keep=${1:-720h} before after freed
   before=$(free_kb)
   docker image prune -f >/dev/null 2>&1 || true
   if [[ "$keep" = all ]]; then
@@ -346,7 +346,7 @@ case "$cmd" in
   stop) systemctl stop "$SVC" ;;
   wait) wait_ready "${1:-$BOT}" ;;
   build) build "${1:-$APP}" "${2:-stable}" ;;
-  prune) prune "${1:-72h}" ;;
+  prune) prune "${1:-720h}" ;;
   network) network_mode "${1:-$BASE/config.json}" ;;
   config-sync) config_sync "${1:?пример}" "${2:?конфиг}" ;;
   update)
