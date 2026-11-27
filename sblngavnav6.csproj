@@ -13,10 +13,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="Audio8\countdown.mp3" Link="audio\countdown.mp3">
+    <Content Include="Audio8\countdown.mp3">
+      <TargetPath>audio\countdown.mp3</TargetPath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="Images\Assets\**" Link="images\%(Filename)%(Extension)">
+    <Content Include="Images\Assets\**">
+      <TargetPath>images\%(Filename)%(Extension)</TargetPath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

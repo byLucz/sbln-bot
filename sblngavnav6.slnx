@@ -28,6 +28,7 @@
     <File Path="agent/ragent-clean.sh" />
     <File Path="agent/ragent.py" />
     <File Path="agent/ragent.sh" />
+    <File Path="agent/ragent_yt.py" />
   </Folder>
   <Folder Name="/Solution Items/config/">
     <File Path="config/config.example.json" />
